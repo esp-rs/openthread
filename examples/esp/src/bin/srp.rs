@@ -157,9 +157,7 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-    info!(
-        "Opened socket on port {BOUND_PORT} and waiting for packets..."
-    );
+    info!("Opened socket on port {BOUND_PORT} and waiting for packets...");
 
     let buf: &mut [u8] = unsafe { mk_static!([u8; UDP_SOCKETS_BUF]).assume_init_mut() };
 
