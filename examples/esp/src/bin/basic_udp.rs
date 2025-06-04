@@ -91,7 +91,7 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(run_ot_ip_info(ot.clone())).unwrap();
 
-    info!("Dataset: {}", THREAD_DATASET);
+    info!("Dataset: {THREAD_DATASET}");
 
     ot.set_active_dataset_tlv_hexstr(THREAD_DATASET).unwrap();
     ot.enable_ipv6(true).unwrap();
@@ -104,8 +104,7 @@ async fn main(spawner: Spawner) {
     .unwrap();
 
     info!(
-        "Opened socket on port {} and waiting for packets...",
-        BOUND_PORT
+        "Opened socket on port {BOUND_PORT} and waiting for packets..."
     );
 
     let buf: &mut [u8] = unsafe { mk_static!([u8; UDP_SOCKETS_BUF]).assume_init_mut() };
@@ -141,7 +140,7 @@ async fn run_ot_ip_info(ot: OpenThread<'static>) -> ! {
         .unwrap();
 
         if cur_addrs != addrs {
-            info!("Got new IPv6 address(es) from OpenThread: {:?}", addrs);
+            info!("Got new IPv6 address(es) from OpenThread: {addrs:?}");
 
             cur_addrs = addrs;
 

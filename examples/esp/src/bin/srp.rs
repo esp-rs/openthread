@@ -110,7 +110,7 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(run_ot_info(ot.clone())).unwrap();
 
-    info!("Dataset: {}", THREAD_DATASET);
+    info!("Dataset: {THREAD_DATASET}");
 
     ot.srp_autostart().unwrap();
 
@@ -158,8 +158,7 @@ async fn main(spawner: Spawner) {
     .unwrap();
 
     info!(
-        "Opened socket on port {} and waiting for packets...",
-        BOUND_PORT
+        "Opened socket on port {BOUND_PORT} and waiting for packets..."
     );
 
     let buf: &mut [u8] = unsafe { mk_static!([u8; UDP_SOCKETS_BUF]).assume_init_mut() };
@@ -207,14 +206,14 @@ async fn run_ot_info(ot: OpenThread<'static>) -> ! {
         .unwrap();
 
         if cur_addrs != addrs || cur_state != state || cur_server_addr != server_addr {
-            info!("Got new IPv6 address(es) and/or SRP state from OpenThread:\nIP addrs: {:?}\nSRP state: {:?}\nSRP server addr: {:?}", addrs, state, server_addr);
+            info!("Got new IPv6 address(es) and/or SRP state from OpenThread:\nIP addrs: {addrs:?}\nSRP state: {state:?}\nSRP server addr: {server_addr:?}");
 
             cur_addrs = addrs;
             cur_state = state;
             cur_server_addr = server_addr;
 
             ot.srp_conf(|conf, state, empty| {
-                info!("SRP conf: {:?}, state: {}, empty: {}", conf, state, empty);
+                info!("SRP conf: {conf:?}, state: {state}, empty: {empty}");
 
                 Ok(())
             })
@@ -222,7 +221,7 @@ async fn run_ot_info(ot: OpenThread<'static>) -> ! {
 
             ot.srp_services(|service| {
                 if let Some((service, state, slot)) = service {
-                    info!("SRP service: {}, state: {}, slot: {}", service, state, slot);
+                    info!("SRP service: {service}, state: {state}, slot: {slot}");
                 }
             })
             .unwrap();
