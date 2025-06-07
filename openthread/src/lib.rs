@@ -19,7 +19,6 @@ use embassy_futures::select::{Either, Either3};
 use embassy_time::Instant;
 
 use fmt::Bytes;
-use openthread_sys::{otExternalRouteConfig, otNetworkDataIterator, OT_NETWORK_DATA_ITERATOR_INIT};
 use portable_atomic::Ordering;
 
 use platform::{OT_ACTIVE_STATE, OT_REFCNT};
@@ -75,7 +74,6 @@ use sys::{
     otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
     otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
     OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
-    otNetDataGetNextRoute
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -450,23 +448,6 @@ impl<'a> OpenThread<'a> {
         }
 
         f(None)
-    }
-
-    pub fn netdata_routes<F>(&self, mut f: F) -> Result<(), OtError>
-    where
-        F: FnMut(Option<(Ipv6Addr, u8)>) -> Result<(), OtError>,
-    {
-        let mut ot = self.activate();
-        let state = ot.state();
-        let mut iterator: u32 = OT_NETWORK_DATA_ITERATOR_INIT;
-
-        let mut config = otExternalRouteConfig::default();
-
-        while unsafe { otNetDataGetNextRoute(state.ot.instance, &mut iterator, &mut config) } == otError_OT_ERROR_NONE {
-
-        }
-
-        Ok(())
     }
 
     /// Wait for the OpenThread stack to change its state.
