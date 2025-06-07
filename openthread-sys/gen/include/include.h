@@ -2,6 +2,7 @@
 #include "openthread/udp.h"
 #include "openthread/thread.h"
 #include "openthread/tasklet.h"
+#include "openthread/netdata.h"
 
 #include "openthread/platform/alarm-milli.h"
 #include "openthread/platform/radio.h"

@@ -141,28 +141,24 @@ pub const __OBSOLETE_MATH_DEFAULT: u32 = 1;
 pub const __OBSOLETE_MATH: u32 = 1;
 pub const __NEWLIB_H__: u32 = 1;
 pub const _NEWLIB_VERSION_H__: u32 = 1;
-pub const _NEWLIB_VERSION: &[u8; 6] = b"4.3.0\0";
+pub const _NEWLIB_VERSION: &[u8; 6] = b"4.4.0\0";
 pub const __NEWLIB__: u32 = 4;
-pub const __NEWLIB_MINOR__: u32 = 3;
+pub const __NEWLIB_MINOR__: u32 = 4;
 pub const __NEWLIB_PATCHLEVEL__: u32 = 0;
-pub const _ATEXIT_DYNAMIC_ALLOC: u32 = 1;
 pub const _FSEEK_OPTIMIZATION: u32 = 1;
 pub const _FVWRITE_IN_STREAMIO: u32 = 1;
 pub const _HAVE_CC_INHIBIT_LOOP_TO_LIBCALL: u32 = 1;
 pub const _HAVE_INITFINI_ARRAY: u32 = 1;
 pub const _HAVE_LONG_DOUBLE: u32 = 1;
-pub const _ICONV_ENABLED: u32 = 1;
 pub const _MB_LEN_MAX: u32 = 1;
-pub const _NANO_MALLOC: u32 = 1;
 pub const _REENT_CHECK_VERIFY: u32 = 1;
-pub const _RETARGETABLE_LOCKING: u32 = 1;
 pub const _UNBUF_STREAM_OPT: u32 = 1;
 pub const _WANT_IO_C99_FORMATS: u32 = 1;
+pub const _WANT_IO_LONG_DOUBLE: u32 = 1;
 pub const _WANT_IO_LONG_LONG: u32 = 1;
-pub const _WANT_IO_POS_ARGS: u32 = 1;
-pub const _WANT_REENT_BACKWARD_BINARY_COMPAT: u32 = 1;
-pub const _WANT_REENT_SMALL: u32 = 1;
+pub const _WANT_REGISTER_FINI: u32 = 1;
 pub const _WANT_USE_GDTOA: u32 = 1;
+pub const _WIDE_ORIENT: u32 = 1;
 pub const _DEFAULT_SOURCE: u32 = 1;
 pub const _POSIX_SOURCE: u32 = 1;
 pub const _POSIX_C_SOURCE: u32 = 200809;
@@ -177,14 +173,6 @@ pub const __POSIX_VISIBLE: u32 = 200809;
 pub const __SVID_VISIBLE: u32 = 1;
 pub const __XSI_VISIBLE: u32 = 0;
 pub const __SSP_FORTIFY_LEVEL: u32 = 0;
-pub const _POSIX_THREADS: u32 = 1;
-pub const _POSIX_TIMEOUTS: u32 = 1;
-pub const _POSIX_TIMERS: u32 = 1;
-pub const _POSIX_MONOTONIC_CLOCK: u32 = 200112;
-pub const _POSIX_CLOCK_SELECTION: u32 = 200112;
-pub const _UNIX98_THREAD_MUTEX_ATTRIBUTES: u32 = 1;
-pub const _POSIX_READER_WRITER_LOCKS: u32 = 200112;
-pub const __BUFSIZ__: u32 = 128;
 pub const __RAND_MAX: u32 = 2147483647;
 pub const __have_longlong64: u32 = 1;
 pub const __have_long32: u32 = 1;
@@ -196,18 +184,6 @@ pub const ___int_least8_t_defined: u32 = 1;
 pub const ___int_least16_t_defined: u32 = 1;
 pub const ___int_least32_t_defined: u32 = 1;
 pub const ___int_least64_t_defined: u32 = 1;
-pub const _NULL: u32 = 0;
-pub const _ATEXIT_SIZE: u32 = 32;
-pub const _RAND48_SEED_0: u32 = 13070;
-pub const _RAND48_SEED_1: u32 = 43981;
-pub const _RAND48_SEED_2: u32 = 4660;
-pub const _RAND48_MULT_0: u32 = 58989;
-pub const _RAND48_MULT_1: u32 = 57068;
-pub const _RAND48_MULT_2: u32 = 5;
-pub const _RAND48_ADD: u32 = 11;
-pub const _REENT_EMERGENCY_SIZE: u32 = 25;
-pub const _REENT_ASCTIME_SIZE: u32 = 26;
-pub const _REENT_SIGNAL_SIZE: u32 = 24;
 pub const __GNUCLIKE_ASM: u32 = 3;
 pub const __GNUCLIKE___TYPEOF: u32 = 1;
 pub const __GNUCLIKE___SECTION: u32 = 1;
@@ -226,6 +202,18 @@ pub const __CC_SUPPORTS___FUNC__: u32 = 1;
 pub const __CC_SUPPORTS_WARNING: u32 = 1;
 pub const __CC_SUPPORTS_VARADIC_XXX: u32 = 1;
 pub const __CC_SUPPORTS_DYNAMIC_ARRAY_INIT: u32 = 1;
+pub const _NULL: u32 = 0;
+pub const _ATEXIT_SIZE: u32 = 32;
+pub const _RAND48_SEED_0: u32 = 13070;
+pub const _RAND48_SEED_1: u32 = 43981;
+pub const _RAND48_SEED_2: u32 = 4660;
+pub const _RAND48_MULT_0: u32 = 58989;
+pub const _RAND48_MULT_1: u32 = 57068;
+pub const _RAND48_MULT_2: u32 = 5;
+pub const _RAND48_ADD: u32 = 11;
+pub const _REENT_EMERGENCY_SIZE: u32 = 25;
+pub const _REENT_ASCTIME_SIZE: u32 = 26;
+pub const _REENT_SIGNAL_SIZE: u32 = 24;
 pub const EXIT_FAILURE: u32 = 1;
 pub const EXIT_SUCCESS: u32 = 0;
 pub const RAND_MAX: u32 = 2147483647;
@@ -362,6 +350,9 @@ pub const OT_NETWORK_MAX_ROUTER_ID: u32 = 62;
 pub const OT_NEIGHBOR_INFO_ITERATOR_INIT: u32 = 0;
 pub const OT_JOINER_ADVDATA_MAX_LENGTH: u32 = 64;
 pub const OT_DURATION_STRING_SIZE: u32 = 21;
+pub const OT_NETWORK_DATA_ITERATOR_INIT: u32 = 0;
+pub const OT_SERVICE_DATA_MAX_SIZE: u32 = 252;
+pub const OT_SERVER_DATA_MAX_SIZE: u32 = 248;
 pub const OT_DNS_MAX_NAME_SIZE: u32 = 255;
 pub const OT_DNS_MAX_LABEL_SIZE: u32 = 64;
 pub const OT_DNS_TXT_KEY_MIN_LENGTH: u32 = 1;
@@ -376,7 +367,6 @@ pub struct max_align_t {
     pub __bindgen_padding_0: u64,
     pub __clang_max_align_nonce2: u128,
 }
-pub type wint_t = ::core::ffi::c_uint;
 pub type __int8_t = ::core::ffi::c_schar;
 pub type __uint8_t = ::core::ffi::c_uchar;
 pub type __int16_t = ::core::ffi::c_short;
@@ -397,6 +387,7 @@ pub type __intmax_t = ::core::ffi::c_longlong;
 pub type __uintmax_t = ::core::ffi::c_ulonglong;
 pub type __intptr_t = ::core::ffi::c_int;
 pub type __uintptr_t = ::core::ffi::c_uint;
+pub type wint_t = ::core::ffi::c_uint;
 pub type __blkcnt_t = ::core::ffi::c_long;
 pub type __blksize_t = ::core::ffi::c_long;
 pub type __fsblkcnt_t = __uint64_t;
@@ -461,43 +452,9 @@ pub type __suseconds_t = ::core::ffi::c_long;
 pub type __useconds_t = ::core::ffi::c_ulong;
 pub type __va_list = __builtin_va_list;
 pub type __ULong = ::core::ffi::c_ulong;
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct __lock {
-    _unused: [u8; 0],
-}
-pub type _LOCK_T = *mut __lock;
-unsafe extern "C" {
-    pub fn __retarget_lock_init(lock: *mut _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_init_recursive(lock: *mut _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_close(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_close_recursive(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_acquire(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_acquire_recursive(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_try_acquire(lock: _LOCK_T) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_try_acquire_recursive(lock: _LOCK_T) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_release(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_release_recursive(lock: _LOCK_T);
-}
-pub type _flock_t = _LOCK_T;
+pub type _LOCK_T = ::core::ffi::c_int;
+pub type _LOCK_RECURSIVE_T = ::core::ffi::c_int;
+pub type _flock_t = _LOCK_RECURSIVE_T;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct __locale_t {
@@ -558,7 +515,7 @@ pub struct _atexit {
     pub _next: *mut _atexit,
     pub _ind: ::core::ffi::c_int,
     pub _fns: [::core::option::Option<unsafe extern "C" fn()>; 32usize],
-    pub _on_exit_args_ptr: *mut _on_exit_args,
+    pub _on_exit_args: _on_exit_args,
 }
 impl Default for _atexit {
     fn default() -> Self {
@@ -594,7 +551,6 @@ pub struct __sFILE {
     pub _file: ::core::ffi::c_short,
     pub _bf: __sbuf,
     pub _lbfsize: ::core::ffi::c_int,
-    pub _data: *mut _reent,
     pub _cookie: *mut ::core::ffi::c_void,
     pub _read: ::core::option::Option<
         unsafe extern "C" fn(
@@ -634,6 +590,7 @@ pub struct __sFILE {
     pub _lb: __sbuf,
     pub _blksize: ::core::ffi::c_int,
     pub _offset: _off_t,
+    pub _data: *mut _reent,
     pub _lock: _flock_t,
     pub _mbstate: _mbstate_t,
     pub _flags2: ::core::ffi::c_int,
@@ -676,48 +633,6 @@ pub struct _rand48 {
     pub _seed: [::core::ffi::c_ushort; 3usize],
     pub _mult: [::core::ffi::c_ushort; 3usize],
     pub _add: ::core::ffi::c_ushort,
-    pub _rand_next: ::core::ffi::c_ulonglong,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _mprec {
-    pub _result: *mut _Bigint,
-    pub _result_k: ::core::ffi::c_int,
-    pub _p5s: *mut _Bigint,
-    pub _freelist: *mut *mut _Bigint,
-}
-impl Default for _mprec {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _misc_reent {
-    pub _strtok_last: *mut ::core::ffi::c_char,
-    pub _mblen_state: _mbstate_t,
-    pub _wctomb_state: _mbstate_t,
-    pub _mbtowc_state: _mbstate_t,
-    pub _l64a_buf: [::core::ffi::c_char; 8usize],
-    pub _getdate_err: ::core::ffi::c_int,
-    pub _mbrlen_state: _mbstate_t,
-    pub _mbrtowc_state: _mbstate_t,
-    pub _mbsrtowcs_state: _mbstate_t,
-    pub _wcrtomb_state: _mbstate_t,
-    pub _wcsrtombs_state: _mbstate_t,
-}
-impl Default for _misc_reent {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -727,25 +642,62 @@ pub struct _reent {
     pub _stdout: *mut __FILE,
     pub _stderr: *mut __FILE,
     pub _inc: ::core::ffi::c_int,
-    pub _emergency: *mut ::core::ffi::c_char,
-    pub _reserved_0: ::core::ffi::c_int,
-    pub _reserved_1: ::core::ffi::c_int,
+    pub _emergency: [::core::ffi::c_char; 25usize],
     pub _locale: *mut __locale_t,
-    pub _mp: *mut _mprec,
     pub __cleanup: ::core::option::Option<unsafe extern "C" fn(arg1: *mut _reent)>,
-    pub _gamma_signgam: ::core::ffi::c_int,
+    pub _result: *mut _Bigint,
+    pub _result_k: ::core::ffi::c_int,
+    pub _p5s: *mut _Bigint,
+    pub _freelist: *mut *mut _Bigint,
     pub _cvtlen: ::core::ffi::c_int,
     pub _cvtbuf: *mut ::core::ffi::c_char,
-    pub _r48: *mut _rand48,
-    pub _localtime_buf: *mut __tm,
-    pub _asctime_buf: *mut ::core::ffi::c_char,
+    pub _new: _reent__bindgen_ty_1,
     pub _sig_func: *mut ::core::option::Option<unsafe extern "C" fn(arg1: ::core::ffi::c_int)>,
-    pub _reserved_6: *mut _atexit,
-    pub _reserved_7: _atexit,
-    pub _reserved_8: _glue,
-    pub __sf: *mut __FILE,
-    pub _misc: *mut _misc_reent,
-    pub _signal_buf: *mut ::core::ffi::c_char,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union _reent__bindgen_ty_1 {
+    pub _reent: _reent__bindgen_ty_1__bindgen_ty_1,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _reent__bindgen_ty_1__bindgen_ty_1 {
+    pub _strtok_last: *mut ::core::ffi::c_char,
+    pub _asctime_buf: [::core::ffi::c_char; 26usize],
+    pub _localtime_buf: __tm,
+    pub _gamma_signgam: ::core::ffi::c_int,
+    pub _rand_next: ::core::ffi::c_ulonglong,
+    pub _r48: _rand48,
+    pub _mblen_state: _mbstate_t,
+    pub _mbtowc_state: _mbstate_t,
+    pub _wctomb_state: _mbstate_t,
+    pub _l64a_buf: [::core::ffi::c_char; 8usize],
+    pub _signal_buf: [::core::ffi::c_char; 24usize],
+    pub _getdate_err: ::core::ffi::c_int,
+    pub _mbrlen_state: _mbstate_t,
+    pub _mbrtowc_state: _mbstate_t,
+    pub _mbsrtowcs_state: _mbstate_t,
+    pub _wcrtomb_state: _mbstate_t,
+    pub _wcsrtombs_state: _mbstate_t,
+    pub _h_errno: ::core::ffi::c_int,
+}
+impl Default for _reent__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for _reent__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 impl Default for _reent {
     fn default() -> Self {
@@ -757,28 +709,10 @@ impl Default for _reent {
     }
 }
 unsafe extern "C" {
-    pub fn __assert(
-        arg1: *const ::core::ffi::c_char,
-        arg2: ::core::ffi::c_int,
-        arg3: *const ::core::ffi::c_char,
-    ) -> !;
-}
-unsafe extern "C" {
-    pub fn __assert_func(
-        arg1: *const ::core::ffi::c_char,
-        arg2: ::core::ffi::c_int,
-        arg3: *const ::core::ffi::c_char,
-        arg4: *const ::core::ffi::c_char,
-    ) -> !;
-}
-unsafe extern "C" {
     pub static mut _impure_ptr: *mut _reent;
 }
 unsafe extern "C" {
     pub static mut _impure_data: _reent;
-}
-unsafe extern "C" {
-    pub fn __getreent() -> *mut _reent;
 }
 unsafe extern "C" {
     pub static mut __atexit: *mut _atexit;
@@ -1405,10 +1339,7 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn aligned_alloc(
-        arg1: ::core::ffi::c_uint,
-        arg2: ::core::ffi::c_uint,
-    ) -> *mut ::core::ffi::c_void;
+    pub fn aligned_alloc(arg1: usize, arg2: usize) -> *mut ::core::ffi::c_void;
 }
 unsafe extern "C" {
     pub fn at_quick_exit(
@@ -10645,6 +10576,881 @@ unsafe extern "C" {
     ///
     /// @param[in] aInstance A pointer to an OpenThread instance.
     pub fn otTaskletsSignalPending(aInstance: *mut otInstance);
+}
+pub type otNetworkDataIterator = u32;
+/// Represents a Border Router configuration.
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Copy, Clone)]
+pub struct otBorderRouterConfig {
+    ///< The IPv6 prefix.
+    pub mPrefix: otIp6Prefix,
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+    ///< The border router's RLOC16 (value ignored on config add).
+    pub mRloc16: u16,
+}
+impl Default for otBorderRouterConfig {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otBorderRouterConfig {
+    #[inline]
+    pub fn mPreference(&self) -> ::core::ffi::c_int {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mPreference(&mut self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mPreference_raw(this: *const Self) -> ::core::ffi::c_int {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mPreference_raw(this: *mut Self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mPreferred(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mPreferred(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mPreferred_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mPreferred_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mSlaac(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mSlaac(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mSlaac_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mSlaac_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mDhcp(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mDhcp(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mDhcp_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mDhcp_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mConfigure(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mConfigure(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mConfigure_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mConfigure_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mDefaultRoute(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mDefaultRoute(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mDefaultRoute_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mDefaultRoute_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mOnMesh(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mOnMesh(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mOnMesh_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mOnMesh_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mStable(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mStable(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mStable_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mStable_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mNdDns(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mNdDns(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mNdDns_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mNdDns_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mDp(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mDp(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mDp_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mDp_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        mPreference: ::core::ffi::c_int,
+        mPreferred: bool,
+        mSlaac: bool,
+        mDhcp: bool,
+        mConfigure: bool,
+        mDefaultRoute: bool,
+        mOnMesh: bool,
+        mStable: bool,
+        mNdDns: bool,
+        mDp: bool,
+    ) -> __BindgenBitfieldUnit<[u8; 2usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let mPreference: u32 = unsafe { ::core::mem::transmute(mPreference) };
+            mPreference as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let mPreferred: u8 = unsafe { ::core::mem::transmute(mPreferred) };
+            mPreferred as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let mSlaac: u8 = unsafe { ::core::mem::transmute(mSlaac) };
+            mSlaac as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let mDhcp: u8 = unsafe { ::core::mem::transmute(mDhcp) };
+            mDhcp as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let mConfigure: u8 = unsafe { ::core::mem::transmute(mConfigure) };
+            mConfigure as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let mDefaultRoute: u8 = unsafe { ::core::mem::transmute(mDefaultRoute) };
+            mDefaultRoute as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let mOnMesh: u8 = unsafe { ::core::mem::transmute(mOnMesh) };
+            mOnMesh as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let mStable: u8 = unsafe { ::core::mem::transmute(mStable) };
+            mStable as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let mNdDns: u8 = unsafe { ::core::mem::transmute(mNdDns) };
+            mNdDns as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let mDp: u8 = unsafe { ::core::mem::transmute(mDp) };
+            mDp as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+/// Represents 6LoWPAN Context ID information associated with a prefix in Network Data.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otLowpanContextInfo {
+    ///< The 6LoWPAN Context ID.
+    pub mContextId: u8,
+    ///< The compress flag.
+    pub mCompressFlag: bool,
+    ///< The associated IPv6 prefix.
+    pub mPrefix: otIp6Prefix,
+}
+impl Default for otLowpanContextInfo {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// Represents an External Route configuration.
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Copy, Clone)]
+pub struct otExternalRouteConfig {
+    ///< The IPv6 prefix.
+    pub mPrefix: otIp6Prefix,
+    ///< The border router's RLOC16 (value ignored on config add).
+    pub mRloc16: u16,
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+    pub __bindgen_padding_0: [u8; 3usize],
+}
+impl Default for otExternalRouteConfig {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otExternalRouteConfig {
+    #[inline]
+    pub fn mPreference(&self) -> ::core::ffi::c_int {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mPreference(&mut self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mPreference_raw(this: *const Self) -> ::core::ffi::c_int {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mPreference_raw(this: *mut Self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mNat64(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mNat64(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mNat64_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mNat64_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mStable(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mStable(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mStable_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mStable_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mNextHopIsThisDevice(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mNextHopIsThisDevice(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mNextHopIsThisDevice_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mNextHopIsThisDevice_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        mPreference: ::core::ffi::c_int,
+        mNat64: bool,
+        mStable: bool,
+        mNextHopIsThisDevice: bool,
+    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let mPreference: u32 = unsafe { ::core::mem::transmute(mPreference) };
+            mPreference as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let mNat64: u8 = unsafe { ::core::mem::transmute(mNat64) };
+            mNat64 as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let mStable: u8 = unsafe { ::core::mem::transmute(mStable) };
+            mStable as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let mNextHopIsThisDevice: u8 = unsafe { ::core::mem::transmute(mNextHopIsThisDevice) };
+            mNextHopIsThisDevice as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+///< Low route preference.
+pub const otRoutePreference_OT_ROUTE_PREFERENCE_LOW: otRoutePreference = -1;
+///< Medium route preference.
+pub const otRoutePreference_OT_ROUTE_PREFERENCE_MED: otRoutePreference = 0;
+///< High route preference.
+pub const otRoutePreference_OT_ROUTE_PREFERENCE_HIGH: otRoutePreference = 1;
+/// Defines valid values for `mPreference` in `otExternalRouteConfig` and `otBorderRouterConfig`.
+pub type otRoutePreference = ::core::ffi::c_int;
+/// Represents a Server configuration.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otServerConfig {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+    ///< Length of server data.
+    pub mServerDataLength: u8,
+    ///< Server data bytes.
+    pub mServerData: [u8; 248usize],
+    ///< The Server RLOC16.
+    pub mRloc16: u16,
+}
+impl Default for otServerConfig {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otServerConfig {
+    #[inline]
+    pub fn mStable(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mStable(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mStable_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mStable_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(mStable: bool) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let mStable: u8 = unsafe { ::core::mem::transmute(mStable) };
+            mStable as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+/// Represents a Service configuration.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otServiceConfig {
+    ///< Service ID (when iterating over the  Network Data).
+    pub mServiceId: u8,
+    ///< IANA Enterprise Number.
+    pub mEnterpriseNumber: u32,
+    ///< Length of service data.
+    pub mServiceDataLength: u8,
+    ///< Service data bytes.
+    pub mServiceData: [u8; 252usize],
+    ///< The Server configuration.
+    pub mServerConfig: otServerConfig,
+}
+impl Default for otServiceConfig {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+unsafe extern "C" {
+    /// Provide full or stable copy of the Partition's Thread Network Data.
+    ///
+    /// @param[in]      aInstance    A pointer to an OpenThread instance.
+    /// @param[in]      aStable      TRUE when copying the stable version, FALSE when copying the full version.
+    /// @param[out]     aData        A pointer to the data buffer.
+    /// @param[in,out]  aDataLength  On entry, size of the data buffer pointed to by @p aData.
+    ///                              On exit, number of copied bytes.
+    ///
+    /// @retval OT_ERROR_NONE    Successfully copied the Thread Network Data into @p aData and updated @p aDataLength.
+    /// @retval OT_ERROR_NO_BUFS Not enough space in @p aData to fully copy the Thread Network Data.
+    pub fn otNetDataGet(
+        aInstance: *mut otInstance,
+        aStable: bool,
+        aData: *mut u8,
+        aDataLength: *mut u8,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the current length (number of bytes) of Partition's Thread Network Data.
+    ///
+    /// @param[in] aInstance    A pointer to an OpenThread instance.
+    ///
+    /// @return The length of the Network Data.
+    pub fn otNetDataGetLength(aInstance: *mut otInstance) -> u8;
+}
+unsafe extern "C" {
+    /// Get the maximum observed length of the Thread Network Data since OT stack initialization or since the last call to
+    /// `otNetDataResetMaxLength()`.
+    ///
+    /// @param[in] aInstance    A pointer to an OpenThread instance.
+    ///
+    /// @return The maximum length of the Network Data (high water mark for Network Data length).
+    pub fn otNetDataGetMaxLength(aInstance: *mut otInstance) -> u8;
+}
+unsafe extern "C" {
+    /// Reset the tracked maximum length of the Thread Network Data.
+    ///
+    /// @param[in] aInstance    A pointer to an OpenThread instance.
+    ///
+    /// @sa otNetDataGetMaxLength
+    pub fn otNetDataResetMaxLength(aInstance: *mut otInstance);
+}
+unsafe extern "C" {
+    /// Get the next On Mesh Prefix in the partition's Network Data.
+    ///
+    /// @param[in]      aInstance  A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator  A pointer to the Network Data iterator context. To get the first on-mesh entry
+    ///it should be set to OT_NETWORK_DATA_ITERATOR_INIT.
+    /// @param[out]     aConfig    A pointer to where the On Mesh Prefix information will be placed.
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next On Mesh prefix.
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent On Mesh prefix exists in the Thread Network Data.
+    pub fn otNetDataGetNextOnMeshPrefix(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNetworkDataIterator,
+        aConfig: *mut otBorderRouterConfig,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the next external route in the partition's Network Data.
+    ///
+    /// @param[in]      aInstance  A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator  A pointer to the Network Data iterator context. To get the first external route entry
+    ///it should be set to OT_NETWORK_DATA_ITERATOR_INIT.
+    /// @param[out]     aConfig    A pointer to where the External Route information will be placed.
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next External Route.
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent external route entry exists in the Thread Network Data.
+    pub fn otNetDataGetNextRoute(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNetworkDataIterator,
+        aConfig: *mut otExternalRouteConfig,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the next service in the partition's Network Data.
+    ///
+    /// @param[in]      aInstance  A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator  A pointer to the Network Data iterator context. To get the first service entry
+    ///it should be set to OT_NETWORK_DATA_ITERATOR_INIT.
+    /// @param[out]     aConfig    A pointer to where the service information will be placed.
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next service.
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent service exists in the partition's Network Data.
+    pub fn otNetDataGetNextService(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNetworkDataIterator,
+        aConfig: *mut otServiceConfig,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the next 6LoWPAN Context ID info in the partition's Network Data.
+    ///
+    /// @param[in]      aInstance     A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator     A pointer to the Network Data iterator. To get the first service entry
+    ///it should be set to OT_NETWORK_DATA_ITERATOR_INIT.
+    /// @param[out]     aContextInfo  A pointer to where the retrieved 6LoWPAN Context ID information will be placed.
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next 6LoWPAN Context ID info.
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent 6LoWPAN Context info exists in the partition's Network Data.
+    pub fn otNetDataGetNextLowpanContextInfo(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNetworkDataIterator,
+        aContextInfo: *mut otLowpanContextInfo,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the Network Data Version.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    ///
+    /// @returns The Network Data Version.
+    pub fn otNetDataGetVersion(aInstance: *mut otInstance) -> u8;
+}
+unsafe extern "C" {
+    /// Get the Stable Network Data Version.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    ///
+    /// @returns The Stable Network Data Version.
+    pub fn otNetDataGetStableVersion(aInstance: *mut otInstance) -> u8;
+}
+unsafe extern "C" {
+    /// Check if the steering data includes a Joiner.
+    ///
+    /// @param[in]  aInstance          A pointer to an OpenThread instance.
+    /// @param[in]  aEui64             A pointer to the Joiner's IEEE EUI-64.
+    ///
+    /// @retval OT_ERROR_NONE          @p aEui64 is included in the steering data.
+    /// @retval OT_ERROR_INVALID_STATE No steering data present.
+    /// @retval OT_ERROR_NOT_FOUND     @p aEui64 is not included in the steering data.
+    pub fn otNetDataSteeringDataCheckJoiner(
+        aInstance: *mut otInstance,
+        aEui64: *const otExtAddress,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Check if the steering data includes a Joiner with a given discerner value.
+    ///
+    /// @param[in]  aInstance          A pointer to an OpenThread instance.
+    /// @param[in]  aDiscerner         A pointer to the Joiner Discerner.
+    ///
+    /// @retval OT_ERROR_NONE          @p aDiscerner is included in the steering data.
+    /// @retval OT_ERROR_INVALID_STATE No steering data present.
+    /// @retval OT_ERROR_NOT_FOUND     @p aDiscerner is not included in the steering data.
+    pub fn otNetDataSteeringDataCheckJoinerWithDiscerner(
+        aInstance: *mut otInstance,
+        aDiscerner: *const otJoinerDiscerner,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Check whether a given Prefix can act as a valid OMR prefix and also the Leader's Network Data contains this prefix.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aPrefix    A pointer to the IPv6 prefix.
+    ///
+    /// @returns  Whether @p aPrefix is a valid OMR prefix and Leader's Network Data contains the OMR prefix @p aPrefix.
+    ///
+    /// @note This API is only available when `OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE` is used.
+    pub fn otNetDataContainsOmrPrefix(
+        aInstance: *mut otInstance,
+        aPrefix: *const otIp6Prefix,
+    ) -> bool;
 }
 unsafe extern "C" {
     /// Set the alarm to fire at @p aDt milliseconds after @p aT0.
