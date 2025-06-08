@@ -37,6 +37,8 @@ pub use settings::*;
 pub use srp::*;
 #[cfg(feature = "udp")]
 pub use udp::*;
+#[cfg(feature = "nat64")]
+pub use nat64::*;
 
 // This mod MUST go first, so that the others see its macros.
 pub(crate) mod fmt;
@@ -59,6 +61,8 @@ mod signal;
 mod srp;
 #[cfg(feature = "udp")]
 mod udp;
+#[cfg(feature = "nat64")]
+mod nat64;
 
 use sys::{
     otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
