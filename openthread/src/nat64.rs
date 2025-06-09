@@ -1,17 +1,17 @@
 use core::{
-    default, fmt,
+    fmt,
     net::{Ipv4Addr, Ipv6Addr},
 };
 
 use openthread_sys::{
-    otError, otIp4Address, otIp4Address__bindgen_ty_1, otIp4ExtractFromIp6Address, otIp6Address,
+    otIp4Address, otIp4Address__bindgen_ty_1, otIp4ExtractFromIp6Address, otIp6Address,
     otIp6Address__bindgen_ty_1, otNat64GetTranslatorState, otNat64State,
     otNat64State_OT_NAT64_STATE_ACTIVE, otNat64State_OT_NAT64_STATE_DISABLED,
     otNat64State_OT_NAT64_STATE_IDLE, otNat64State_OT_NAT64_STATE_NOT_RUNNING,
     otNat64SynthesizeIp6Address,
 };
 
-use crate::{OpenThread, OtError};
+use crate::OpenThread;
 
 pub enum Nat64State {
     Disabled = 0,
