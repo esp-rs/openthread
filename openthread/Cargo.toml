@@ -42,4 +42,4 @@ edge-nal = { version = "0.5", optional = true }
 esp-ieee802154 = { version = "0.7", optional = true }
 embassy-nrf = { version = "0.3", optional = true }
 portable-atomic = "1"
-anyhow = { version = "1.0.98", optional = true }
+anyhow = { version = "1.0.98", optional = true, default-features = false}
