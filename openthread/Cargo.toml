@@ -15,7 +15,7 @@ rust-version = "1.84"
 harness = false
 
 [features]
-default = ["nat64"]
+default = ["nat64", "anyhow"]
 edge-nal = ["udp", "dep:edge-nal"]
 udp = []
 srp = ["udp"]
@@ -24,6 +24,7 @@ defmt = ["dep:defmt", "heapless/defmt-03", "embassy-time/defmt"]
 force-generate-bindings = ["openthread-sys/force-generate-bindings"]
 force-esp-riscv-toolchain = ["openthread-sys/force-esp-riscv-toolchain"]
 isupper = [] # Provide internal implementation of the `isupper` C fn
+anyhow = ["dep:anyhow"]
 
 [dependencies]
 openthread-sys = { path = "../openthread-sys" }
@@ -41,3 +42,4 @@ edge-nal = { version = "0.5", optional = true }
 esp-ieee802154 = { version = "0.7", optional = true }
 embassy-nrf = { version = "0.3", optional = true }
 portable-atomic = "1"
+anyhow = { version = "1.0.98", optional = true }
