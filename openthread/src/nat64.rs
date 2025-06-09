@@ -88,27 +88,11 @@ pub fn ipv4_extract_from_ipv6_address(
     Ok(ot_ipv4_to_ipv4(&ot_ipv4))
 }
 
-pub fn test_ip_address_conversion() -> bool {
-    let mut failed = false;
-
-    let ipv4_original = Ipv4Addr::new(192, 168, 1, 1);
-    let ipv6 = Ipv6Addr::new(1, 2, 3, 4, 5, 6, 7, 8);
-
-    if !ot_ipv4_to_ipv4(&ipv4_to_ot_ipv4(&ipv4_original)) != ipv4_original {
-        failed = false;
-    }
-
-    if !ot_ipv6_to_ipv6(&ipv6_to_ot_ipv6(&ipv6)) != ipv6{
-        failed = false;
-    }
-
-    failed
-}
 
 fn ipv4_to_ot_ipv4(ipv4: &Ipv4Addr) -> otIp4Address {
     otIp4Address {
         mFields: otIp4Address__bindgen_ty_1 {
-            m32: ipv4.to_bits(),
+            m8: ipv4.octets(),
         },
     }
 }
@@ -116,15 +100,15 @@ fn ipv4_to_ot_ipv4(ipv4: &Ipv4Addr) -> otIp4Address {
 fn ipv6_to_ot_ipv6(ipv6: &Ipv6Addr) -> otIp6Address {
     otIp6Address {
         mFields: otIp6Address__bindgen_ty_1 {
-            m16: ipv6.segments(),
+            m8: ipv6.octets(),
         },
     }
 }
 
 fn ot_ipv4_to_ipv4(ipv4: &otIp4Address) -> Ipv4Addr {
-    unsafe { Ipv4Addr::from_bits(ipv4.mFields.m32) }
+    unsafe { ipv4.mFields.m8 }.into()
 }
 
 fn ot_ipv6_to_ipv6(ipv6: &otIp6Address) -> Ipv6Addr {
-    unsafe { ipv6.mFields.m8.into() }
+    unsafe { ipv6.mFields.m8 }.into()
 }
