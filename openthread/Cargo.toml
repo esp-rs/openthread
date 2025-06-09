@@ -15,7 +15,7 @@ rust-version = "1.84"
 harness = false
 
 [features]
-default = []
+default = ["nat64"]
 edge-nal = ["udp", "dep:edge-nal"]
 udp = []
 srp = ["udp"]
