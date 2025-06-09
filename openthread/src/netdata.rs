@@ -22,6 +22,7 @@ pub struct OtBorderRouterConfig {
     pub rloc16: u16,
 }
 
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 impl OtBorderRouterConfig {
     fn from_ot(config: otBorderRouterConfig) -> Self {
         Self {
