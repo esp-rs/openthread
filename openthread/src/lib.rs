@@ -33,6 +33,7 @@ pub use openthread_sys as sys;
 pub use radio::*;
 pub use scan::*;
 pub use settings::*;
+pub use netdata::*;
 #[cfg(feature = "srp")]
 pub use srp::*;
 #[cfg(feature = "udp")]
@@ -57,6 +58,7 @@ mod radio;
 mod scan;
 mod settings;
 mod signal;
+mod netdata;
 #[cfg(feature = "srp")]
 mod srp;
 #[cfg(feature = "udp")]
