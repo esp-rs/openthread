@@ -7,6 +7,8 @@ use openthread_sys::{
 
 use crate::{OpenThread, OtError};
 
+
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct OtBorderRouterConfig {
     pub prefix: (Ipv6Addr, u8),
     pub preference: i32,
@@ -22,7 +24,6 @@ pub struct OtBorderRouterConfig {
     pub rloc16: u16,
 }
 
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 impl OtBorderRouterConfig {
     fn from_ot(config: otBorderRouterConfig) -> Self {
         Self {
