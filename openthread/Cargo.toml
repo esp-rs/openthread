@@ -15,10 +15,11 @@ rust-version = "1.84"
 harness = false
 
 [features]
-default = []
+default = ["nat64"]
 edge-nal = ["udp", "dep:edge-nal"]
 udp = []
 srp = ["udp"]
+nat64 = []
 defmt = ["dep:defmt", "heapless/defmt-03", "embassy-time/defmt"]
 force-generate-bindings = ["openthread-sys/force-generate-bindings"]
 force-esp-riscv-toolchain = ["openthread-sys/force-esp-riscv-toolchain"]
