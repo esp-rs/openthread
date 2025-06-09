@@ -4,36 +4,13 @@ use core::{
 };
 
 use openthread_sys::{
-    otIp4Address, otIp4Address__bindgen_ty_1, otIp4ExtractFromIp6Address, otIp6Address,
-    otIp6Address__bindgen_ty_1, otNat64GetTranslatorState, otNat64State,
-    otNat64State_OT_NAT64_STATE_ACTIVE, otNat64State_OT_NAT64_STATE_DISABLED,
-    otNat64State_OT_NAT64_STATE_IDLE, otNat64State_OT_NAT64_STATE_NOT_RUNNING,
-    otNat64SynthesizeIp6Address,
+    otError, otIp4Address, otIp4Address__bindgen_ty_1, otIp4ExtractFromIp6Address, otIp6Address, otIp6Address__bindgen_ty_1, otNat64GetTranslatorState, otNat64State, otNat64State_OT_NAT64_STATE_ACTIVE, otNat64State_OT_NAT64_STATE_DISABLED, otNat64State_OT_NAT64_STATE_IDLE, otNat64State_OT_NAT64_STATE_NOT_RUNNING, otNat64SynthesizeIp6Address
 };
 
-use crate::OpenThread;
-
-pub enum Nat64State {
-    Disabled = 0,
-    NotRunning,
-    Idel,
-    Active,
-    Unkown,
-}
-
-impl Nat64State {
-    fn from_ot_state(state: otNat64State) -> Self {
-        match state {
-            otNat64State_OT_NAT64_STATE_DISABLED => Nat64State::Disabled,
-            otNat64State_OT_NAT64_STATE_NOT_RUNNING => Nat64State::NotRunning,
-            otNat64State_OT_NAT64_STATE_IDLE => Nat64State::Idel,
-            otNat64State_OT_NAT64_STATE_ACTIVE => Nat64State::Active,
-            _ => Nat64State::Unkown,
-        }
-    }
-}
+use crate::{OpenThread, OtError};
 
 #[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Nat64Error {
     InvalidPrefixLength(u8),
 }
@@ -49,28 +26,30 @@ impl fmt::Display for Nat64Error {
 }
 
 impl<'a> OpenThread<'a> {
-    pub fn nat64_get_translator_state(&self) -> Nat64State {
-        let mut ot = self.activate();
-        let state = ot.state();
-
-        Nat64State::from_ot_state(unsafe { otNat64GetTranslatorState(state.ot.instance) })
-    }
-
-    pub fn nat64_synthezise_ipv6_address(&self, ipv4: &Ipv4Addr) -> Ipv6Addr {
+    /// Creates the IPv6 address by performing NAT64 address translation from the preferred NAT64 prefix and the given IPv4
+    /// address as specified in RFC 6052.
+    pub fn nat64_synthezise_ipv6_address(&self, ipv4: &Ipv4Addr) -> Result<Ipv6Addr, OtError> {
         let mut ot = self.activate();
         let state = ot.state();
 
         let mut ipv6 = otIp6Address::default();
         let ipv4 = ipv4_to_ot_ipv4(ipv4);
 
-        unsafe {
-            otNat64SynthesizeIp6Address(state.ot.instance, &ipv4, &mut ipv6);
-        }
+        let return_code: otError = unsafe {
+            otNat64SynthesizeIp6Address(state.ot.instance, &ipv4, &mut ipv6)
+        };
 
-        ot_ipv6_to_ipv6(&ipv6)
+        match return_code {
+            crate::sys::otError_OT_ERROR_NONE => Ok(ot_ipv6_to_ipv6(&ipv6)),
+            err => Err(OtError::new(err))
+        }
     }
 }
 
+/// Returns IPv4 address by performing NAT64 address translation from IPv6 as specified in RFC 6052.
+/// 
+/// The NAT64 `prefix_length` MUST be one of the following values: 32, 40, 48, 56, 64, or 96, otherwise the
+/// function returns `Nat64Error::InvalidPrefixLength`
 pub fn ipv4_extract_from_ipv6_address(
     prefix_length: u8,
     ipv6: &Ipv6Addr,

@@ -7,7 +7,7 @@ use openthread_sys::{
 
 use crate::{OpenThread, OtError};
 
-
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum OtRoutePreference {
     /// Low route preference
     OtRoutePreferenceLow = -1,
