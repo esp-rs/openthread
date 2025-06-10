@@ -48,7 +48,6 @@ impl Display for OtRoutePreference {
 
 /// Represents a Border Router configuration
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct OtBorderRouterConfig {
     /// The IPv6 prefix
     pub prefix: (Ipv6Addr, u8),
@@ -103,6 +102,41 @@ impl fmt::Display for OtBorderRouterConfig {
         write!(
             f,
             "OtBorderRouterConfig {{
+        prefix: ({}, {}),
+        preference: {},
+        preferred: {},
+        slaac: {},
+        dhcp: {},
+        configure: {},
+        default_route: {},
+        on_mesh: {},
+        stable: {},
+        nd_dns: {},
+        domain_prefix: {},
+        rloc16: {}
+    }}",
+            self.prefix.0,
+            self.prefix.1,
+            self.preference,
+            self.prefered,
+            self.slaac,
+            self.dhcp,
+            self.configure,
+            self.default_route,
+            self.on_mesh,
+            self.stable,
+            self.nd_dns,
+            self.domain_prefix,
+            self.rloc16
+        )
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for OtBorderRouterConfig {
+    fn format(&self, fmt: defmt::Formatter) {
+        defmt::write!(fmt, 
+        "OtBorderRouterConfig {{
         prefix: ({}, {}),
         preference: {},
         preferred: {},
