@@ -1,4 +1,7 @@
-use core::{fmt::{self, Display}, net::Ipv6Addr};
+use core::{
+    fmt::{self, Display},
+    net::Ipv6Addr,
+};
 
 use openthread_sys::{
     otBorderRouterConfig, otError_OT_ERROR_NONE, otNetDataGetNextOnMeshPrefix,
@@ -15,16 +18,16 @@ pub enum OtRoutePreference {
     OtRoutePreferenceMed = 0,
     /// High route preference
     OtRoutePreferenceHigh = 1,
-    Unkown = 2
+    Unkown = 2,
 }
 
 impl OtRoutePreference {
-    fn from_ot_int(input: i32) -> Self{
+    fn from_ot_int(input: i32) -> Self {
         match input {
             -1 => OtRoutePreference::OtRoutePreferenceLow,
             0 => OtRoutePreference::OtRoutePreferenceMed,
             1 => OtRoutePreference::OtRoutePreferenceHigh,
-            _ => OtRoutePreference::Unkown
+            _ => OtRoutePreference::Unkown,
         }
     }
 }
@@ -90,7 +93,7 @@ impl fmt::Display for OtBorderRouterConfig {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-    "OtBorderRouterConfig {{
+            "OtBorderRouterConfig {{
         prefix: ({}, {}),
         preference: {},
         preferred: {},
@@ -123,10 +126,10 @@ impl fmt::Display for OtBorderRouterConfig {
 
 impl<'a> OpenThread<'a> {
     /// Gets the list of all on mesh prefixes
-    /// 
+    ///
     /// Arguments:
     /// - `f`: A closure that will be called for each mesh prefix with the corresponding
-    ///     `OtBorderRouterConfig`. Once called for all prefixes, 
+    ///     `OtBorderRouterConfig`. Once called for all prefixes,
     ///     the closure will be called with `None`.
     pub fn netdata_get_on_mesh_prefixes<F>(&self, mut f: F) -> Result<(), OtError>
     where

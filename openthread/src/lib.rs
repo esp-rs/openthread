@@ -29,17 +29,17 @@ pub use rand_core::{Error as OtRngCoreError, RngCore as OtRngCore};
 
 pub use dataset::*;
 pub use fmt::Bytes as BytesFmt;
+#[cfg(feature = "nat64")]
+pub use nat64::*;
+pub use netdata::*;
 pub use openthread_sys as sys;
 pub use radio::*;
 pub use scan::*;
 pub use settings::*;
-pub use netdata::*;
 #[cfg(feature = "srp")]
 pub use srp::*;
 #[cfg(feature = "udp")]
 pub use udp::*;
-#[cfg(feature = "nat64")]
-pub use nat64::*;
 
 // This mod MUST go first, so that the others see its macros.
 pub(crate) mod fmt;
@@ -51,6 +51,9 @@ pub mod enal;
 pub mod enet;
 #[cfg(feature = "esp-ieee802154")]
 pub mod esp;
+#[cfg(feature = "nat64")]
+mod nat64;
+mod netdata;
 #[cfg(feature = "embassy-nrf")]
 pub mod nrf;
 mod platform;
@@ -58,13 +61,10 @@ mod radio;
 mod scan;
 mod settings;
 mod signal;
-mod netdata;
 #[cfg(feature = "srp")]
 mod srp;
 #[cfg(feature = "udp")]
 mod udp;
-#[cfg(feature = "nat64")]
-mod nat64;
 
 use sys::{
     otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
