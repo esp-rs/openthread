@@ -135,8 +135,8 @@ impl<'a> OpenThread<'a> {
     ///
     /// Arguments:
     /// - `f`: A closure that will be called for each mesh prefix with the corresponding
-    ///     `OtBorderRouterConfig`. Once called for all prefixes,
-    ///     the closure will be called with `None`.
+    ///   `OtBorderRouterConfig`. Once called for all prefixes,
+    ///   the closure will be called with `None`.
     pub fn netdata_get_on_mesh_prefixes<F>(&self, mut f: F) -> Result<(), OtError>
     where
         F: FnMut(Option<OtBorderRouterConfig>) -> Result<(), OtError>,
