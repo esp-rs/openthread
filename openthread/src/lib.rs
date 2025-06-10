@@ -65,8 +65,6 @@ mod srp;
 mod udp;
 #[cfg(feature = "nat64")]
 mod nat64;
-#[cfg(feature = "anyhow")]
-mod anyhow;
 
 use sys::{
     otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
