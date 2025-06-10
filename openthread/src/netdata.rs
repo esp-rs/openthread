@@ -4,7 +4,9 @@ use core::{
 };
 
 use openthread_sys::{
-    otBorderRouterConfig, otError_OT_ERROR_NONE, otNetDataGetNextOnMeshPrefix, otRoutePreference_OT_ROUTE_PREFERENCE_HIGH, otRoutePreference_OT_ROUTE_PREFERENCE_LOW, otRoutePreference_OT_ROUTE_PREFERENCE_MED, OT_NETWORK_DATA_ITERATOR_INIT
+    otBorderRouterConfig, otError_OT_ERROR_NONE, otNetDataGetNextOnMeshPrefix,
+    otRoutePreference_OT_ROUTE_PREFERENCE_HIGH, otRoutePreference_OT_ROUTE_PREFERENCE_LOW,
+    otRoutePreference_OT_ROUTE_PREFERENCE_MED, OT_NETWORK_DATA_ITERATOR_INIT,
 };
 
 use crate::{OpenThread, OtError};
@@ -20,7 +22,6 @@ pub enum OtRoutePreference {
     OtRoutePreferenceHigh = 1,
     Unkown = 2,
 }
-
 
 #[allow(non_upper_case_globals)]
 impl OtRoutePreference {
@@ -148,8 +149,9 @@ impl fmt::Display for OtBorderRouterConfig {
 #[cfg(feature = "defmt")]
 impl defmt::Format for OtBorderRouterConfig {
     fn format(&self, fmt: defmt::Formatter) {
-        defmt::write!(fmt, 
-        "OtBorderRouterConfig {{
+        defmt::write!(
+            fmt,
+            "OtBorderRouterConfig {{
         prefix: ({}, {}),
         preference: {},
         preferred: {},

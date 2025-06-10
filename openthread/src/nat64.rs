@@ -11,7 +11,7 @@ use openthread_sys::{
     otNat64SynthesizeIp6Address,
 };
 
-use crate::{OpenThread, OtError, ot};
+use crate::{ot, OpenThread, OtError};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 pub enum Nat64Error {
@@ -59,10 +59,7 @@ impl<'a> OpenThread<'a> {
 ///
 /// The NAT64 `prefix_length` MUST be one of the following values: 32, 40, 48, 56, 64, or 96, otherwise the
 /// function returns `Nat64Error::InvalidPrefixLength`
-pub fn ipv4_extract_from_ipv6(
-    prefix_length: u8,
-    ipv6: &Ipv6Addr,
-) -> Result<Ipv4Addr, Nat64Error> {
+pub fn ipv4_extract_from_ipv6(prefix_length: u8, ipv6: &Ipv6Addr) -> Result<Ipv4Addr, Nat64Error> {
     let valid_prefix_lengths: [u8; 6] = [32, 40, 48, 56, 64, 96];
 
     if !valid_prefix_lengths.contains(&prefix_length) {
