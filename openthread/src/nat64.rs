@@ -13,7 +13,7 @@ use openthread_sys::{
 
 use crate::{OpenThread, OtError, ot};
 
-#[derive(Debug)]
+#[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Nat64Error {
     InvalidPrefixLength(u8),
