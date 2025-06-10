@@ -34,7 +34,13 @@ impl OtRoutePreference {
 
 impl Display for OtRoutePreference {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "OtRoutePreference: {}", self)
+        let s = match self {
+            OtRoutePreference::OtRoutePreferenceLow => "Low",
+            OtRoutePreference::OtRoutePreferenceMed => "Medium",
+            OtRoutePreference::OtRoutePreferenceHigh => "High",
+            OtRoutePreference::Unkown => "Unknown",
+        };
+        write!(f, "OtRoutePreference: {}", s)
     }
 }
 
