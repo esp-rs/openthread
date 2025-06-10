@@ -22,13 +22,18 @@ pub enum OtRoutePreference {
     Unkown = 2,
 }
 
-#[allow(non_upper_case_globals)]
+#[allow(non_upper_case_globals, clippy::unnecessary_cast)]
 impl OtRoutePreference {
     fn from_ot_int(input: i32) -> Self {
+        // These cast are needed as otRoutePreference_OT_ROUTE_PREFERENCE_* are i8 for thumbv*
+        // but i32 for riscv32im*
+        const value_low: i32 = otRoutePreference_OT_ROUTE_PREFERENCE_LOW as i32;
+        const value_med: i32 = otRoutePreference_OT_ROUTE_PREFERENCE_MED as i32;
+        const value_high: i32 = otRoutePreference_OT_ROUTE_PREFERENCE_HIGH as i32;
         match input {
-            otRoutePreference_OT_ROUTE_PREFERENCE_LOW => OtRoutePreference::OtRoutePreferenceLow,
-            otRoutePreference_OT_ROUTE_PREFERENCE_MED => OtRoutePreference::OtRoutePreferenceMed,
-            otRoutePreference_OT_ROUTE_PREFERENCE_HIGH => OtRoutePreference::OtRoutePreferenceHigh,
+            value_low => OtRoutePreference::OtRoutePreferenceLow,
+            value_med => OtRoutePreference::OtRoutePreferenceMed,
+            value_high => OtRoutePreference::OtRoutePreferenceHigh,
             _ => OtRoutePreference::Unkown,
         }
     }
