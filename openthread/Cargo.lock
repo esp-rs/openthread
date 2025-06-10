@@ -1099,7 +1099,6 @@ dependencies = [
 name = "openthread"
 version = "0.1.0"
 dependencies = [
- "anyhow",
  "bitflags 2.9.1",
  "defmt 1.0.1",
  "edge-nal",
