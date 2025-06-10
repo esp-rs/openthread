@@ -32,7 +32,7 @@ impl fmt::Display for Nat64Error {
 impl<'a> OpenThread<'a> {
     /// Creates the IPv6 address by performing NAT64 address translation from the preferred NAT64 prefix and the given IPv4
     /// address as specified in RFC 6052.
-    pub fn nat64_synthezise_ipv6_address(&self, ipv4: &Ipv4Addr) -> Result<Ipv6Addr, OtError> {
+    pub fn nat64_synthesize_ipv6(&self, ipv4: &Ipv4Addr) -> Result<Ipv6Addr, OtError> {
         let mut ot = self.activate();
         let state = ot.state();
 
@@ -53,7 +53,7 @@ impl<'a> OpenThread<'a> {
 ///
 /// The NAT64 `prefix_length` MUST be one of the following values: 32, 40, 48, 56, 64, or 96, otherwise the
 /// function returns `Nat64Error::InvalidPrefixLength`
-pub fn ipv4_extract_from_ipv6_address(
+pub fn ipv4_extract_from_ipv6(
     prefix_length: u8,
     ipv6: &Ipv6Addr,
 ) -> Result<Ipv4Addr, Nat64Error> {
