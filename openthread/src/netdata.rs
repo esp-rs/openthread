@@ -46,6 +46,19 @@ impl Display for OtRoutePreference {
     }
 }
 
+#[cfg(feature = "defmt")]
+impl defmt::Format for OtRoutePreference {
+    fn format(&self, fmt: defmt::Formatter) {
+        let s = match self {
+            OtRoutePreference::OtRoutePreferenceLow => "Low",
+            OtRoutePreference::OtRoutePreferenceMed => "Medium",
+            OtRoutePreference::OtRoutePreferenceHigh => "High",
+            OtRoutePreference::Unkown => "Unknown",
+        };
+        defmt::write!(fmt, "OtRoutePreference: {}", s)
+    }
+}
+
 /// Represents a Border Router configuration
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct OtBorderRouterConfig {
