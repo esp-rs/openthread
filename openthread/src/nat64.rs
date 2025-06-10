@@ -11,7 +11,7 @@ use openthread_sys::{
     otNat64SynthesizeIp6Address,
 };
 
-use crate::{OpenThread, OtError};
+use crate::{OpenThread, OtError, ot};
 
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -39,13 +39,9 @@ impl<'a> OpenThread<'a> {
         let mut ipv6 = otIp6Address::default();
         let ipv4 = ipv4_to_ot_ipv4(ipv4);
 
-        let return_code: otError =
-            unsafe { otNat64SynthesizeIp6Address(state.ot.instance, &ipv4, &mut ipv6) };
+        ot!(unsafe { otNat64SynthesizeIp6Address(state.ot.instance, &ipv4, &mut ipv6) })?;
 
-        match return_code {
-            crate::sys::otError_OT_ERROR_NONE => Ok(ot_ipv6_to_ipv6(&ipv6)),
-            err => Err(OtError::new(err)),
-        }
+        Ok(ot_ipv6_to_ipv6(&ipv6))
     }
 }
 
