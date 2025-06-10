@@ -29,7 +29,6 @@ pub use rand_core::{Error as OtRngCoreError, RngCore as OtRngCore};
 
 pub use dataset::*;
 pub use fmt::Bytes as BytesFmt;
-#[cfg(feature = "nat64")]
 pub use nat64::*;
 pub use netdata::*;
 pub use openthread_sys as sys;
@@ -51,7 +50,6 @@ pub mod enal;
 pub mod enet;
 #[cfg(feature = "esp-ieee802154")]
 pub mod esp;
-#[cfg(feature = "nat64")]
 mod nat64;
 mod netdata;
 #[cfg(feature = "embassy-nrf")]
