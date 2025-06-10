@@ -4,8 +4,7 @@ use core::{
 };
 
 use openthread_sys::{
-    otBorderRouterConfig, otError_OT_ERROR_NONE, otNetDataGetNextOnMeshPrefix,
-    OT_NETWORK_DATA_ITERATOR_INIT,
+    otBorderRouterConfig, otError_OT_ERROR_NONE, otNetDataGetNextOnMeshPrefix, otRoutePreference_OT_ROUTE_PREFERENCE_HIGH, otRoutePreference_OT_ROUTE_PREFERENCE_LOW, otRoutePreference_OT_ROUTE_PREFERENCE_MED, OT_NETWORK_DATA_ITERATOR_INIT
 };
 
 use crate::{OpenThread, OtError};
@@ -22,12 +21,14 @@ pub enum OtRoutePreference {
     Unkown = 2,
 }
 
+
+#[allow(non_upper_case_globals)]
 impl OtRoutePreference {
     fn from_ot_int(input: i32) -> Self {
         match input {
-            -1 => OtRoutePreference::OtRoutePreferenceLow,
-            0 => OtRoutePreference::OtRoutePreferenceMed,
-            1 => OtRoutePreference::OtRoutePreferenceHigh,
+            otRoutePreference_OT_ROUTE_PREFERENCE_LOW => OtRoutePreference::OtRoutePreferenceLow,
+            otRoutePreference_OT_ROUTE_PREFERENCE_MED => OtRoutePreference::OtRoutePreferenceMed,
+            otRoutePreference_OT_ROUTE_PREFERENCE_HIGH => OtRoutePreference::OtRoutePreferenceHigh,
             _ => OtRoutePreference::Unkown,
         }
     }
