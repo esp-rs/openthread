@@ -10,6 +10,7 @@ use openthread_sys::{
 
 use crate::{OpenThread, OtError};
 
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum OtRoutePreference {
     /// Low route preference
@@ -45,6 +46,7 @@ impl Display for OtRoutePreference {
 }
 
 /// Represents a Border Router configuration
+#[derive(Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct OtBorderRouterConfig {
     /// The IPv6 prefix
