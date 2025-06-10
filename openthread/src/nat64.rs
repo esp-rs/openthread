@@ -14,7 +14,6 @@ use openthread_sys::{
 use crate::{OpenThread, OtError, ot};
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Nat64Error {
     InvalidPrefixLength(u8),
 }
@@ -24,6 +23,17 @@ impl fmt::Display for Nat64Error {
         match self {
             Nat64Error::InvalidPrefixLength(length) => {
                 write!(f, "Invalid prefix length: {}", length)
+            }
+        }
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for Nat64Error {
+    fn format(&self, fmt: defmt::Formatter) {
+        match self {
+            Nat64Error::InvalidPrefixLength(length) => {
+                defmt::write!(fmt, "Invalid prefix length: {}", length)
             }
         }
     }
