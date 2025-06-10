@@ -12,7 +12,6 @@ use openthread_sys::{
 use crate::{OpenThread, OtError};
 
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum OtRoutePreference {
     /// Low route preference
     OtRoutePreferenceLow = -1,
