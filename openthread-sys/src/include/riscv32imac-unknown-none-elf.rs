@@ -141,24 +141,29 @@ pub const __OBSOLETE_MATH_DEFAULT: u32 = 1;
 pub const __OBSOLETE_MATH: u32 = 1;
 pub const __NEWLIB_H__: u32 = 1;
 pub const _NEWLIB_VERSION_H__: u32 = 1;
-pub const _NEWLIB_VERSION: &[u8; 6] = b"4.4.0\0";
+pub const _NEWLIB_VERSION: &[u8; 6] = b"4.5.0\0";
 pub const __NEWLIB__: u32 = 4;
-pub const __NEWLIB_MINOR__: u32 = 4;
+pub const __NEWLIB_MINOR__: u32 = 5;
 pub const __NEWLIB_PATCHLEVEL__: u32 = 0;
+pub const _ATEXIT_DYNAMIC_ALLOC: u32 = 1;
 pub const _FSEEK_OPTIMIZATION: u32 = 1;
 pub const _FVWRITE_IN_STREAMIO: u32 = 1;
 pub const _HAVE_CC_INHIBIT_LOOP_TO_LIBCALL: u32 = 1;
+pub const _HAVE_HW_MISALIGNED_ACCESS: u32 = 1;
 pub const _HAVE_INITFINI_ARRAY: u32 = 1;
 pub const _HAVE_LONG_DOUBLE: u32 = 1;
+pub const _ICONV_ENABLED: u32 = 1;
 pub const _MB_LEN_MAX: u32 = 1;
+pub const _NANO_MALLOC: u32 = 1;
 pub const _REENT_CHECK_VERIFY: u32 = 1;
+pub const _RETARGETABLE_LOCKING: u32 = 1;
 pub const _UNBUF_STREAM_OPT: u32 = 1;
 pub const _WANT_IO_C99_FORMATS: u32 = 1;
-pub const _WANT_IO_LONG_DOUBLE: u32 = 1;
 pub const _WANT_IO_LONG_LONG: u32 = 1;
-pub const _WANT_REGISTER_FINI: u32 = 1;
+pub const _WANT_IO_POS_ARGS: u32 = 1;
+pub const _WANT_REENT_BACKWARD_BINARY_COMPAT: u32 = 1;
+pub const _WANT_REENT_SMALL: u32 = 1;
 pub const _WANT_USE_GDTOA: u32 = 1;
-pub const _WIDE_ORIENT: u32 = 1;
 pub const _DEFAULT_SOURCE: u32 = 1;
 pub const _POSIX_SOURCE: u32 = 1;
 pub const _POSIX_C_SOURCE: u32 = 200809;
@@ -173,6 +178,14 @@ pub const __POSIX_VISIBLE: u32 = 200809;
 pub const __SVID_VISIBLE: u32 = 1;
 pub const __XSI_VISIBLE: u32 = 0;
 pub const __SSP_FORTIFY_LEVEL: u32 = 0;
+pub const _POSIX_THREADS: u32 = 1;
+pub const _POSIX_TIMEOUTS: u32 = 1;
+pub const _POSIX_TIMERS: u32 = 1;
+pub const _POSIX_MONOTONIC_CLOCK: u32 = 200112;
+pub const _POSIX_CLOCK_SELECTION: u32 = 200112;
+pub const _UNIX98_THREAD_MUTEX_ATTRIBUTES: u32 = 1;
+pub const _POSIX_READER_WRITER_LOCKS: u32 = 200112;
+pub const __BUFSIZ__: u32 = 128;
 pub const __RAND_MAX: u32 = 2147483647;
 pub const __have_longlong64: u32 = 1;
 pub const __have_long32: u32 = 1;
@@ -455,9 +468,43 @@ pub type __suseconds_t = ::core::ffi::c_long;
 pub type __useconds_t = ::core::ffi::c_ulong;
 pub type __va_list = __builtin_va_list;
 pub type __ULong = ::core::ffi::c_ulong;
-pub type _LOCK_T = ::core::ffi::c_int;
-pub type _LOCK_RECURSIVE_T = ::core::ffi::c_int;
-pub type _flock_t = _LOCK_RECURSIVE_T;
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct __lock {
+    _unused: [u8; 0],
+}
+pub type _LOCK_T = *mut __lock;
+unsafe extern "C" {
+    pub fn __retarget_lock_init(lock: *mut _LOCK_T);
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_init_recursive(lock: *mut _LOCK_T);
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_close(lock: _LOCK_T);
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_close_recursive(lock: _LOCK_T);
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_acquire(lock: _LOCK_T);
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_acquire_recursive(lock: _LOCK_T);
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_try_acquire(lock: _LOCK_T) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_try_acquire_recursive(lock: _LOCK_T) -> ::core::ffi::c_int;
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_release(lock: _LOCK_T);
+}
+unsafe extern "C" {
+    pub fn __retarget_lock_release_recursive(lock: _LOCK_T);
+}
+pub type _flock_t = _LOCK_T;
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct __locale_t {
@@ -518,7 +565,7 @@ pub struct _atexit {
     pub _next: *mut _atexit,
     pub _ind: ::core::ffi::c_int,
     pub _fns: [::core::option::Option<unsafe extern "C" fn()>; 32usize],
-    pub _on_exit_args: _on_exit_args,
+    pub _on_exit_args_ptr: *mut _on_exit_args,
 }
 impl Default for _atexit {
     fn default() -> Self {
@@ -554,6 +601,7 @@ pub struct __sFILE {
     pub _file: ::core::ffi::c_short,
     pub _bf: __sbuf,
     pub _lbfsize: ::core::ffi::c_int,
+    pub _data: *mut _reent,
     pub _cookie: *mut ::core::ffi::c_void,
     pub _read: ::core::option::Option<
         unsafe extern "C" fn(
@@ -593,7 +641,6 @@ pub struct __sFILE {
     pub _lb: __sbuf,
     pub _blksize: ::core::ffi::c_int,
     pub _offset: _off_t,
-    pub _data: *mut _reent,
     pub _lock: _flock_t,
     pub _mbstate: _mbstate_t,
     pub _flags2: ::core::ffi::c_int,
@@ -636,6 +683,48 @@ pub struct _rand48 {
     pub _seed: [::core::ffi::c_ushort; 3usize],
     pub _mult: [::core::ffi::c_ushort; 3usize],
     pub _add: ::core::ffi::c_ushort,
+    pub _rand_next: ::core::ffi::c_ulonglong,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _mprec {
+    pub _result: *mut _Bigint,
+    pub _result_k: ::core::ffi::c_int,
+    pub _p5s: *mut _Bigint,
+    pub _freelist: *mut *mut _Bigint,
+}
+impl Default for _mprec {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _misc_reent {
+    pub _strtok_last: *mut ::core::ffi::c_char,
+    pub _mblen_state: _mbstate_t,
+    pub _wctomb_state: _mbstate_t,
+    pub _mbtowc_state: _mbstate_t,
+    pub _l64a_buf: [::core::ffi::c_char; 8usize],
+    pub _getdate_err: ::core::ffi::c_int,
+    pub _mbrlen_state: _mbstate_t,
+    pub _mbrtowc_state: _mbstate_t,
+    pub _mbsrtowcs_state: _mbstate_t,
+    pub _wcrtomb_state: _mbstate_t,
+    pub _wcsrtombs_state: _mbstate_t,
+}
+impl Default for _misc_reent {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
@@ -645,62 +734,25 @@ pub struct _reent {
     pub _stdout: *mut __FILE,
     pub _stderr: *mut __FILE,
     pub _inc: ::core::ffi::c_int,
-    pub _emergency: [::core::ffi::c_char; 25usize],
+    pub _emergency: *mut ::core::ffi::c_char,
+    pub _reserved_0: ::core::ffi::c_int,
+    pub _reserved_1: ::core::ffi::c_int,
     pub _locale: *mut __locale_t,
+    pub _mp: *mut _mprec,
     pub __cleanup: ::core::option::Option<unsafe extern "C" fn(arg1: *mut _reent)>,
-    pub _result: *mut _Bigint,
-    pub _result_k: ::core::ffi::c_int,
-    pub _p5s: *mut _Bigint,
-    pub _freelist: *mut *mut _Bigint,
+    pub _gamma_signgam: ::core::ffi::c_int,
     pub _cvtlen: ::core::ffi::c_int,
     pub _cvtbuf: *mut ::core::ffi::c_char,
-    pub _new: _reent__bindgen_ty_1,
+    pub _r48: *mut _rand48,
+    pub _localtime_buf: *mut __tm,
+    pub _asctime_buf: *mut ::core::ffi::c_char,
     pub _sig_func: *mut ::core::option::Option<unsafe extern "C" fn(arg1: ::core::ffi::c_int)>,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union _reent__bindgen_ty_1 {
-    pub _reent: _reent__bindgen_ty_1__bindgen_ty_1,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _reent__bindgen_ty_1__bindgen_ty_1 {
-    pub _strtok_last: *mut ::core::ffi::c_char,
-    pub _asctime_buf: [::core::ffi::c_char; 26usize],
-    pub _localtime_buf: __tm,
-    pub _gamma_signgam: ::core::ffi::c_int,
-    pub _rand_next: ::core::ffi::c_ulonglong,
-    pub _r48: _rand48,
-    pub _mblen_state: _mbstate_t,
-    pub _mbtowc_state: _mbstate_t,
-    pub _wctomb_state: _mbstate_t,
-    pub _l64a_buf: [::core::ffi::c_char; 8usize],
-    pub _signal_buf: [::core::ffi::c_char; 24usize],
-    pub _getdate_err: ::core::ffi::c_int,
-    pub _mbrlen_state: _mbstate_t,
-    pub _mbrtowc_state: _mbstate_t,
-    pub _mbsrtowcs_state: _mbstate_t,
-    pub _wcrtomb_state: _mbstate_t,
-    pub _wcsrtombs_state: _mbstate_t,
-    pub _h_errno: ::core::ffi::c_int,
-}
-impl Default for _reent__bindgen_ty_1__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
-}
-impl Default for _reent__bindgen_ty_1 {
-    fn default() -> Self {
-        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
-        unsafe {
-            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
-            s.assume_init()
-        }
-    }
+    pub _reserved_6: *mut _atexit,
+    pub _reserved_7: _atexit,
+    pub _reserved_8: _glue,
+    pub __sf: *mut __FILE,
+    pub _misc: *mut _misc_reent,
+    pub _signal_buf: *mut ::core::ffi::c_char,
 }
 impl Default for _reent {
     fn default() -> Self {
@@ -712,10 +764,28 @@ impl Default for _reent {
     }
 }
 unsafe extern "C" {
+    pub fn __assert(
+        arg1: *const ::core::ffi::c_char,
+        arg2: ::core::ffi::c_int,
+        arg3: *const ::core::ffi::c_char,
+    ) -> !;
+}
+unsafe extern "C" {
+    pub fn __assert_func(
+        arg1: *const ::core::ffi::c_char,
+        arg2: ::core::ffi::c_int,
+        arg3: *const ::core::ffi::c_char,
+        arg4: *const ::core::ffi::c_char,
+    ) -> !;
+}
+unsafe extern "C" {
     pub static mut _impure_ptr: *mut _reent;
 }
 unsafe extern "C" {
     pub static mut _impure_data: _reent;
+}
+unsafe extern "C" {
+    pub fn __getreent() -> *mut _reent;
 }
 unsafe extern "C" {
     pub static mut __atexit: *mut _atexit;
