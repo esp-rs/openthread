@@ -14,11 +14,11 @@ use crate::{OpenThread, OtError};
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum OtRoutePreference {
     /// Low route preference
-    OtRoutePreferenceLow = -1,
+    OtRoutePreferenceLow = otRoutePreference_OT_ROUTE_PREFERENCE_LOW as isize,
     /// Medium route preference
-    OtRoutePreferenceMed = 0,
+    OtRoutePreferenceMed = otRoutePreference_OT_ROUTE_PREFERENCE_MED as isize,
     /// High route preference
-    OtRoutePreferenceHigh = 1,
+    OtRoutePreferenceHigh = otRoutePreference_OT_ROUTE_PREFERENCE_HIGH as isize,
     Unkown = 2,
 }
 
