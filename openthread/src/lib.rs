@@ -25,7 +25,7 @@ use platform::{OT_ACTIVE_STATE, OT_REFCNT};
 
 use signal::Signal;
 
-pub use rand_core::{Error as OtRngCoreError, RngCore as OtRngCore};
+pub use rand_core::RngCore as OtRngCore;
 
 pub use dataset::*;
 pub use fmt::Bytes as BytesFmt;
