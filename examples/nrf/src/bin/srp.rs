@@ -21,8 +21,9 @@ use embassy_executor::Spawner;
 
 use embassy_nrf::interrupt;
 use embassy_nrf::interrupt::{InterruptExt, Priority};
+use embassy_nrf::mode::Blocking;
 use embassy_nrf::peripherals::{RADIO, RNG};
-use embassy_nrf::rng::{self, Rng};
+use embassy_nrf::rng::Rng;
 use embassy_nrf::{bind_interrupts, peripherals, radio};
 
 use openthread::nrf::{Ieee802154, NrfRadio};
@@ -54,7 +55,6 @@ macro_rules! mk_static {
 
 bind_interrupts!(struct Irqs {
     RADIO => radio::InterruptHandler<peripherals::RADIO>;
-    RNG => rng::InterruptHandler<peripherals::RNG>;
 });
 
 #[interrupt]
@@ -89,7 +89,7 @@ async fn main(spawner: Spawner) {
 
     info!("Starting...");
 
-    let rng = mk_static!(Rng<RNG>, Rng::new(p.RNG, Irqs));
+    let rng = mk_static!(Rng<'static, RNG, Blocking>, Rng::new_blocking(p.RNG));
 
     let mut ieee_eui64 = [0; 8];
     RngCore::fill_bytes(rng, &mut ieee_eui64);

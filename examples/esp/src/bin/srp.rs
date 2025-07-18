@@ -101,10 +101,7 @@ async fn main(spawner: Spawner) {
     spawner
         .spawn(run_ot(
             ot.clone(),
-            EspRadio::new(Ieee802154::new(
-                peripherals.IEEE802154,
-                peripherals.RADIO_CLK,
-            )),
+            EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
         ))
         .unwrap();
 

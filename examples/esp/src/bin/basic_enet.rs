@@ -91,10 +91,7 @@ async fn main(spawner: Spawner) {
     spawner
         .spawn(run_enet_driver(
             enet_driver_runner,
-            EspRadio::new(Ieee802154::new(
-                peripherals.IEEE802154,
-                peripherals.RADIO_CLK,
-            )),
+            EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
         ))
         .unwrap();
 
