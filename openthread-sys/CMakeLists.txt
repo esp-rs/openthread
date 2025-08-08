@@ -7,6 +7,9 @@ add_definitions(-Dsnprintf=_support_snprintf -Dvsnprintf=_support_vsnprintf)
 # Enable the alarm with microseconds resolution
 add_definitions(-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1)
 
+# Increase the number of message buffers
+add_definitions(-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=65)
+
 # OpenThread itself
 add_subdirectory(./openthread)
 
