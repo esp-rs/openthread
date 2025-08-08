@@ -14,7 +14,7 @@ use core::net::{Ipv6Addr, SocketAddrV6};
 use core::pin::pin;
 use core::ptr::addr_of_mut;
 
-use embassy_futures::select::{Either, Either3};
+use embassy_futures::select::{Either, Either4};
 
 use embassy_time::Instant;
 
@@ -74,10 +74,10 @@ use sys::{
     otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
     otIp6SetEnabled, otIp6SetReceiveCallback, otMessage, otMessageFree,
     otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings,
-    otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone,
-    otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
-    otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
-    OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
+    otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMicroFired, otPlatAlarmMilliFired,
+    otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame,
+    otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId,
+    otThreadSetEnabled, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -483,14 +483,20 @@ impl<'a> OpenThread<'a> {
         R: Radio,
     {
         let mut radio = pin!(self.run_radio(radio, EmbassyTimeTimer));
-        let mut alarm = pin!(self.run_alarm());
+        let mut alarm_micro = pin!(self.run_alarm(true));
+        let mut alarm = pin!(self.run_alarm(false));
         let mut openthread = pin!(self.run_tasklets());
 
-        let result =
-            embassy_futures::select::select3(&mut radio, &mut alarm, &mut openthread).await;
+        let result = embassy_futures::select::select4(
+            &mut radio,
+            &mut alarm_micro,
+            &mut alarm,
+            &mut openthread,
+        )
+        .await;
 
         match result {
-            Either3::First(r) | Either3::Second(r) | Either3::Third(r) => r,
+            Either4::First(r) | Either4::Second(r) | Either4::Third(r) | Either4::Fourth(r) => r,
         }
     }
 
@@ -605,18 +611,34 @@ impl<'a> OpenThread<'a> {
 
     /// An async loop that waits until the latest alarm (if any) expires and then notifies the OpenThread C library
     /// Based on `embassy-time` for simplicity and for achieving platform-neutrality.
-    async fn run_alarm(&self) -> ! {
-        let alarm = || poll_fn(move |cx| self.activate().state().ot.alarm.poll_wait(cx));
+    async fn run_alarm(&self, micro: bool) -> ! {
+        let alarm_str = if micro { "micro" } else { "milli" };
+
+        let alarm = || {
+            poll_fn(move |cx| {
+                let mut ctx = self.activate();
+                let state = ctx.state();
+
+                let alarm = if micro {
+                    &mut state.ot.alarm_micro
+                } else {
+                    &mut state.ot.alarm
+                };
+
+                alarm.poll_wait(cx)
+            })
+        };
 
         loop {
-            trace!("Waiting for trigger alarm request");
+            trace!("Waiting for trigger {} alarm request", alarm_str);
 
             let Some(mut when) = alarm().await else {
                 continue;
             };
 
             trace!(
-                "Got trigger alarm request: {}, waiting for it to trigger",
+                "Got trigger {} alarm request: {}, waiting for it to trigger",
+                alarm_str,
                 when
             );
 
@@ -627,21 +649,29 @@ impl<'a> OpenThread<'a> {
                 match result {
                     Either::First(new_when) => {
                         if let Some(new_when) = new_when {
-                            trace!("Alarm interrupted by a new alarm: {}", new_when);
+                            trace!(
+                                "Alarm {} interrupted by a new alarm: {}",
+                                alarm_str,
+                                new_when
+                            );
                             when = new_when;
                         } else {
-                            trace!("Alarm cancelled");
+                            trace!("Alarm {} cancelled", alarm_str);
                             break;
                         }
                     }
                     Either::Second(_) => {
-                        trace!("Alarm triggered, notifying OT main loop");
+                        trace!("Alarm {} triggered, notifying OT main loop", alarm_str);
 
                         {
                             let mut ot = self.activate();
                             let state = ot.state();
 
-                            unsafe { otPlatAlarmMilliFired(state.ot.instance) };
+                            if micro {
+                                unsafe { otPlatAlarmMicroFired(state.ot.instance) };
+                            } else {
+                                unsafe { otPlatAlarmMilliFired(state.ot.instance) };
+                            }
                         }
 
                         break;
@@ -1037,6 +1067,7 @@ impl OtResources {
             rx_ipv6_enabled: false,
             rx_ipv6: Signal::new(),
             alarm: Signal::new(),
+            alarm_micro: Signal::new(),
             tasklets: Signal::new(),
             changes: Signal::new(),
             radio: Signal::new(),
@@ -1369,18 +1400,30 @@ impl<'a> OtContext<'a> {
         self.state().ot.changes.signal(());
     }
 
-    fn plat_now(&mut self) -> u32 {
-        trace!("Plat now callback");
-        Instant::now().as_millis() as u32
+    fn plat_time_get(&mut self) -> u64 {
+        trace!("Plat time get callback");
+
+        Instant::now().as_micros()
+    }
+
+    fn plat_alarm_get_now(&mut self) -> u32 {
+        trace!("Plat alarm get now callback");
+
+        // TODO XXX FIXME
+        //(Instant::now().as_millis() & (u32::MAX as u64)) as u32
+        Instant::now().as_millis() as _
     }
 
     fn plat_alarm_set(&mut self, at0_ms: u32, adt_ms: u32) -> Result<(), OtError> {
         trace!("Plat alarm set callback: {}, {}", at0_ms, adt_ms);
 
-        let instant = embassy_time::Instant::from_millis(at0_ms as _)
-            + embassy_time::Duration::from_millis(adt_ms as _);
+        let state = self.state();
 
-        self.state().ot.alarm.signal(Some(instant));
+        // TODO
+        let instant =
+            Instant::from_millis(at0_ms as _) + embassy_time::Duration::from_millis(adt_ms as _);
+
+        state.ot.alarm.signal(Some(instant));
 
         Ok(())
     }
@@ -1390,6 +1433,39 @@ impl<'a> OtContext<'a> {
         self.state().ot.alarm.signal(None);
 
         Ok(())
+    }
+
+    fn plat_alarm_get_now_micro(&mut self) -> u32 {
+        trace!("Plat alarm get now micro callback");
+
+        // TODO XXX FIXME
+        //(Instant::now().as_micros() & (u32::MAX as u64)) as u32
+        Instant::now().as_micros() as _
+    }
+
+    fn plat_alarm_set_micro(&mut self, at0_us: u32, adt_us: u32) -> Result<(), OtError> {
+        trace!("Plat alarm micro set callback: {}, {}", at0_us, adt_us);
+
+        let state = self.state();
+
+        // TODO
+        let instant =
+            Instant::from_micros(at0_us as _) + embassy_time::Duration::from_micros(adt_us as _);
+
+        state.ot.alarm_micro.signal(Some(instant));
+
+        Ok(())
+    }
+
+    fn plat_alarm_clear_micro(&mut self) -> Result<(), OtError> {
+        trace!("Plat alarm micro clear callback");
+        self.state().ot.alarm_micro.signal(None);
+
+        Ok(())
+    }
+
+    fn plat_radio_get_now(&mut self) -> u64 {
+        Instant::now().as_micros()
     }
 
     fn plat_radio_ieee_eui64(&mut self, mac: &mut [u8; 8]) {
@@ -1692,9 +1768,12 @@ struct OtState<'a> {
     rx_ipv6_enabled: bool,
     /// An Ipv6 packet egressed from OpenThread and waiting to be ingressed somewhere else
     rx_ipv6: Signal<*mut otMessage>,
-    /// `Some` in case there is a pending OpenThread awarm which is not due yet
+    /// `Some` in case there is a pending OpenThread alarm which is not due yet
     /// `None` if the existing alarm needs to be cancelled
     alarm: Signal<Option<embassy_time::Instant>>,
+    /// `Some` in case there is a pending OpenThread alarm in microseconds which is not due yet
+    /// `None` if the existing alarm in microseconds needs to be cancelled
+    alarm_micro: Signal<Option<embassy_time::Instant>>,
     /// The tasklets need to be run. Set by the OpenThread C library via the `otPlatTaskletsSignalPending` callback
     tasklets: Signal<()>,
     /// The OpenThread state has changed. Set by the OpenThread C library via the `otPlatStateChanged` callback

@@ -194,6 +194,9 @@ impl OpenThreadBuilder {
             .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
             .define("OT_PLATFORM", "external")
             .define("OT_SETTINGS_RAM", "OFF")
+            // Because we do not support yet a range of Thread 1.2 features
+            // in the radio, like Ehanced ACK, MAC frame counter and others
+            .define("OT_THREAD_VERSION", "1.1")
             //.define("OT_COMPILE_WARNING_AS_ERROR", "ON "$@" "${OT_SRCDIR}"")
             // ... or else the build would fail with `arm-none-eabi-gcc` during the linking phase
             // with "undefined symbol `__exit`" error

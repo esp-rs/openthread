@@ -141,15 +141,14 @@ pub const __OBSOLETE_MATH_DEFAULT: u32 = 1;
 pub const __OBSOLETE_MATH: u32 = 1;
 pub const __NEWLIB_H__: u32 = 1;
 pub const _NEWLIB_VERSION_H__: u32 = 1;
-pub const _NEWLIB_VERSION: &[u8; 6] = b"4.5.0\0";
+pub const _NEWLIB_VERSION: &[u8; 6] = b"4.3.0\0";
 pub const __NEWLIB__: u32 = 4;
-pub const __NEWLIB_MINOR__: u32 = 5;
+pub const __NEWLIB_MINOR__: u32 = 3;
 pub const __NEWLIB_PATCHLEVEL__: u32 = 0;
 pub const _ATEXIT_DYNAMIC_ALLOC: u32 = 1;
 pub const _FSEEK_OPTIMIZATION: u32 = 1;
 pub const _FVWRITE_IN_STREAMIO: u32 = 1;
 pub const _HAVE_CC_INHIBIT_LOOP_TO_LIBCALL: u32 = 1;
-pub const _HAVE_HW_MISALIGNED_ACCESS: u32 = 1;
 pub const _HAVE_INITFINI_ARRAY: u32 = 1;
 pub const _HAVE_LONG_DOUBLE: u32 = 1;
 pub const _ICONV_ENABLED: u32 = 1;
@@ -197,6 +196,18 @@ pub const ___int_least8_t_defined: u32 = 1;
 pub const ___int_least16_t_defined: u32 = 1;
 pub const ___int_least32_t_defined: u32 = 1;
 pub const ___int_least64_t_defined: u32 = 1;
+pub const _NULL: u32 = 0;
+pub const _ATEXIT_SIZE: u32 = 32;
+pub const _RAND48_SEED_0: u32 = 13070;
+pub const _RAND48_SEED_1: u32 = 43981;
+pub const _RAND48_SEED_2: u32 = 4660;
+pub const _RAND48_MULT_0: u32 = 58989;
+pub const _RAND48_MULT_1: u32 = 57068;
+pub const _RAND48_MULT_2: u32 = 5;
+pub const _RAND48_ADD: u32 = 11;
+pub const _REENT_EMERGENCY_SIZE: u32 = 25;
+pub const _REENT_ASCTIME_SIZE: u32 = 26;
+pub const _REENT_SIGNAL_SIZE: u32 = 24;
 pub const __GNUCLIKE_ASM: u32 = 3;
 pub const __GNUCLIKE___TYPEOF: u32 = 1;
 pub const __GNUCLIKE___SECTION: u32 = 1;
@@ -215,18 +226,6 @@ pub const __CC_SUPPORTS___FUNC__: u32 = 1;
 pub const __CC_SUPPORTS_WARNING: u32 = 1;
 pub const __CC_SUPPORTS_VARADIC_XXX: u32 = 1;
 pub const __CC_SUPPORTS_DYNAMIC_ARRAY_INIT: u32 = 1;
-pub const _NULL: u32 = 0;
-pub const _ATEXIT_SIZE: u32 = 32;
-pub const _RAND48_SEED_0: u32 = 13070;
-pub const _RAND48_SEED_1: u32 = 43981;
-pub const _RAND48_SEED_2: u32 = 4660;
-pub const _RAND48_MULT_0: u32 = 58989;
-pub const _RAND48_MULT_1: u32 = 57068;
-pub const _RAND48_MULT_2: u32 = 5;
-pub const _RAND48_ADD: u32 = 11;
-pub const _REENT_EMERGENCY_SIZE: u32 = 25;
-pub const _REENT_ASCTIME_SIZE: u32 = 26;
-pub const _REENT_SIGNAL_SIZE: u32 = 24;
 pub const EXIT_FAILURE: u32 = 1;
 pub const EXIT_SUCCESS: u32 = 0;
 pub const RAND_MAX: u32 = 2147483647;
@@ -383,6 +382,7 @@ pub struct max_align_t {
     pub __bindgen_padding_0: u64,
     pub __clang_max_align_nonce2: u128,
 }
+pub type wint_t = ::core::ffi::c_uint;
 pub type __int8_t = ::core::ffi::c_schar;
 pub type __uint8_t = ::core::ffi::c_uchar;
 pub type __int16_t = ::core::ffi::c_short;
@@ -403,7 +403,6 @@ pub type __intmax_t = ::core::ffi::c_longlong;
 pub type __uintmax_t = ::core::ffi::c_ulonglong;
 pub type __intptr_t = ::core::ffi::c_int;
 pub type __uintptr_t = ::core::ffi::c_uint;
-pub type wint_t = ::core::ffi::c_uint;
 pub type __blkcnt_t = ::core::ffi::c_long;
 pub type __blksize_t = ::core::ffi::c_long;
 pub type __fsblkcnt_t = __uint64_t;
@@ -1412,7 +1411,10 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn aligned_alloc(arg1: usize, arg2: usize) -> *mut ::core::ffi::c_void;
+    pub fn aligned_alloc(
+        arg1: ::core::ffi::c_uint,
+        arg2: ::core::ffi::c_uint,
+    ) -> *mut ::core::ffi::c_void;
 }
 unsafe extern "C" {
     pub fn at_quick_exit(
@@ -11980,6 +11982,38 @@ unsafe extern "C" {
         aInstance: *mut otInstance,
         aPrefix: *const otIp6Prefix,
     ) -> bool;
+}
+unsafe extern "C" {
+    /// Set the alarm to fire at @p aDt microseconds after @p aT0.
+    ///
+    /// For @p aT0, the platform MUST support all values in [0, 2^32-1].
+    /// For @p aDt, the platform MUST support all values in [0, 2^31-1].
+    ///
+    /// @param[in]  aInstance  The OpenThread instance structure.
+    /// @param[in]  aT0        The reference time.
+    /// @param[in]  aDt        The time delay in microseconds from @p aT0.
+    pub fn otPlatAlarmMicroStartAt(aInstance: *mut otInstance, aT0: u32, aDt: u32);
+}
+unsafe extern "C" {
+    /// Stop the alarm.
+    ///
+    /// @param[in] aInstance  The OpenThread instance structure.
+    pub fn otPlatAlarmMicroStop(aInstance: *mut otInstance);
+}
+unsafe extern "C" {
+    /// Get the current time.
+    ///
+    /// The current time MUST represent a free-running timer. When maintaining current time, the time value MUST utilize the
+    /// entire range [0, 2^32-1] and MUST NOT wrap before 2^32.
+    ///
+    /// @returns  The current time in microseconds.
+    pub fn otPlatAlarmMicroGetNow() -> u32;
+}
+unsafe extern "C" {
+    /// Signal that the alarm has fired.
+    ///
+    /// @param[in] aInstance  The OpenThread instance structure.
+    pub fn otPlatAlarmMicroFired(aInstance: *mut otInstance);
 }
 unsafe extern "C" {
     /// Set the alarm to fire at @p aDt milliseconds after @p aT0.
