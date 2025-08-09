@@ -14,9 +14,9 @@ use core::net::{Ipv6Addr, SocketAddrV6};
 use core::pin::pin;
 use core::ptr::addr_of_mut;
 
-use embassy_futures::select::{Either, Either3};
+use embassy_futures::select::{Either, Either4};
 
-use embassy_time::Instant;
+use embassy_time::{Duration, Instant};
 
 use fmt::Bytes;
 use portable_atomic::Ordering;
@@ -74,10 +74,10 @@ use sys::{
     otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
     otIp6SetEnabled, otIp6SetReceiveCallback, otMessage, otMessageFree,
     otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings,
-    otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone,
-    otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
-    otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
-    OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
+    otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMicroFired, otPlatAlarmMilliFired,
+    otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame,
+    otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId,
+    otThreadSetEnabled, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -483,14 +483,20 @@ impl<'a> OpenThread<'a> {
         R: Radio,
     {
         let mut radio = pin!(self.run_radio(radio, EmbassyTimeTimer));
-        let mut alarm = pin!(self.run_alarm());
+        let mut alarm_micro = pin!(self.run_alarm(true));
+        let mut alarm = pin!(self.run_alarm(false));
         let mut openthread = pin!(self.run_tasklets());
 
-        let result =
-            embassy_futures::select::select3(&mut radio, &mut alarm, &mut openthread).await;
+        let result = embassy_futures::select::select4(
+            &mut radio,
+            &mut alarm_micro,
+            &mut alarm,
+            &mut openthread,
+        )
+        .await;
 
         match result {
-            Either3::First(r) | Either3::Second(r) | Either3::Third(r) => r,
+            Either4::First(r) | Either4::Second(r) | Either4::Third(r) | Either4::Fourth(r) => r,
         }
     }
 
@@ -605,18 +611,34 @@ impl<'a> OpenThread<'a> {
 
     /// An async loop that waits until the latest alarm (if any) expires and then notifies the OpenThread C library
     /// Based on `embassy-time` for simplicity and for achieving platform-neutrality.
-    async fn run_alarm(&self) -> ! {
-        let alarm = || poll_fn(move |cx| self.activate().state().ot.alarm.poll_wait(cx));
+    async fn run_alarm(&self, micro: bool) -> ! {
+        let alarm_str = if micro { "micro" } else { "milli" };
+
+        let alarm = || {
+            poll_fn(move |cx| {
+                let mut ctx = self.activate();
+                let state = ctx.state();
+
+                let alarm = if micro {
+                    &mut state.ot.alarm_micro
+                } else {
+                    &mut state.ot.alarm
+                };
+
+                alarm.poll_wait(cx)
+            })
+        };
 
         loop {
-            trace!("Waiting for trigger alarm request");
+            trace!("Waiting for trigger {} alarm request", alarm_str);
 
             let Some(mut when) = alarm().await else {
                 continue;
             };
 
             trace!(
-                "Got trigger alarm request: {}, waiting for it to trigger",
+                "Got trigger {} alarm request: {}, waiting for it to trigger",
+                alarm_str,
                 when
             );
 
@@ -627,21 +649,29 @@ impl<'a> OpenThread<'a> {
                 match result {
                     Either::First(new_when) => {
                         if let Some(new_when) = new_when {
-                            trace!("Alarm interrupted by a new alarm: {}", new_when);
+                            trace!(
+                                "Alarm {} interrupted by a new alarm: {}",
+                                alarm_str,
+                                new_when
+                            );
                             when = new_when;
                         } else {
-                            trace!("Alarm cancelled");
+                            trace!("Alarm {} cancelled", alarm_str);
                             break;
                         }
                     }
                     Either::Second(_) => {
-                        trace!("Alarm triggered, notifying OT main loop");
+                        trace!("Alarm {} triggered, notifying OT main loop", alarm_str);
 
                         {
                             let mut ot = self.activate();
                             let state = ot.state();
 
-                            unsafe { otPlatAlarmMilliFired(state.ot.instance) };
+                            if micro {
+                                unsafe { otPlatAlarmMicroFired(state.ot.instance) };
+                            } else {
+                                unsafe { otPlatAlarmMilliFired(state.ot.instance) };
+                            }
                         }
 
                         break;
@@ -1037,6 +1067,7 @@ impl OtResources {
             rx_ipv6_enabled: false,
             rx_ipv6: Signal::new(),
             alarm: Signal::new(),
+            alarm_micro: Signal::new(),
             tasklets: Signal::new(),
             changes: Signal::new(),
             radio: Signal::new(),
@@ -1369,18 +1400,30 @@ impl<'a> OtContext<'a> {
         self.state().ot.changes.signal(());
     }
 
-    fn plat_now(&mut self) -> u32 {
-        trace!("Plat now callback");
-        Instant::now().as_millis() as u32
+    fn plat_time_get(&mut self) -> u64 {
+        trace!("Plat time get callback");
+
+        Instant::now().as_micros()
+    }
+
+    fn plat_alarm_get_now(&mut self) -> u32 {
+        trace!("Plat alarm get now callback");
+
+        // We are returning a truncated timer value here, as the OpenThread C API expects a 32-bit value
+        // We are accounting for the potential timer wrap-around later on in `plat_alarm_set`
+        Instant::now().as_millis() as _
     }
 
     fn plat_alarm_set(&mut self, at0_ms: u32, adt_ms: u32) -> Result<(), OtError> {
         trace!("Plat alarm set callback: {}, {}", at0_ms, adt_ms);
 
-        let instant = embassy_time::Instant::from_millis(at0_ms as _)
-            + embassy_time::Duration::from_millis(adt_ms as _);
+        let state = self.state();
 
-        self.state().ot.alarm.signal(Some(instant));
+        let now = Instant::now();
+        let instant =
+            now + Duration::from_millis(Self::delay_from_now(now.as_millis(), at0_ms, adt_ms));
+
+        state.ot.alarm.signal(Some(instant));
 
         Ok(())
     }
@@ -1390,6 +1433,39 @@ impl<'a> OtContext<'a> {
         self.state().ot.alarm.signal(None);
 
         Ok(())
+    }
+
+    fn plat_alarm_get_now_micro(&mut self) -> u32 {
+        trace!("Plat alarm get now micro callback");
+
+        // We are returning a truncated timer value here, as the OpenThread C API expects a 32-bit value
+        // We are accounting for the potential timer wrap-around later on in `plat_alarm_set_micro`
+        Instant::now().as_micros() as _
+    }
+
+    fn plat_alarm_set_micro(&mut self, at0_us: u32, adt_us: u32) -> Result<(), OtError> {
+        trace!("Plat alarm micro set callback: {}, {}", at0_us, adt_us);
+
+        let state = self.state();
+
+        let now = Instant::now();
+        let instant =
+            now + Duration::from_micros(Self::delay_from_now(now.as_micros(), at0_us, adt_us));
+
+        state.ot.alarm_micro.signal(Some(instant));
+
+        Ok(())
+    }
+
+    fn plat_alarm_clear_micro(&mut self) -> Result<(), OtError> {
+        trace!("Plat alarm micro clear callback");
+        self.state().ot.alarm_micro.signal(None);
+
+        Ok(())
+    }
+
+    fn plat_radio_get_now(&mut self) -> u64 {
+        Instant::now().as_micros()
     }
 
     fn plat_radio_ieee_eui64(&mut self, mac: &mut [u8; 8]) {
@@ -1655,6 +1731,39 @@ impl<'a> OtContext<'a> {
 
         unwrap!(self.state().ot.settings.clear());
     }
+
+    /// Given:
+    /// - `now`: the current time, truncated to 32 bits;
+    /// - `at`: the reference time for the alarm, truncated to 32 bits (usually but not necessarily taken at a moment earlier than `now`);
+    /// - `delay`: the delay as measured from the reference time `at` after which the alarm should trigger...
+    ///
+    /// ... compute the equivalent delay from the current time (`now`)
+    ///
+    /// The math in theory is as simple as `now as i64 - at as i64 + delay as i64`, however that calc does not take into
+    /// account the fact that the `now` and `at` values are truncated to 32 bits, which means that `now` can wrap around
+    ///
+    /// The wrapping around of `now` is detected using heuristics by checking if `at + delay` is more than half of `u32::MAX` away from `now`.
+    ///
+    /// This all is necessary, because the OpenThread alarm API operates in terms of `u32` values, and wrapping around is very real,
+    /// especially for the microseconds-based alarms.
+    ///
+    /// Also see the equivalent math in ESP-IDF:
+    /// https://github.com/espressif/esp-idf/blob/4e036983a751e4667ade94c8f6f6bf1e7f78eff0/components/openthread/src/port/esp_openthread_alarm.c#L37
+    #[inline(always)]
+    fn delay_from_now(now: u64, at: u32, delay: u32) -> u64 {
+        const MAX_DIFF: u32 = u32::MAX / 2;
+
+        let now = now as u32; // Truncate
+
+        let target = at.wrapping_add(delay);
+
+        if now.wrapping_sub(target) > MAX_DIFF {
+            target.wrapping_sub(now) as u64
+        } else {
+            // Expired
+            0
+        }
+    }
 }
 
 impl Drop for OtContext<'_> {
@@ -1692,9 +1801,12 @@ struct OtState<'a> {
     rx_ipv6_enabled: bool,
     /// An Ipv6 packet egressed from OpenThread and waiting to be ingressed somewhere else
     rx_ipv6: Signal<*mut otMessage>,
-    /// `Some` in case there is a pending OpenThread awarm which is not due yet
+    /// `Some` in case there is a pending OpenThread alarm which is not due yet
     /// `None` if the existing alarm needs to be cancelled
     alarm: Signal<Option<embassy_time::Instant>>,
+    /// `Some` in case there is a pending OpenThread alarm in microseconds which is not due yet
+    /// `None` if the existing alarm in microseconds needs to be cancelled
+    alarm_micro: Signal<Option<embassy_time::Instant>>,
     /// The tasklets need to be run. Set by the OpenThread C library via the `otPlatTaskletsSignalPending` callback
     tasklets: Signal<()>,
     /// The OpenThread state has changed. Set by the OpenThread C library via the `otPlatStateChanged` callback
@@ -1834,5 +1946,61 @@ fn to_ot_addr(addr: &SocketAddrV6) -> crate::sys::otSockAddr {
             },
         },
         mPort: addr.port(),
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::OtContext;
+
+    #[test]
+    fn test_delay_from_now() {
+        //
+        // Not expired yet
+        //
+
+        assert_eq!(OtContext::delay_from_now(2, 1, 2), 1);
+        assert_eq!(OtContext::delay_from_now(1, 1, 2), 2);
+        assert_eq!(OtContext::delay_from_now(0, 1, 2), 3);
+        // Not expired yet, wrap around of the `at + delay` value
+        assert_eq!(OtContext::delay_from_now(0xffff_ffff, 0xffff_fffe, 2), 1);
+        assert_eq!(OtContext::delay_from_now(0xffff_fffe, 0xffff_fffe, 3), 3);
+        assert_eq!(OtContext::delay_from_now(0xffff_fffd, 0xffff_fffe, 3), 4);
+        assert_eq!(OtContext::delay_from_now(0x0, 0xffff_fffe, 3), 1);
+        assert_eq!(
+            OtContext::delay_from_now(0x8000_0000, 0xffff_fff0, 1),
+            0x7fff_fff1
+        );
+        // Not expired yet, wrap around of the `now` value
+        assert_eq!(OtContext::delay_from_now(0x8000_0001, 0x0, 1), 0x8000_0000);
+        assert_eq!(OtContext::delay_from_now(0x8000_0002, 0x0, 1), 0x7fff_ffff);
+        assert_eq!(
+            OtContext::delay_from_now(0x7fff_ffff, 0xffff_ffff, 0),
+            0x8000_0000
+        );
+        assert_eq!(
+            OtContext::delay_from_now(0x8000_0001, 0xffff_ffff, 0),
+            0x7fff_fffe
+        );
+
+        //
+        // Right on time
+        //
+
+        assert_eq!(OtContext::delay_from_now(0, 0, 0), 0);
+        assert_eq!(OtContext::delay_from_now(2, 1, 1), 0);
+        assert_eq!(OtContext::delay_from_now(0xffff_ffff, 0xffff_fffe, 1), 0);
+
+        //
+        // Expired
+        //
+
+        assert_eq!(OtContext::delay_from_now(3, 1, 1), 0);
+        assert_eq!(OtContext::delay_from_now(0x8000_0000, 0x0, 1), 0);
+        // Expired, wrap around of the `at + delay` value
+        assert_eq!(OtContext::delay_from_now(0x0, 0xffff_fffe, 2), 0);
+        assert_eq!(OtContext::delay_from_now(0x5, 0xffff_fffe, 3), 0);
+        assert_eq!(OtContext::delay_from_now(0x8000_0000, 0xffff_fffe, 3), 0);
+        assert_eq!(OtContext::delay_from_now(0x6000_0000, 0xffff_fffe, 3), 0);
     }
 }

@@ -5,6 +5,7 @@
 #include "openthread/nat64.h"
 #include "openthread/netdata.h"
 
+#include "openthread/platform/alarm-micro.h"
 #include "openthread/platform/alarm-milli.h"
 #include "openthread/platform/radio.h"
 #include "openthread/platform/misc.h"

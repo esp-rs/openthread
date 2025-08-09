@@ -376,12 +376,11 @@ where
 {
     /// The waiting timeout for a TX ACK to be received.
     /// See https://github.com/openthread/openthread/blob/9398342b49a03cd140fae910b81cddf9084293a0/src/core/mac/sub_mac.hpp#L528
-    /// Currently much longer than what specified there
-    const TX_ACK_WAIT_US: u64 = 500 * 1000; //16 * 1000 * 10;
+    const TX_ACK_WAIT_US: u64 = 16 * 1000;
     /// The waiting timeout for an RX ACK to be sent.
     // TODO: Should be 190us, but we need to be more precise
     // and not use `embassy-time` with the NRF...
-    const RX_ACK_SEND_US: u64 = 10;
+    const RX_ACK_SEND_US: u64 = 40; // 10;
 
     /// Create a new enhanced MAC radio.
     ///
@@ -1223,8 +1222,13 @@ mod mac {
             self.seq = psdu[Self::SEQ_OFFSET];
 
             let _frame_type = FrameType::get(self.fcf)?;
-            let _frame_version = FrameVersion::get(self.fcf)?;
+            let frame_version = FrameVersion::get(self.fcf);
             let dst_addr_mode = FrameAddrMode::get_dst(self.fcf)?;
+
+            if frame_version.is_none() {
+                warn!("MacHeader, unsupported frame version: {}", self.fcf);
+                return None;
+            }
 
             match dst_addr_mode {
                 FrameAddrMode::NotPresent => {

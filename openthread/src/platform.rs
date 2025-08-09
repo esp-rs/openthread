@@ -44,8 +44,13 @@ extern "C" fn otTaskletsSignalPending(instance: *mut otInstance) {
 }
 
 #[no_mangle]
-extern "C" fn otPlatAlarmMilliGetNow(instance: *const otInstance) -> u32 {
-    OtContext::callback(instance).plat_now()
+extern "C" fn otPlatTimeGet() -> u64 {
+    OtContext::callback(core::ptr::null_mut()).plat_time_get()
+}
+
+#[no_mangle]
+extern "C" fn otPlatAlarmMilliGetNow() -> u32 {
+    OtContext::callback(core::ptr::null_mut()).plat_alarm_get_now()
 }
 
 #[no_mangle]
@@ -60,6 +65,30 @@ extern "C" fn otPlatAlarmMilliStop(instance: *const otInstance) -> otError {
     OtContext::callback(instance)
         .plat_alarm_clear()
         .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroGetNow() -> u32 {
+    OtContext::callback(core::ptr::null_mut()).plat_alarm_get_now_micro()
+}
+
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroStartAt(instance: *mut otInstance, at0: u32, adt: u32) -> otError {
+    OtContext::callback(instance)
+        .plat_alarm_set_micro(at0, adt)
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroStop(instance: *const otInstance) -> otError {
+    OtContext::callback(instance)
+        .plat_alarm_clear_micro()
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetNow(instance: *const otInstance) -> u64 {
+    OtContext::callback(instance).plat_radio_get_now()
 }
 
 #[no_mangle]

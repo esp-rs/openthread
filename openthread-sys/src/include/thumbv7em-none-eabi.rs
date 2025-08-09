@@ -141,30 +141,28 @@ pub const __OBSOLETE_MATH_DEFAULT: u32 = 1;
 pub const __OBSOLETE_MATH: u32 = 1;
 pub const __NEWLIB_H__: u32 = 1;
 pub const _NEWLIB_VERSION_H__: u32 = 1;
-pub const _NEWLIB_VERSION: &[u8; 6] = b"4.4.0\0";
-pub const __NEWLIB__: u32 = 4;
-pub const __NEWLIB_MINOR__: u32 = 4;
+pub const _NEWLIB_VERSION: &[u8; 6] = b"3.3.0\0";
+pub const __NEWLIB__: u32 = 3;
+pub const __NEWLIB_MINOR__: u32 = 3;
 pub const __NEWLIB_PATCHLEVEL__: u32 = 0;
-pub const _ATEXIT_DYNAMIC_ALLOC: u32 = 1;
-pub const _FSEEK_OPTIMIZATION: u32 = 1;
-pub const _FVWRITE_IN_STREAMIO: u32 = 1;
-pub const _HAVE_CC_INHIBIT_LOOP_TO_LIBCALL: u32 = 1;
-pub const _HAVE_INITFINI_ARRAY: u32 = 1;
-pub const _HAVE_LONG_DOUBLE: u32 = 1;
-pub const _LDBL_EQ_DBL: u32 = 1;
-pub const _MB_CAPABLE: u32 = 1;
-pub const _MB_LEN_MAX: u32 = 8;
-pub const _REENT_CHECK_VERIFY: u32 = 1;
-pub const _RETARGETABLE_LOCKING: u32 = 1;
-pub const _UNBUF_STREAM_OPT: u32 = 1;
 pub const _WANT_IO_C99_FORMATS: u32 = 1;
 pub const _WANT_IO_LONG_LONG: u32 = 1;
 pub const _WANT_REGISTER_FINI: u32 = 1;
-pub const _WANT_USE_GDTOA: u32 = 1;
+pub const _REENT_CHECK_VERIFY: u32 = 1;
+pub const _MB_LEN_MAX: u32 = 1;
+pub const HAVE_INITFINI_ARRAY: u32 = 1;
+pub const _ATEXIT_DYNAMIC_ALLOC: u32 = 1;
+pub const _HAVE_LONG_DOUBLE: u32 = 1;
+pub const _HAVE_CC_INHIBIT_LOOP_TO_LIBCALL: u32 = 1;
+pub const _LDBL_EQ_DBL: u32 = 1;
+pub const _FVWRITE_IN_STREAMIO: u32 = 1;
+pub const _FSEEK_OPTIMIZATION: u32 = 1;
 pub const _WIDE_ORIENT: u32 = 1;
+pub const _UNBUF_STREAM_OPT: u32 = 1;
+pub const _RETARGETABLE_LOCKING: u32 = 1;
 pub const _DEFAULT_SOURCE: u32 = 1;
 pub const _POSIX_SOURCE: u32 = 1;
-pub const _POSIX_C_SOURCE: u32 = 202405;
+pub const _POSIX_C_SOURCE: u32 = 200809;
 pub const _ATFILE_SOURCE: u32 = 1;
 pub const __ATFILE_VISIBLE: u32 = 1;
 pub const __BSD_VISIBLE: u32 = 1;
@@ -172,7 +170,7 @@ pub const __GNU_VISIBLE: u32 = 0;
 pub const __ISO_C_VISIBLE: u32 = 2011;
 pub const __LARGEFILE_VISIBLE: u32 = 0;
 pub const __MISC_VISIBLE: u32 = 1;
-pub const __POSIX_VISIBLE: u32 = 202405;
+pub const __POSIX_VISIBLE: u32 = 200809;
 pub const __SVID_VISIBLE: u32 = 1;
 pub const __XSI_VISIBLE: u32 = 0;
 pub const __SSP_FORTIFY_LEVEL: u32 = 0;
@@ -187,8 +185,22 @@ pub const ___int_least8_t_defined: u32 = 1;
 pub const ___int_least16_t_defined: u32 = 1;
 pub const ___int_least32_t_defined: u32 = 1;
 pub const ___int_least64_t_defined: u32 = 1;
+pub const _NULL: u32 = 0;
+pub const _ATEXIT_SIZE: u32 = 32;
+pub const _RAND48_SEED_0: u32 = 13070;
+pub const _RAND48_SEED_1: u32 = 43981;
+pub const _RAND48_SEED_2: u32 = 4660;
+pub const _RAND48_MULT_0: u32 = 58989;
+pub const _RAND48_MULT_1: u32 = 57068;
+pub const _RAND48_MULT_2: u32 = 5;
+pub const _RAND48_ADD: u32 = 11;
+pub const _REENT_EMERGENCY_SIZE: u32 = 25;
+pub const _REENT_ASCTIME_SIZE: u32 = 26;
+pub const _REENT_SIGNAL_SIZE: u32 = 24;
+pub const _N_LISTS: u32 = 30;
 pub const __GNUCLIKE_ASM: u32 = 3;
 pub const __GNUCLIKE___TYPEOF: u32 = 1;
+pub const __GNUCLIKE___OFFSETOF: u32 = 1;
 pub const __GNUCLIKE___SECTION: u32 = 1;
 pub const __GNUCLIKE_CTOR_SECTION_HANDLING: u32 = 1;
 pub const __GNUCLIKE_BUILTIN_CONSTANT_P: u32 = 1;
@@ -205,18 +217,6 @@ pub const __CC_SUPPORTS___FUNC__: u32 = 1;
 pub const __CC_SUPPORTS_WARNING: u32 = 1;
 pub const __CC_SUPPORTS_VARADIC_XXX: u32 = 1;
 pub const __CC_SUPPORTS_DYNAMIC_ARRAY_INIT: u32 = 1;
-pub const _NULL: u32 = 0;
-pub const _ATEXIT_SIZE: u32 = 32;
-pub const _RAND48_SEED_0: u32 = 13070;
-pub const _RAND48_SEED_1: u32 = 43981;
-pub const _RAND48_SEED_2: u32 = 4660;
-pub const _RAND48_MULT_0: u32 = 58989;
-pub const _RAND48_MULT_1: u32 = 57068;
-pub const _RAND48_MULT_2: u32 = 5;
-pub const _RAND48_ADD: u32 = 11;
-pub const _REENT_EMERGENCY_SIZE: u32 = 25;
-pub const _REENT_ASCTIME_SIZE: u32 = 26;
-pub const _REENT_SIGNAL_SIZE: u32 = 24;
 pub const EXIT_FAILURE: u32 = 1;
 pub const EXIT_SUCCESS: u32 = 0;
 pub const RAND_MAX: u32 = 2147483647;
@@ -371,6 +371,7 @@ pub struct max_align_t {
     pub __clang_max_align_nonce1: ::core::ffi::c_longlong,
     pub __clang_max_align_nonce2: f64,
 }
+pub type wint_t = ::core::ffi::c_int;
 pub type __int8_t = ::core::ffi::c_schar;
 pub type __uint8_t = ::core::ffi::c_uchar;
 pub type __int16_t = ::core::ffi::c_short;
@@ -391,7 +392,6 @@ pub type __intmax_t = ::core::ffi::c_longlong;
 pub type __uintmax_t = ::core::ffi::c_ulonglong;
 pub type __intptr_t = ::core::ffi::c_int;
 pub type __uintptr_t = ::core::ffi::c_uint;
-pub type wint_t = ::core::ffi::c_int;
 pub type __blkcnt_t = ::core::ffi::c_long;
 pub type __blksize_t = ::core::ffi::c_long;
 pub type __fsblkcnt_t = __uint64_t;
@@ -446,7 +446,6 @@ pub type _iconv_t = *mut ::core::ffi::c_void;
 pub type __clock_t = ::core::ffi::c_ulong;
 pub type __time_t = __int_least64_t;
 pub type __clockid_t = ::core::ffi::c_ulong;
-pub type __daddr_t = ::core::ffi::c_long;
 pub type __timer_t = ::core::ffi::c_ulong;
 pub type __sa_family_t = __uint8_t;
 pub type __socklen_t = __uint32_t;
@@ -643,9 +642,6 @@ impl Default for __sFILE {
     }
 }
 pub type __FILE = __sFILE;
-unsafe extern "C" {
-    pub static mut __sf: [__FILE; 3usize];
-}
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct _glue {
@@ -661,9 +657,6 @@ impl Default for _glue {
             s.assume_init()
         }
     }
-}
-unsafe extern "C" {
-    pub static mut __sglue: _glue;
 }
 #[repr(C)]
 #[derive(Default, Copy, Clone)]
@@ -681,7 +674,9 @@ pub struct _reent {
     pub _stderr: *mut __FILE,
     pub _inc: ::core::ffi::c_int,
     pub _emergency: [::core::ffi::c_char; 25usize],
+    pub _unspecified_locale_info: ::core::ffi::c_int,
     pub _locale: *mut __locale_t,
+    pub __sdidinit: ::core::ffi::c_int,
     pub __cleanup: ::core::option::Option<unsafe extern "C" fn(arg1: *mut _reent)>,
     pub _result: *mut _Bigint,
     pub _result_k: ::core::ffi::c_int,
@@ -690,16 +685,22 @@ pub struct _reent {
     pub _cvtlen: ::core::ffi::c_int,
     pub _cvtbuf: *mut ::core::ffi::c_char,
     pub _new: _reent__bindgen_ty_1,
+    pub _atexit: *mut _atexit,
+    pub _atexit0: _atexit,
     pub _sig_func: *mut ::core::option::Option<unsafe extern "C" fn(arg1: ::core::ffi::c_int)>,
+    pub __sglue: _glue,
+    pub __sf: [__FILE; 3usize],
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub union _reent__bindgen_ty_1 {
     pub _reent: _reent__bindgen_ty_1__bindgen_ty_1,
+    pub _unused: _reent__bindgen_ty_1__bindgen_ty_2,
 }
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct _reent__bindgen_ty_1__bindgen_ty_1 {
+    pub _unused_rand: ::core::ffi::c_uint,
     pub _strtok_last: *mut ::core::ffi::c_char,
     pub _asctime_buf: [::core::ffi::c_char; 26usize],
     pub _localtime_buf: __tm,
@@ -718,9 +719,23 @@ pub struct _reent__bindgen_ty_1__bindgen_ty_1 {
     pub _wcrtomb_state: _mbstate_t,
     pub _wcsrtombs_state: _mbstate_t,
     pub _h_errno: ::core::ffi::c_int,
-    pub _getlocalename_l_buf: [::core::ffi::c_char; 32usize],
 }
 impl Default for _reent__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct _reent__bindgen_ty_1__bindgen_ty_2 {
+    pub _nextf: [*mut ::core::ffi::c_uchar; 30usize],
+    pub _nmalloc: [::core::ffi::c_uint; 30usize],
+}
+impl Default for _reent__bindgen_ty_1__bindgen_ty_2 {
     fn default() -> Self {
         let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
         unsafe {
@@ -751,28 +766,10 @@ unsafe extern "C" {
     pub static mut _impure_ptr: *mut _reent;
 }
 unsafe extern "C" {
-    pub static mut _impure_data: _reent;
-}
-unsafe extern "C" {
-    pub static mut __atexit: *mut _atexit;
-}
-unsafe extern "C" {
-    pub static mut __atexit0: _atexit;
-}
-unsafe extern "C" {
-    pub static mut __stdio_exit_handler: ::core::option::Option<unsafe extern "C" fn()>;
+    pub static _global_impure_ptr: *mut _reent;
 }
 unsafe extern "C" {
     pub fn _reclaim_reent(arg1: *mut _reent);
-}
-unsafe extern "C" {
-    pub fn _fwalk_sglue(
-        arg1: *mut _reent,
-        arg2: ::core::option::Option<
-            unsafe extern "C" fn(arg1: *mut _reent, arg2: *mut __FILE) -> ::core::ffi::c_int,
-        >,
-        arg3: *mut _glue,
-    ) -> ::core::ffi::c_int;
 }
 #[repr(C)]
 #[derive(Default, Copy, Clone)]
@@ -1378,7 +1375,10 @@ unsafe extern "C" {
 }
 unsafe extern "C" {
     #[must_use]
-    pub fn aligned_alloc(arg1: usize, arg2: usize) -> *mut ::core::ffi::c_void;
+    pub fn aligned_alloc(
+        arg1: ::core::ffi::c_uint,
+        arg2: ::core::ffi::c_uint,
+    ) -> *mut ::core::ffi::c_void;
 }
 unsafe extern "C" {
     pub fn at_quick_exit(
@@ -11946,6 +11946,38 @@ unsafe extern "C" {
         aInstance: *mut otInstance,
         aPrefix: *const otIp6Prefix,
     ) -> bool;
+}
+unsafe extern "C" {
+    /// Set the alarm to fire at @p aDt microseconds after @p aT0.
+    ///
+    /// For @p aT0, the platform MUST support all values in [0, 2^32-1].
+    /// For @p aDt, the platform MUST support all values in [0, 2^31-1].
+    ///
+    /// @param[in]  aInstance  The OpenThread instance structure.
+    /// @param[in]  aT0        The reference time.
+    /// @param[in]  aDt        The time delay in microseconds from @p aT0.
+    pub fn otPlatAlarmMicroStartAt(aInstance: *mut otInstance, aT0: u32, aDt: u32);
+}
+unsafe extern "C" {
+    /// Stop the alarm.
+    ///
+    /// @param[in] aInstance  The OpenThread instance structure.
+    pub fn otPlatAlarmMicroStop(aInstance: *mut otInstance);
+}
+unsafe extern "C" {
+    /// Get the current time.
+    ///
+    /// The current time MUST represent a free-running timer. When maintaining current time, the time value MUST utilize the
+    /// entire range [0, 2^32-1] and MUST NOT wrap before 2^32.
+    ///
+    /// @returns  The current time in microseconds.
+    pub fn otPlatAlarmMicroGetNow() -> u32;
+}
+unsafe extern "C" {
+    /// Signal that the alarm has fired.
+    ///
+    /// @param[in] aInstance  The OpenThread instance structure.
+    pub fn otPlatAlarmMicroFired(aInstance: *mut otInstance);
 }
 unsafe extern "C" {
     /// Set the alarm to fire at @p aDt milliseconds after @p aT0.
