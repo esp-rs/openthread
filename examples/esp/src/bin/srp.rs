@@ -20,7 +20,7 @@ use embassy_executor::Spawner;
 
 use esp_hal::rng::Rng;
 use esp_hal::timer::systimer::SystemTimer;
-use esp_ieee802154::Ieee802154;
+use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
 
 use openthread::esp::EspRadio;
@@ -72,7 +72,8 @@ async fn main(spawner: Spawner) {
 
     esp_hal_embassy::init(SystemTimer::new(peripherals.SYSTIMER).alarm0);
 
-    let rng = mk_static!(Rng, Rng::new(peripherals.RNG));
+    // TODO: Use TRNG?
+    let rng = mk_static!(Rng, Rng::new());
 
     let mut ieee_eui64 = [0; 8];
     rng.fill_bytes(&mut ieee_eui64);

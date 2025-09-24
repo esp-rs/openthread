@@ -3,14 +3,14 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
-use esp_ieee802154::{Config as EspConfig, Error};
+use esp_radio::ieee802154::{Config as EspConfig, Error};
 
 use crate::fmt::Bytes;
 use crate::{
     Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
 };
 
-pub use esp_ieee802154::Ieee802154;
+pub use esp_radio::ieee802154::Ieee802154;
 
 impl RadioError for Error {
     fn kind(&self) -> RadioErrorKind {
@@ -62,10 +62,10 @@ impl<'a> EspRadio<'a> {
                 Cca::CarrierOrEd { ed_threshold } => ed_threshold as _,
             },
             cca_mode: match config.cca {
-                Cca::Carrier => esp_ieee802154::CcaMode::Carrier,
-                Cca::Ed { .. } => esp_ieee802154::CcaMode::Ed,
-                Cca::CarrierAndEd { .. } => esp_ieee802154::CcaMode::CarrierAndEd,
-                Cca::CarrierOrEd { .. } => esp_ieee802154::CcaMode::CarrierOrEd,
+                Cca::Carrier => esp_radio::ieee802154::CcaMode::Carrier,
+                Cca::Ed { .. } => esp_radio::ieee802154::CcaMode::Ed,
+                Cca::CarrierAndEd { .. } => esp_radio::ieee802154::CcaMode::CarrierAndEd,
+                Cca::CarrierOrEd { .. } => esp_radio::ieee802154::CcaMode::CarrierOrEd,
             },
             pan_id: config.pan_id,
             short_addr: config.short_addr,

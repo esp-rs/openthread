@@ -7,7 +7,7 @@ resolver = "2"
 categories = ["embedded", "hardware-support"]
 keywords = ["thread", "openthread", "embedded", "embassy"]
 description = "openthread examples for Espressif chips"
-repository = "https://github.com/ivmarkov/esp-openthread"
+repository = "https://github.com/esp-rs/openthread"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
 rust-version = "1.84"
@@ -25,23 +25,32 @@ debug = 2
 debug-assertions = false
 overflow-checks = false
 
+[patch.crates-io]
+esp-hal = { git = "https://github.com/esp-rs/esp-hal" }
+esp-hal-embassy = { git = "https://github.com/esp-rs/esp-hal" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal" }
+
 [features]
 default = ["esp32c6"]
-esp32c6 = [ "esp-hal-embassy/esp32c6", "esp-ieee802154/esp32c6", "esp-backtrace/esp32c6", "esp-println/esp32c6", "esp-bootloader-esp-idf/esp32c6"]
-esp32h2 = [ "esp-hal-embassy/esp32h2", "esp-ieee802154/esp32h2", "esp-backtrace/esp32h2", "esp-println/esp32h2", "esp-bootloader-esp-idf/esp32h2"]
+esp32c6 = [ "esp-hal-embassy/esp32c6", "esp-radio/esp32c6", "esp-backtrace/esp32c6", "esp-println/esp32c6", "esp-bootloader-esp-idf/esp32c6"]
+esp32h2 = [ "esp-hal-embassy/esp32h2", "esp-radio/esp32h2", "esp-backtrace/esp32h2", "esp-println/esp32h2", "esp-bootloader-esp-idf/esp32h2"]
 
 [dependencies]
-embassy-executor = { version = "0.7", features = ["task-arena-size-32768", "log"] }
+embassy-executor = "0.9"
 embassy-sync = "0.7"
 embassy-futures = "0.1"
-embassy-time = "0.4"
-embassy-net = { version = "0.6", features = ["proto-ipv6", "medium-ip", "udp", "log"] }
-esp-hal = { version = "=1.0.0-rc.0", features = ["log-04","unstable"] }
+embassy-time = "0.5"
+embassy-net = { version = "0.7", features = ["proto-ipv6", "medium-ip", "udp", "log"] }
+esp-hal = { version = "=1.0.0-rc.0", features = ["log-04", "unstable", "exception-handler"] }
 esp-hal-embassy = "0.9"
 esp-alloc = { version = "0.8", optional = true }
-esp-backtrace = { version = "0.17", features = ["panic-handler", "exception-handler", "println"] }
+esp-backtrace = { version = "0.17", features = ["panic-handler", "println"] }
 esp-println = { version = "0.15", features = ["log-04"] }
-esp-ieee802154 = { version= "0.8", features = ["log-04"] }
+esp-radio = { version = "0.15", features = ["unstable", "ieee802154"] }
 esp-bootloader-esp-idf = { version = "0.2", features = ["log-04"] }
 log = "0.4"
 heapless = "0.8"
@@ -49,7 +58,7 @@ critical-section = "1.2"
 rand_core = "0.9"
 static_cell = "2.1"
 
-openthread = { path = "../../openthread", features = ["udp", "srp", "embassy-net-driver-channel", "esp-ieee802154", "isupper", "log"] }
+openthread = { path = "../../openthread", features = ["udp", "srp", "embassy-net-driver-channel", "esp-radio", "isupper", "log"] }
 tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "strtoul"] }
 
 [[bin]]

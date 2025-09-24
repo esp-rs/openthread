@@ -18,7 +18,7 @@ use embassy_net::{Config, ConfigV6, Ipv6Cidr, Runner, StackResources, StaticConf
 
 use esp_hal::rng::Rng;
 use esp_hal::timer::systimer::SystemTimer;
-use esp_ieee802154::Ieee802154;
+use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
 
 use heapless::Vec;
@@ -69,7 +69,8 @@ async fn main(spawner: Spawner) {
 
     esp_hal_embassy::init(SystemTimer::new(peripherals.SYSTIMER).alarm0);
 
-    let rng = mk_static!(Rng, Rng::new(peripherals.RNG));
+    // TODO: Use TRNG?
+    let rng = mk_static!(Rng, Rng::new());
 
     let enet_seed = rng.next_u64();
 
