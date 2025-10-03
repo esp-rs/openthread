@@ -22,7 +22,6 @@ use embassy_net::{Config, ConfigV6, Ipv6Cidr, Runner, StackResources, StaticConf
 use embassy_nrf::interrupt;
 use embassy_nrf::interrupt::{InterruptExt, Priority};
 use embassy_nrf::mode::Blocking;
-use embassy_nrf::peripherals::{RADIO, RNG};
 use embassy_nrf::rng::Rng;
 use embassy_nrf::{bind_interrupts, peripherals, radio};
 
@@ -89,7 +88,7 @@ async fn main(spawner: Spawner) {
 
     info!("Starting...");
 
-    let rng = mk_static!(Rng<'static, RNG, Blocking>, Rng::new_blocking(p.RNG));
+    let rng = mk_static!(Rng<'static, Blocking>, Rng::new_blocking(p.RNG));
 
     let enet_seed = rng.next_u64();
 
@@ -223,7 +222,7 @@ async fn run_enet_driver(
 }
 
 #[embassy_executor::task]
-async fn run_radio(mut runner: PhyRadioRunner<'static>, radio: NrfRadio<'static, RADIO>) -> ! {
+async fn run_radio(mut runner: PhyRadioRunner<'static>, radio: NrfRadio<'static>) -> ! {
     runner
         .run(
             radio,

@@ -18,22 +18,16 @@ impl RadioError for Error {
 }
 
 /// The `embassy-nrf` ESP IEEE 802.15.4 radio.
-pub struct NrfRadio<'a, T>
-where
-    T: Ieee802154Peripheral,
-{
-    driver: Ieee802154<'a, T>,
+pub struct NrfRadio<'a> {
+    driver: Ieee802154<'a>,
     config: Config,
 }
 
-impl<'a, T> NrfRadio<'a, T>
-where
-    T: Ieee802154Peripheral,
-{
+impl<'a> NrfRadio<'a> {
     const DEFAULT_CONFIG: Config = Config::new();
 
     /// Create a new `EspRadio` instance.
-    pub fn new(radio: Ieee802154<'a, T>) -> Self {
+    pub fn new(radio: Ieee802154<'a>) -> Self {
         let mut this = Self {
             driver: radio,
             config: Self::DEFAULT_CONFIG,
@@ -58,10 +52,7 @@ where
     }
 }
 
-impl<T> Radio for NrfRadio<'_, T>
-where
-    T: Ieee802154Peripheral,
-{
+impl Radio for NrfRadio<'_> {
     type Error = Error;
 
     fn caps(&mut self) -> Capabilities {
