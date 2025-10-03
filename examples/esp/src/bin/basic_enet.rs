@@ -17,7 +17,7 @@ use embassy_net::udp::{PacketMetadata, UdpMetadata, UdpSocket};
 use embassy_net::{Config, ConfigV6, Ipv6Cidr, Runner, StackResources, StaticConfigV6};
 
 use esp_hal::rng::Rng;
-use esp_hal::timer::systimer::SystemTimer;
+use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
 
@@ -59,7 +59,7 @@ const THREAD_DATASET: &str = if let Some(dataset) = option_env!("THREAD_DATASET"
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
-#[esp_hal_embassy::main]
+#[esp_rtos::main]
 async fn main(spawner: Spawner) {
     esp_println::logger::init_logger_from_env();
 
@@ -67,7 +67,13 @@ async fn main(spawner: Spawner) {
 
     let peripherals = esp_hal::init(esp_hal::Config::default());
 
-    esp_hal_embassy::init(SystemTimer::new(peripherals.SYSTIMER).alarm0);
+    let timg0 = TimerGroup::new(peripherals.TIMG0);
+    esp_rtos::start(
+        timg0.timer0,
+        #[cfg(target_arch = "riscv32")]
+        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT)
+            .software_interrupt0,
+    );
 
     // TODO: Use TRNG?
     let rng = mk_static!(Rng, Rng::new());

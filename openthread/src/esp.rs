@@ -56,7 +56,7 @@ impl<'a> EspRadio<'a> {
             txpower: config.power,
             channel: config.channel,
             cca_threshold: match config.cca {
-                Cca::Carrier => 0,
+                Cca::Carrier => -60,
                 Cca::Ed { ed_threshold } => ed_threshold as _,
                 Cca::CarrierAndEd { ed_threshold } => ed_threshold as _,
                 Cca::CarrierOrEd { ed_threshold } => ed_threshold as _,
@@ -70,6 +70,7 @@ impl<'a> EspRadio<'a> {
             pan_id: config.pan_id,
             short_addr: config.short_addr,
             ext_addr: config.ext_addr,
+            ..Default::default()
         };
 
         self.driver.set_config(esp_config);
