@@ -56,7 +56,7 @@ impl<'a> EspRadio<'a> {
             txpower: config.power,
             channel: config.channel,
             cca_threshold: match config.cca {
-                Cca::Carrier => -60,
+                Cca::Carrier => 0,
                 Cca::Ed { ed_threshold } => ed_threshold as _,
                 Cca::CarrierAndEd { ed_threshold } => ed_threshold as _,
                 Cca::CarrierOrEd { ed_threshold } => ed_threshold as _,
