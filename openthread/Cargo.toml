@@ -14,9 +14,6 @@ rust-version = "1.84"
 [lib]
 harness = false
 
-[patch.crates-io]
-esp-radio = { git = "https://github.com/esp-rs/esp-hal" }
-
 [features]
 default = []
 edge-nal = ["udp", "dep:edge-nal"]
@@ -40,6 +37,6 @@ heapless = "0.8"
 bitflags = "2.5"
 embassy-net-driver-channel = { version = "0.3", optional = true }
 edge-nal = { version = "0.5", optional = true }
-esp-radio = { version = "0.15", features = ["unstable", "ieee802154"], optional = true }
+esp-radio = { version = "0.16", features = ["unstable", "ieee802154"], optional = true }
 embassy-nrf = { version = "0.8", optional = true }
 portable-atomic = "1"
