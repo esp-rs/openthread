@@ -22,7 +22,6 @@ use embassy_executor::Spawner;
 use embassy_nrf::interrupt;
 use embassy_nrf::interrupt::{InterruptExt, Priority};
 use embassy_nrf::mode::Blocking;
-use embassy_nrf::peripherals::{RADIO, RNG};
 use embassy_nrf::rng::Rng;
 use embassy_nrf::{bind_interrupts, peripherals, radio};
 
@@ -48,7 +47,7 @@ macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
         static STATIC_CELL: static_cell::StaticCell<$t> = static_cell::StaticCell::new();
         #[deny(unused_attributes)]
-        let x = STATIC_CELL.uninit().write(($val));
+        let x = STATIC_CELL.uninit().write($val);
         x
     }};
 }
@@ -89,7 +88,7 @@ async fn main(spawner: Spawner) {
 
     info!("Starting...");
 
-    let rng = mk_static!(Rng<'static, RNG, Blocking>, Rng::new_blocking(p.RNG));
+    let rng = mk_static!(Rng<'static, Blocking>, Rng::new_blocking(p.RNG));
 
     let mut ieee_eui64 = [0; 8];
     RngCore::fill_bytes(rng, &mut ieee_eui64);
@@ -208,7 +207,7 @@ async fn run_ot(ot: OpenThread<'static>, radio: ProxyRadio<'static>) -> ! {
 }
 
 #[embassy_executor::task]
-async fn run_radio(mut runner: PhyRadioRunner<'static>, radio: NrfRadio<'static, RADIO>) -> ! {
+async fn run_radio(mut runner: PhyRadioRunner<'static>, radio: NrfRadio<'static>) -> ! {
     runner
         .run(
             radio,

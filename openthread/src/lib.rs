@@ -48,7 +48,7 @@ mod dataset;
 pub mod enal;
 #[cfg(feature = "embassy-net-driver-channel")]
 pub mod enet;
-#[cfg(feature = "esp-ieee802154")]
+#[cfg(feature = "esp-radio")]
 pub mod esp;
 mod nat64;
 mod netdata;
