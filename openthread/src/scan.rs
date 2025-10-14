@@ -136,6 +136,7 @@ impl<'a> OpenThread<'a> {
             let in_progress = unsafe { otLinkIsActiveScanInProgress(state.ot.instance) };
 
             if in_progress {
+                warn!("Another scan in progress");
                 return Err(OtError::new(otError_OT_ERROR_BUSY));
             }
 
@@ -150,34 +151,39 @@ impl<'a> OpenThread<'a> {
                     >(f)
                 });
 
-                // TODO: This is all great but still - the future - with its current design - is simply not `core::mem::forget` safe.
-                // Calling `core::mem::forget` on the future returned by this method would fool rustc that the `F` closure is
-                // no longer in use and it could be dropped, resulting in a potentially dangling pointer in our state struct.
-                //
-                // (
-                // Consider the case where the user passes as F just a `&mut dyn |_| {...}` - and then calls `core::mem::forget`
-                // on the future returned by `scan`. The compiler would assume that the `&mut dyn |_| {...}` reference is no longer in use,
-                // while it actually is still saved - with erased lifetime - in the `scan_callback` field of the `state` struct.
-                // )
-                //
-                // Think how to fix this. Might require a redesign of the `scan` API, where it no longer takes an `F` closure
-                // and/or (unfortunately) needs to use extra owned buffer memory in the "resources" to store the scan results so that
-                // these can be polled and fetched from the `scan` future.
-                let _guard = scopeguard::guard((), |_| {
-                    *scan_callback = None;
-                });
+                ot!(unsafe {
+                    otLinkActiveScan(
+                        state.ot.instance,
+                        channels.bits(),
+                        duration_millis,
+                        Some(Self::plat_c_scan_callback),
+                        state.ot.instance as *mut _ as *mut _,
+                    )
+                })?;
             }
-
-            ot!(unsafe {
-                otLinkActiveScan(
-                    state.ot.instance,
-                    channels.bits(),
-                    duration_millis,
-                    Some(Self::plat_c_scan_callback),
-                    state.ot.instance as *mut _ as *mut _,
-                )
-            })?;
         }
+
+        // TODO: This is all great but still - the future - with its current design - is simply not `core::mem::forget` safe.
+        // Calling `core::mem::forget` on the future returned by this method would fool rustc that the `F` closure is
+        // no longer in use and it could be dropped, resulting in a potentially dangling pointer in our state struct.
+        //
+        // (
+        // Consider the case where the user passes as F just a `&mut dyn |_| {...}` - and then calls `core::mem::forget`
+        // on the future returned by `scan`. The compiler would assume that the `&mut dyn |_| {...}` reference is no longer in use,
+        // while it actually is still saved - with erased lifetime - in the `scan_callback` field of the `state` struct.
+        // )
+        //
+        // Think how to fix this. Might require a redesign of the `scan` API, where it no longer takes an `F` closure
+        // and/or (unfortunately) needs to use extra owned buffer memory in the "resources" to store the scan results so that
+        // these can be polled and fetched from the `scan` future.
+        let _guard = scopeguard::guard((), |_| {
+            let mut ot = self.activate();
+            let state = ot.state();
+
+            let scan_callback = &mut state.ot.scan_callback;
+
+            *scan_callback = None;
+        });
 
         poll_fn(move |cx| self.activate().state().ot.scan_done.poll_wait(cx)).await;
 
@@ -196,12 +202,10 @@ impl<'a> OpenThread<'a> {
         let scan_result = unsafe { scan_result.as_ref() };
         let last = scan_result.is_none();
 
-        {
-            if let Some(f) = state.ot.scan_callback.as_mut() {
-                let scan_result = scan_result.map(|s| s.into());
+        let scan_result = scan_result.map(|s| s.into());
 
-                f(scan_result.as_ref());
-            }
+        if let Some(f) = state.ot.scan_callback.as_mut() {
+            f(scan_result.as_ref());
         }
 
         if last {
