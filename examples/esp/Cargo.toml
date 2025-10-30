@@ -36,13 +36,13 @@ embassy-sync = "0.7"
 embassy-futures = "0.1"
 embassy-time = "0.5"
 embassy-net = { version = "0.7", features = ["proto-ipv6", "medium-ip", "udp", "log"] }
-esp-hal = { version = "=1.0.0-rc.1", features = ["log-04", "unstable", "exception-handler"] }
-esp-rtos = { version = "0.1.0", features = ["esp-radio", "embassy"] }
+esp-hal = { version = "1", features = ["log-04", "unstable", "exception-handler"] }
+esp-rtos = { version = "0.2", features = ["esp-radio", "embassy"] }
 esp-alloc = { version = "0.9", optional = true }
-esp-backtrace = { version = "0.18", features = ["panic-handler", "println"] }
-esp-println = { version = "0.16", features = ["log-04"] }
-esp-radio = { version = "0.16", features = ["unstable", "ieee802154"] }
-esp-bootloader-esp-idf = { version = "0.3", features = ["log-04"] }
+esp-backtrace = { version = "0.18.1", features = ["panic-handler", "println"] }
+esp-println = { version = "0.16.1", features = ["log-04"] }
+esp-radio = { version = "0.17", features = ["unstable", "ieee802154"] }
+esp-bootloader-esp-idf = { version = "0.4", features = ["log-04"] }
 log = "0.4"
 heapless = "0.8"
 critical-section = "1.2"
