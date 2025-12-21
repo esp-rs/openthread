@@ -30,6 +30,10 @@ enum Commands {
         #[arg(short = 'e', long)]
         force_esp_riscv_toolchain: bool,
 
+        /// If specified, builds OpenThread as a Full Thread Device (FTD), otherwise builds as a Minimal Thread Device (MTD)
+        #[arg(long)]
+        full_thread_device: bool,
+
         /// Target triple for which to generate bindings and `.a` libraries
         target: String,
     },
@@ -52,6 +56,7 @@ fn main() -> Result<()> {
     if let Some(Commands::Gen {
         target,
         force_esp_riscv_toolchain,
+        full_thread_device,
     }) = args.command
     {
         let builder = builder::OpenThreadBuilder::new(
@@ -63,6 +68,7 @@ fn main() -> Result<()> {
             None,
             None,
             force_esp_riscv_toolchain,
+            full_thread_device,
         );
 
         let out = TempDir::new("openthread-sys-libs")?;

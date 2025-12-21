@@ -23,6 +23,7 @@ defmt = ["dep:defmt", "heapless/defmt-03", "embassy-time/defmt"]
 force-generate-bindings = ["openthread-sys/force-generate-bindings"]
 force-esp-riscv-toolchain = ["openthread-sys/force-esp-riscv-toolchain"]
 isupper = [] # Provide internal implementation of the `isupper` C fn
+full-thread-device = ["openthread-sys/full-thread-device"]
 
 [dependencies]
 openthread-sys = { path = "../openthread-sys" }

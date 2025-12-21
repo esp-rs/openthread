@@ -1553,6 +1553,13 @@ impl<'a> OtContext<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "full-thread-device")]
+    fn plat_radio_enable_src_match(&mut self, enable: bool) {
+        trace!("Plat radio enable src match callback, enable: {}", enable);
+        // Referencing ESP-IDF implementation, here: https://github.com/espressif/esp-idf/blob/1e87d43f1ae1e582771cc0df2f7dffb60a0186fc/components/openthread/src/port/esp_openthread_radio.c#L361
+        // This should call into set_pending_mode, but this is not currenty exposed by the esp-radio crate
+    }
+
     fn plat_settings_init(&mut self, sensitive_keys: &[u16]) {
         info!(
             "Plat settings init callback, sensitive keys: {:?}",

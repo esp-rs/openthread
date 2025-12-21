@@ -13,6 +13,7 @@ pub struct OpenThreadBuilder {
     clang_path: Option<PathBuf>,
     clang_sysroot_path: Option<PathBuf>,
     clang_target: Option<String>,
+    full_thread_device: bool,
 }
 
 impl OpenThreadBuilder {
@@ -37,6 +38,7 @@ impl OpenThreadBuilder {
         clang_sysroot_path: Option<PathBuf>,
         clang_target: Option<String>,
         force_esp_riscv_toolchain: bool,
+        full_thread_device: bool,
     ) -> Self {
         Self {
             cmake_configurer: CMakeConfigurer::new(
@@ -50,6 +52,7 @@ impl OpenThreadBuilder {
             clang_path,
             clang_sysroot_path,
             clang_target,
+            full_thread_device,
         }
     }
 
@@ -177,8 +180,8 @@ impl OpenThreadBuilder {
 
         config
             .define("OT_LOG_LEVEL", "NOTE")
-            .define("OT_FTD", "OFF")
-            .define("OT_MTD", "ON")
+            .define("OT_FTD", if self.full_thread_device { "ON" } else { "OFF" })
+            .define("OT_MTD", if self.full_thread_device { "OFF" } else { "ON" })
             .define("OT_RCP", "OFF")
             .define("OT_TCP", "OFF")
             .define("OT_APP_CLI", "OFF")

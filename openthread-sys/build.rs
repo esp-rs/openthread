@@ -18,6 +18,7 @@ fn main() -> Result<()> {
     let target = env::var("TARGET").unwrap();
 
     let force_esp_riscv_toolchain = env::var("CARGO_FEATURE_FORCE_ESP_RISCV_TOOLCHAIN").is_ok();
+    let full_thread_device = cfg!(feature = "full-thread-device");
 
     let pregen_bindings = env::var("CARGO_FEATURE_FORCE_GENERATE_BINDINGS").is_err();
     let pregen_bindings_rs_file = crate_root_path
@@ -44,6 +45,7 @@ fn main() -> Result<()> {
             None,
             None,
             force_esp_riscv_toolchain,
+            full_thread_device,
         );
 
         let libs_dir = builder.compile(&out, None)?;
@@ -72,7 +74,22 @@ fn main() -> Result<()> {
                     file_name.trim_end_matches(".lib")
                 };
 
-                println!("cargo:rustc-link-lib=static={lib_name}");
+                let should_link = match (
+                    lib_name.contains("-ftd"),
+                    lib_name.contains("-mtd"),
+                    full_thread_device,
+                ) {
+                    (true, false, true) => true,
+                    (true, false, false) => false,
+                    (false, true, false) => true,
+                    (false, true, true) => false,
+                    (false, false, _) => true,
+                    (true, true, _) => panic!(),
+                };
+
+                if should_link {
+                    println!("cargo:rustc-link-lib=static={lib_name}");
+                }
             }
         }
     }
