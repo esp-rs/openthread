@@ -74,18 +74,12 @@ fn main() -> Result<()> {
                     file_name.trim_end_matches(".lib")
                 };
 
-                let should_link = match (
-                    lib_name.contains("-ftd"),
-                    lib_name.contains("-mtd"),
-                    full_thread_device,
-                ) {
-                    (true, false, true) => true,
-                    (true, false, false) => false,
-                    (false, true, false) => true,
-                    (false, true, true) => false,
-                    (false, false, _) => true,
-                    (true, true, _) => panic!(),
-                };
+                let is_ftd_specific = lib_name.contains("-ftd");
+                let is_mtd_specific = lib_name.contains("-mtd");
+                let is_general = !is_ftd_specific && !is_mtd_specific;
+                let should_link = is_general
+                    || (is_ftd_specific && full_thread_device)
+                    || (is_mtd_specific && !full_thread_device);
 
                 if should_link {
                     println!("cargo:rustc-link-lib=static={lib_name}");

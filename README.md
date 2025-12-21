@@ -48,13 +48,13 @@ Examples of GCC toolchains that are known to work fine:
 ## Features
 
 - MTD (Minimal Thread Device) functionality
+- Optional FTD (Full Thread Device) functionality
 - Optional integration with [`embassy-net`]() and [`edge-nal`]()
 - Out of the box support for the IEEE 802.15.4 radio in [Espressif](openthread/src/esp.rs) and [Nordic Semiconductor](openthread/src/nrf.rs) chips
 
 ## Next
 
 - Sleepy end-device
-- FTD (Full Thread Device) functionality
 
 ## Non-Goals
 
