@@ -72,12 +72,12 @@ use sys::{
     otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND, otError_OT_ERROR_NO_ACK,
     otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize, otInstanceInitSingle, otIp6Address,
     otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
-    otIp6SetEnabled, otIp6SetReceiveCallback, otMessage, otMessageFree,
+    otIp6SetEnabled, otIp6SetReceiveCallback, otLinkModeConfig, otMessage, otMessageFree,
     otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings,
     otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone,
     otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
     otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
-    OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
+    otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -424,6 +424,34 @@ impl<'a> OpenThread<'a> {
         let state = ot.state();
 
         ot!(unsafe { otThreadSetEnabled(state.ot.instance, enable) })
+    }
+
+    /// Set the Thread link mode configuration.
+    ///
+    /// Arguments:
+    /// - `rx_on_when_idle`: If true, the device keeps its receiver on when idle.
+    ///   This is required for devices that need to receive unsolicited messages.
+    /// - `device_type`: If true, the device is a Full Thread Device (FTD).
+    /// - `network_data`: If true, the device requests full Network Data.
+    pub fn set_link_mode(
+        &self,
+        rx_on_when_idle: bool,
+        device_type: bool,
+        network_data: bool,
+    ) -> Result<(), OtError> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let mode = otLinkModeConfig {
+            _bitfield_align_1: [],
+            _bitfield_1: otLinkModeConfig::new_bitfield_1(
+                rx_on_when_idle,
+                device_type,
+                network_data,
+            ),
+        };
+
+        ot!(unsafe { otThreadSetLinkMode(state.ot.instance, mode) })
     }
 
     /// Gets the list of IPv6 addresses currently assigned to the Thread interface
