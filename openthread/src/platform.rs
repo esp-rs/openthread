@@ -106,6 +106,11 @@ extern "C" fn otPlatRadioSetPromiscuous(instance: *const otInstance, enable: boo
 }
 
 #[no_mangle]
+extern "C" fn otPlatRadioSetRxOnWhenIdle(instance: *const otInstance, enable: bool) {
+    OtContext::callback(instance).plat_radio_set_rx_on_when_idle(enable)
+}
+
+#[no_mangle]
 extern "C" fn otPlatRadioGetRssi(instance: *const otInstance) -> i8 {
     OtContext::callback(instance).plat_radio_get_rssi()
 }
