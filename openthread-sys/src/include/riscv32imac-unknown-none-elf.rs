@@ -3732,6 +3732,16 @@ unsafe extern "C" {
     pub fn otPlatRadioSetPromiscuous(aInstance: *mut otInstance, aEnable: bool);
 }
 unsafe extern "C" {
+    /// Enable/Disable RxOnWhenIdle mode.
+    ///
+    /// If a platform supports `OT_RADIO_CAPS_RX_ON_WHEN_IDLE` it must also support `OT_RADIO_CAPS_CSMA_BACKOFF` and handle
+    /// tx requests from sleepy children.
+    ///
+    /// @param[in]  aInstance    The OpenThread instance structure.
+    /// @param[in]  aEnable      TRUE to keep radio in Receive state, FALSE to put to Sleep state during idle periods.
+    pub fn otPlatRadioSetRxOnWhenIdle(aInstance: *mut otInstance, aEnable: bool);
+}
+unsafe extern "C" {
     /// Update MAC keys and key index
     ///
     /// Is used when radio provides OT_RADIO_CAPS_TRANSMIT_SEC capability.
