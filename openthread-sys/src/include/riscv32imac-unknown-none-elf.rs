@@ -2830,7 +2830,7 @@ pub type _bindgen_ty_4 = ::core::ffi::c_uint;
 /// Represents radio capabilities.
 ///
 /// The value is a bit-field indicating the capabilities supported by the radio. See `OT_RADIO_CAPS_*` definitions.
-pub type otRadioCaps = u8;
+pub type otRadioCaps = u16;
 ///< Radio supports no capability.
 pub const OT_RADIO_CAPS_NONE: _bindgen_ty_5 = 0;
 ///< Radio supports AckTime event.
@@ -2849,6 +2849,8 @@ pub const OT_RADIO_CAPS_TRANSMIT_SEC: _bindgen_ty_5 = 32;
 pub const OT_RADIO_CAPS_TRANSMIT_TIMING: _bindgen_ty_5 = 64;
 ///< Radio supports rx at specific time.
 pub const OT_RADIO_CAPS_RECEIVE_TIMING: _bindgen_ty_5 = 128;
+///< Radio supports RxOnWhenIdle setting.
+pub const OT_RADIO_CAPS_RX_ON_WHEN_IDLE: _bindgen_ty_5 = 256;
 /// Defines constants that are used to indicate different radio capabilities. See `otRadioCaps`.
 pub type _bindgen_ty_5 = ::core::ffi::c_uint;
 /// Represents the IEEE 802.15.4 PAN ID.

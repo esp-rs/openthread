@@ -78,7 +78,7 @@ use sys::{
     otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
     otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
     otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_CAPS_CSMA_BACKOFF,
-    OT_RADIO_FRAME_MAX_SIZE,
+    OT_RADIO_CAPS_RX_ON_WHEN_IDLE, OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -1427,8 +1427,6 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_caps(&mut self) -> otRadioCaps {
-        // OT_RADIO_CAPS_RX_ON_WHEN_IDLE = 256, not in all bindgen targets
-        const OT_RADIO_CAPS_RX_ON_WHEN_IDLE: u32 = 256;
         let caps =
             (OT_RADIO_CAPS_ACK_TIMEOUT | OT_RADIO_CAPS_CSMA_BACKOFF | OT_RADIO_CAPS_RX_ON_WHEN_IDLE)
                 as _;
