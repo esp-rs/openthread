@@ -443,6 +443,18 @@ impl<'a> OpenThread<'a> {
         let mut ot = self.activate();
         let state = ot.state();
 
+        // Update radio config rx_when_idle to match link mode.
+        // OpenThread doesn't call otPlatRadioSetRxOnWhenIdle, so we must
+        // update the radio config directly here to ensure the ESP radio
+        // driver keeps the radio awake when needed.
+        if state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
+            info!(
+                "Updating radio config rx_when_idle: {} -> {}",
+                state.ot.radio_conf.rx_when_idle, rx_on_when_idle
+            );
+            state.ot.radio_conf.rx_when_idle = rx_on_when_idle;
+        }
+
         let mode = otLinkModeConfig {
             _bitfield_align_1: [],
             _bitfield_1: otLinkModeConfig::new_bitfield_1(
