@@ -78,7 +78,7 @@ use sys::{
     otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
     otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
     otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_CAPS_CSMA_BACKOFF,
-    OT_RADIO_CAPS_RX_ON_WHEN_IDLE, OT_RADIO_FRAME_MAX_SIZE,
+    OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -447,7 +447,15 @@ impl<'a> OpenThread<'a> {
         // OpenThread doesn't call otPlatRadioSetRxOnWhenIdle, so we must
         // update the radio config directly here to ensure the ESP radio
         // driver keeps the radio awake when needed.
-        if state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
+        //
+        // IMPORTANT: Only update radio_conf when device is already connected.
+        // set_link_mode() is called BEFORE attach in thread.rs, so we must
+        // not change rx_when_idle until the device is actually connected,
+        // otherwise the ESP radio driver behaves differently and attach fails.
+        let device_role: DeviceRole =
+            unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
+
+        if device_role.is_connected() && state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
             info!(
                 "Updating radio config rx_when_idle: {} -> {}",
                 state.ot.radio_conf.rx_when_idle, rx_on_when_idle
@@ -1439,9 +1447,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_caps(&mut self) -> otRadioCaps {
-        let caps =
-            (OT_RADIO_CAPS_ACK_TIMEOUT | OT_RADIO_CAPS_CSMA_BACKOFF | OT_RADIO_CAPS_RX_ON_WHEN_IDLE)
-                as _;
+        let caps = (OT_RADIO_CAPS_ACK_TIMEOUT | OT_RADIO_CAPS_CSMA_BACKOFF) as _;
         trace!("Plat radio caps callback, caps: {}", caps);
 
         caps
