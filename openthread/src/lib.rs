@@ -1490,6 +1490,19 @@ impl<'a> OtContext<'a> {
         }
     }
 
+    fn plat_radio_set_rx_on_when_idle(&mut self, enable: bool) {
+        info!(
+            "Plat radio set rx_on_when_idle callback, enable: {}",
+            enable
+        );
+
+        let state = self.state();
+
+        if state.ot.radio_conf.rx_when_idle != enable {
+            state.ot.radio_conf.rx_when_idle = enable;
+        }
+    }
+
     fn plat_radio_set_extended_address(&mut self, address: u64) {
         info!(
             "Plat radio set extended address callback, addr: 0x{:08x}",
