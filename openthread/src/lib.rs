@@ -1341,12 +1341,21 @@ impl<'a> OtContext<'a> {
 
     #[cfg(feature = "srp")]
     unsafe extern "C" fn plat_c_srp_state_change_callback(
-        _error: otError,
+        error: otError,
         host_info: *const crate::sys::otSrpClientHostInfo,
         services: *const crate::sys::otSrpClientService,
         removed_services: *const crate::sys::otSrpClientService,
         context: *mut c_void,
     ) {
+        // Log SRP errors for debugging (OT_ERROR_NONE = 0)
+        if error != 0 {
+            let host_state = unsafe { (*host_info).mState };
+            warn!(
+                "SRP callback error: code={}, host_state={}",
+                error, host_state
+            );
+        }
+
         let instance = context as *mut otInstance;
 
         Self::callback(instance).plat_srp_changed(
