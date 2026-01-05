@@ -6,6 +6,10 @@ use std::{
 use anyhow::{anyhow, Result};
 use bindgen::Builder;
 use cmake::Config;
+pub use openthread_config::*;
+
+#[path = "./openthread_config.rs"]
+mod openthread_config;
 
 pub struct OpenThreadBuilder {
     crate_root_path: PathBuf,
@@ -13,7 +17,7 @@ pub struct OpenThreadBuilder {
     clang_path: Option<PathBuf>,
     clang_sysroot_path: Option<PathBuf>,
     clang_target: Option<String>,
-    full_thread_device: bool,
+    openthread_config: OpenThreadConfig,
 }
 
 impl OpenThreadBuilder {
@@ -38,7 +42,7 @@ impl OpenThreadBuilder {
         clang_sysroot_path: Option<PathBuf>,
         clang_target: Option<String>,
         force_esp_riscv_toolchain: bool,
-        full_thread_device: bool,
+        openthread_config: OpenThreadConfig,
     ) -> Self {
         Self {
             cmake_configurer: CMakeConfigurer::new(
@@ -52,7 +56,7 @@ impl OpenThreadBuilder {
             clang_path,
             clang_sysroot_path,
             clang_target,
-            full_thread_device,
+            openthread_config,
         }
     }
 
@@ -178,25 +182,11 @@ impl OpenThreadBuilder {
 
         let mut config = self.cmake_configurer.configure(Some(lib_dir));
 
+        for (key, value) in self.openthread_config.iter() {
+            config.define(key, value);
+        }
+
         config
-            .define("OT_LOG_LEVEL", "NOTE")
-            .define("OT_FTD", if self.full_thread_device { "ON" } else { "OFF" })
-            .define("OT_MTD", if self.full_thread_device { "OFF" } else { "ON" })
-            .define("OT_RCP", "OFF")
-            .define("OT_TCP", "OFF")
-            .define("OT_APP_CLI", "OFF")
-            .define("OT_APP_NCP", "OFF")
-            .define("OT_APP_RCP", "OFF")
-            .define("OT_BORDER_ROUTER", "OFF")
-            .define("OT_BORDER_ROUTING", "OFF")
-            .define("OT_SRP_CLIENT", "ON")
-            .define("OT_SLAAC", "ON")
-            .define("OT_ECDSA", "ON")
-            .define("OT_PING_SENDER", "ON")
-            // Do not change from here below
-            .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
-            .define("OT_PLATFORM", "external")
-            .define("OT_SETTINGS_RAM", "OFF")
             //.define("OT_COMPILE_WARNING_AS_ERROR", "ON "$@" "${OT_SRCDIR}"")
             // ... or else the build would fail with `arm-none-eabi-gcc` during the linking phase
             // with "undefined symbol `__exit`" error
