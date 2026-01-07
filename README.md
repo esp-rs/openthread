@@ -18,7 +18,7 @@ Two IEEE 802.15.4 radios are supported out of the box:
 
 ## Build
 
-For certain MCUs / Rust targets, the OpenThread libraries are pre-compiled for convenience.
+For certain MCUs / Rust targets, the OpenThread libraries are pre-compiled with a commonly used set of defaults for convenience. The defaults allow running a minimal thread device (MTD) that registers services using SRP.
 Current list (might be extended upon request):
 - `riscv32imac-unknown-none-elf` (ESP32C6 and ESP32H2)
 - `thumbv7em-none-eabi` (NRF52)
@@ -30,7 +30,7 @@ Small caveat: since `openthread` does a few calls into the C standard library (p
 
 ### Build for other targets / custom build
 
-For targets where pre-compiled libs are not available (including for the Host itself), a standard `build.rs` build is also supported.
+For targets where pre-compiled libs are not available (including for the Host itself), or for when additional OpenThread features beyond the defaults are desired, a standard `build.rs` build is also supported.
 For the on-the-fly OpenThread CMake build to work, you'll need to install and set in your `$PATH`:
 - The GCC toolchain correspponding to your Rust target, with **working** `foo-bar-gcc -print-sysroot` command
 - Recent Clang (for Espressif `xtensa`, [it must be the Espressif fork](https://crates.io/crates/espup), but for all other chips, the stock Clang would work)
@@ -41,9 +41,22 @@ As per above, since `openthread` does a few calls into the C standard library (p
 Examples of GCC toolchains that are known to work fine:
 - For ARM (Cortex M CPUs and others) - the [ARM GNU toolchain](https://developer.arm.com/Tools%20and%20Software/GNU%20Toolchain);
   - Note that the Ubuntu `arm-none-eabi-gcc` system package does **NOT** work, as it does not print a sysroot, i.e. `arm-none-eabi-gcc -print-sysroot` returns an empty response, and furthermore, the `newlib` headers are installed in a separate location from the arch headers;
-- For RISCV - the [Espressif RISCV toolchain](https://github.com/espressif/crosstool-NG/releases). The ["official" RISCV GNU toolchain](https://github.com/riscv-collab/riscv-gnu-toolchain) should also work;
+- For RISCV - the [Espressif RISCV toolchain](https://github.com/espressif/crosstool-NG/releases). The ["official" RISCV GNU toolchain](https://github.com/riscv-collab/riscv-gnu-toolchain) should also work (see below for guidance on building this);
 - For xtensa (Espressif ESP32 and ESP32SXX MCUs) - the [Espressif xtensa toolchain](https://github.com/espressif/crosstool-NG/releases);
 - For the Host machine (non-embedded) - your pre-installed toolchain would work just fine.
+
+### Compiling the RISCV GNU Toolchain
+As above, the requirements are for the toolchain to have `newlib`, so `--disable-linux` must be specified. For the `riscv32imac-unknown-none-elf` target (ESP32-C6 and ESP32-H2), the following options will produce a usable build:
+```
+./configure --prefix=/opt/riscv --with-arch=rv32imac --with-abi=ilp32 --disable-linux
+make
+```
+
+Don't forget to include the resulting binaries in your path:
+```
+export PATH=$PATH:/opt/riscv/bin
+```
+
 
 ## Features
 
