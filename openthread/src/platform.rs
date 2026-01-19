@@ -171,6 +171,12 @@ extern "C" fn otPlatRadioReceive(instance: *mut otInstance, channel: u8) -> otEr
 }
 
 #[no_mangle]
+#[cfg(feature = "full-thread-device")]
+extern "C" fn otPlatRadioEnableSrcMatch(instance: *mut otInstance, enable: bool) {
+    OtContext::callback(instance).plat_radio_enable_src_match(enable);
+}
+
+#[no_mangle]
 extern "C" fn otPlatSettingsInit(
     instance: *mut otInstance,
     sensitive_keys: *const u16,

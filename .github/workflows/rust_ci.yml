@@ -8,7 +8,7 @@ on:
   workflow_dispatch:
 
 env:
-  rust_toolchain: nightly
+  rust_toolchain: stable
   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
 jobs:

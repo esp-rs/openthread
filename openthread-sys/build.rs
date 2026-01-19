@@ -1,15 +1,23 @@
+#![deny(unexpected_cfgs)]
+
 use std::{env, path::PathBuf};
 
 use anyhow::Result;
 
+use crate::builder::OpenThreadConfig;
+use crate::paths::PreGenerationPaths;
+
 #[path = "gen/builder.rs"]
 mod builder;
+#[path = "gen/pregen_paths.rs"]
+mod paths;
 
 fn main() -> Result<()> {
     let crate_root_path = PathBuf::from(env::var_os("CARGO_MANIFEST_DIR").unwrap());
 
     builder::OpenThreadBuilder::track(&crate_root_path.join("gen"));
     builder::OpenThreadBuilder::track(&crate_root_path.join("openthread"));
+    builder::OpenThreadBuilder::track(&crate_root_path.join("CMakeLists.txt"));
 
     // If `custom` is enabled, we need to re-build the bindings on-the-fly even if there are
     // pre-generated bindings for the target triple
@@ -17,18 +25,18 @@ fn main() -> Result<()> {
     let host = env::var("HOST").unwrap();
     let target = env::var("TARGET").unwrap();
 
-    let force_esp_riscv_toolchain = env::var("CARGO_FEATURE_FORCE_ESP_RISCV_TOOLCHAIN").is_ok();
+    let force_esp_riscv_toolchain = cfg!(feature = "force-esp-riscv-toolchain");
 
-    let pregen_bindings = env::var("CARGO_FEATURE_FORCE_GENERATE_BINDINGS").is_err();
-    let pregen_bindings_rs_file = crate_root_path
-        .join("src")
-        .join("include")
-        .join(format!("{target}.rs"));
-    let pregen_libs_dir = crate_root_path.join("libs").join(&target);
+    let mut openthread_config = OpenThreadConfig::default();
+    set_config_from_features(&mut openthread_config);
 
-    let dirs = if pregen_bindings && pregen_bindings_rs_file.exists() {
-        // Use the pre-generated bindings
-        Some((pregen_bindings_rs_file, pregen_libs_dir))
+    let force_generate_bindings = cfg!(feature = "force-generate-bindings");
+    let paths = PreGenerationPaths::derive(&crate_root_path, &target, &openthread_config);
+
+    let use_pregen_bindings = !force_generate_bindings && paths.bindings_rs_file.exists();
+
+    let dirs = if use_pregen_bindings {
+        Some((paths.bindings_rs_file, paths.libs_dir))
     } else if target.ends_with("-espidf") {
         // Nothing to do for ESP-IDF, `esp-idf-sys` will do everything for us
         None
@@ -44,6 +52,7 @@ fn main() -> Result<()> {
             None,
             None,
             force_esp_riscv_toolchain,
+            openthread_config,
         );
 
         let libs_dir = builder.compile(&out, None)?;
@@ -78,4 +87,10 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn set_config_from_features(config: &mut OpenThreadConfig) {
+    if cfg!(feature = "full-thread-device") {
+        config.ftd(true);
+    }
 }

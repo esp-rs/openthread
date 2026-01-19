@@ -19,6 +19,8 @@ force-generate-bindings = []
 # If this feature is not enabled, the build will assume and use the "official" RiscV GCC toolchain:
 # https://github.com/riscv-collab/riscv-gnu-toolchain
 force-esp-riscv-toolchain = []
+# Build the OpenThread library in Full Thread Device (FTD) mode
+full-thread-device = []
 
 [build-dependencies]
 anyhow = "1"
