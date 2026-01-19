@@ -1,4 +1,8 @@
 */build
 */target
+target
+tmpsrc
 .idea
 .vscode
+.embuild
+Cargo.lock

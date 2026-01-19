@@ -442,6 +442,7 @@ where
         );
 
         for (index, label) in self.subtype_labels.clone().enumerate() {
+            #[allow(clippy::if_same_then_else)]
             if index > 0 {
                 defmt::write!(f, ", {}", label);
             } else {
@@ -452,6 +453,7 @@ where
         defmt::write!(f, "], txt: [");
 
         for (index, value) in self.txt_entries.clone().enumerate() {
+            #[allow(clippy::if_same_then_else)]
             if index > 0 {
                 defmt::write!(f, ", {}: {:?}", value.0, value.1);
             } else {
