@@ -7,7 +7,7 @@ use portable_atomic::AtomicUsize;
 
 use openthread_sys::otError_OT_ERROR_NONE;
 
-use crate::sys::{otError, otInstance, otLogLevel, otLogRegion, otRadioFrame};
+use crate::sys::{otError, otInstance, otLogLevel, otLogRegion, otRadioCaps, otRadioFrame};
 use crate::{IntoOtCode, OtActiveState, OtContext};
 
 /// A hack so that we can store a mutable reference to the active state in a global static variable
@@ -70,7 +70,7 @@ extern "C" fn otPlatRadioGetIeeeEui64(instance: *const otInstance, mac: *mut u8)
 }
 
 #[no_mangle]
-extern "C" fn otPlatRadioGetCaps(instance: *const otInstance) -> u8 {
+extern "C" fn otPlatRadioGetCaps(instance: *const otInstance) -> otRadioCaps {
     OtContext::callback(instance).plat_radio_caps()
 }
 
@@ -103,6 +103,11 @@ extern "C" fn otPlatRadioDisable(instance: *const otInstance) -> otError {
 #[no_mangle]
 extern "C" fn otPlatRadioSetPromiscuous(instance: *const otInstance, enable: bool) {
     OtContext::callback(instance).plat_radio_set_promiscuous(enable)
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetRxOnWhenIdle(instance: *const otInstance, enable: bool) {
+    OtContext::callback(instance).plat_radio_set_rx_on_when_idle(enable)
 }
 
 #[no_mangle]

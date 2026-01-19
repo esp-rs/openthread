@@ -72,12 +72,13 @@ use sys::{
     otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND, otError_OT_ERROR_NO_ACK,
     otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize, otInstanceInitSingle, otIp6Address,
     otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
-    otIp6SetEnabled, otIp6SetReceiveCallback, otMessage, otMessageFree,
+    otIp6SetEnabled, otIp6SetReceiveCallback, otLinkModeConfig, otMessage, otMessageFree,
     otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings,
     otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone,
     otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
     otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
-    OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
+    otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_CAPS_CSMA_BACKOFF,
+    OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -424,6 +425,54 @@ impl<'a> OpenThread<'a> {
         let state = ot.state();
 
         ot!(unsafe { otThreadSetEnabled(state.ot.instance, enable) })
+    }
+
+    /// Set the Thread link mode configuration.
+    ///
+    /// Arguments:
+    /// - `rx_on_when_idle`: If true, the device keeps its receiver on when idle.
+    ///   This is required for devices that need to receive unsolicited messages.
+    /// - `device_type`: If true, the device is a Full Thread Device (FTD).
+    /// - `network_data`: If true, the device requests full Network Data.
+    pub fn set_link_mode(
+        &self,
+        rx_on_when_idle: bool,
+        device_type: bool,
+        network_data: bool,
+    ) -> Result<(), OtError> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        // Update radio config rx_when_idle to match link mode.
+        // OpenThread doesn't call otPlatRadioSetRxOnWhenIdle, so we must
+        // update the radio config directly here to ensure the ESP radio
+        // driver keeps the radio awake when needed.
+        //
+        // IMPORTANT: Only update radio_conf when device is already connected.
+        // set_link_mode() is called BEFORE attach in thread.rs, so we must
+        // not change rx_when_idle until the device is actually connected,
+        // otherwise the ESP radio driver behaves differently and attach fails.
+        let device_role: DeviceRole =
+            unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
+
+        if device_role.is_connected() && state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
+            info!(
+                "Updating radio config rx_when_idle: {} -> {}",
+                state.ot.radio_conf.rx_when_idle, rx_on_when_idle
+            );
+            state.ot.radio_conf.rx_when_idle = rx_on_when_idle;
+        }
+
+        let mode = otLinkModeConfig {
+            _bitfield_align_1: [],
+            _bitfield_1: otLinkModeConfig::new_bitfield_1(
+                rx_on_when_idle,
+                device_type,
+                network_data,
+            ),
+        };
+
+        ot!(unsafe { otThreadSetLinkMode(state.ot.instance, mode) })
     }
 
     /// Gets the list of IPv6 addresses currently assigned to the Thread interface
@@ -1292,12 +1341,21 @@ impl<'a> OtContext<'a> {
 
     #[cfg(feature = "srp")]
     unsafe extern "C" fn plat_c_srp_state_change_callback(
-        _error: otError,
+        error: otError,
         host_info: *const crate::sys::otSrpClientHostInfo,
         services: *const crate::sys::otSrpClientService,
         removed_services: *const crate::sys::otSrpClientService,
         context: *mut c_void,
     ) {
+        // Log SRP errors for debugging (OT_ERROR_NONE = 0)
+        if error != 0 {
+            let host_state = unsafe { (*host_info).mState };
+            warn!(
+                "SRP callback error: code={}, host_state={}",
+                error, host_state
+            );
+        }
+
         let instance = context as *mut otInstance;
 
         Self::callback(instance).plat_srp_changed(
@@ -1398,7 +1456,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_caps(&mut self) -> otRadioCaps {
-        let caps = OT_RADIO_CAPS_ACK_TIMEOUT as _;
+        let caps = (OT_RADIO_CAPS_ACK_TIMEOUT | OT_RADIO_CAPS_CSMA_BACKOFF) as _;
         trace!("Plat radio caps callback, caps: {}", caps);
 
         caps
@@ -1459,6 +1517,19 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.promiscuous != promiscuous {
             state.ot.radio_conf.promiscuous = promiscuous;
+        }
+    }
+
+    fn plat_radio_set_rx_on_when_idle(&mut self, enable: bool) {
+        info!(
+            "Plat radio set rx_on_when_idle callback, enable: {}",
+            enable
+        );
+
+        let state = self.state();
+
+        if state.ot.radio_conf.rx_when_idle != enable {
+            state.ot.radio_conf.rx_when_idle = enable;
         }
     }
 
