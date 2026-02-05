@@ -67,7 +67,8 @@ mod udp;
 use sys::{
     otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
     otDeviceRole_OT_DEVICE_ROLE_DETACHED, otDeviceRole_OT_DEVICE_ROLE_DISABLED,
-    otDeviceRole_OT_DEVICE_ROLE_LEADER, otDeviceRole_OT_DEVICE_ROLE_ROUTER, otError,
+    otDeviceRole_OT_DEVICE_ROLE_LEADER, otDeviceRole_OT_DEVICE_ROLE_ROUTER, 
+    otDnsClientGetDefaultConfig, otError,
     otError_OT_ERROR_ABORT, otError_OT_ERROR_CHANNEL_ACCESS_FAILURE, otError_OT_ERROR_DROP,
     otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND, otError_OT_ERROR_NO_ACK,
     otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize, otInstanceInitSingle, otIp6Address,
@@ -440,6 +441,8 @@ impl<'a> OpenThread<'a> {
 
         let mut addrs_ptr = unsafe { otIp6GetUnicastAddresses(state.ot.instance) };
 
+        
+
         while !addrs_ptr.is_null() {
             let addrs = unwrap!(unsafe { addrs_ptr.as_ref() });
 
@@ -452,6 +455,18 @@ impl<'a> OpenThread<'a> {
         }
 
         f(None)
+    }
+
+    pub fn dns_server(&self) -> Result<Ipv6Addr, OtError>
+    {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let dns_config = unsafe { otDnsClientGetDefaultConfig(state.ot.instance) };
+
+        let dns_server = unsafe { *dns_config }.mServerSockAddr;
+
+        Ok(unsafe { dns_server.mAddress.mFields.m8 }.into())
     }
 
     /// Wait for the OpenThread stack to change its state.

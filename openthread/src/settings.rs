@@ -246,15 +246,15 @@ impl Settings for () {
 }
 
 /// A type alias of `RamSettings` for the case where the signal changes' closure is a `fn`
-pub type SimpleRamSettings<'a> = RamSettings<'a, fn(RamSettingsChange) -> bool>;
+pub type SimpleRamSettings<const N: usize> = RamSettings<N, fn(RamSettingsChange) -> bool>;
 
-impl<'a> SimpleRamSettings<'a> {
+impl<const N: usize> SimpleRamSettings<N> {
     /// Create a new `RamSettings` instance which never signals changes.
     ///
     /// # Arguments
     /// - `buffer`: The RAM buffer where settings are cached
-    pub const fn new(buffer: &'a mut [u8]) -> Self {
-        Self::new_with_signal_change(buffer, |_| false)
+    pub const fn new() -> Self {
+        Self::new_with_signal_change(|_| false)
     }
 }
 
@@ -267,9 +267,9 @@ impl<'a> SimpleRamSettings<'a> {
 /// service settings requests coming from `OpenThread` immediately by using RAM storage.
 /// However, the `RamSettings` struct can signal when settings have changed, so that
 /// (a subset of) these can be persisted to non-volatile storage.
-pub struct RamSettings<'a, T> {
+pub struct RamSettings<const N: usize, T> {
     /// The RAM buffer where settings are cached
-    buffer: &'a mut [u8],
+    buffer: [u8; N],
     /// The length of the settings in the buffer
     len: usize,
     /// A closure to evaluate if to signal depending on the change type
@@ -278,7 +278,7 @@ pub struct RamSettings<'a, T> {
     changed_signal: Signal<()>,
 }
 
-impl<'a, T> RamSettings<'a, T>
+impl<const N: usize, T> RamSettings<N, T>
 where
     T: FnMut(RamSettingsChange) -> bool,
 {
@@ -288,9 +288,9 @@ where
     /// - `buffer`: The RAM buffer where settings are cached
     /// - `signal_change`: A closure that would be called-back if the settings change.
     ///   Returning `true` from this closure will signal the `Signal` instance.
-    pub const fn new_with_signal_change(buffer: &'a mut [u8], signal_change: T) -> Self {
+    pub const fn new_with_signal_change(signal_change: T) -> Self {
         Self {
-            buffer,
+            buffer: [0; N],
             len: 0,
             signal_change,
             changed_signal: Signal::new(),
@@ -484,7 +484,7 @@ where
     }
 }
 
-impl<T> Settings for RamSettings<'_, T>
+impl<const N: usize, T> Settings for RamSettings<N, T>
 where
     T: FnMut(RamSettingsChange) -> bool,
 {
@@ -593,9 +593,9 @@ impl<'a> RamSetting<'a> {
 
 /// A shared `RamSettings` instance with interior mutability
 /// that can be shared between `openthread` and user code
-pub struct SharedRamSettings<'a, M, T>(Mutex<M, RefCell<RamSettings<'a, T>>>);
+pub struct SharedRamSettings<const N: usize, M, T>(Mutex<M, RefCell<RamSettings<N, T>>>);
 
-impl<'a, M, T> SharedRamSettings<'a, M, T>
+impl<const N: usize, M, T> SharedRamSettings<N, M, T>
 where
     M: RawMutex,
     T: FnMut(RamSettingsChange) -> bool,
@@ -604,14 +604,14 @@ where
     ///
     /// # Arguments
     /// - `settings`: The `RamSettings` instance to share
-    pub const fn new(settings: RamSettings<'a, T>) -> Self {
+    pub const fn new(settings: RamSettings<N, T>) -> Self {
         Self(Mutex::new(RefCell::new(settings)))
     }
 
     /// Get access to the `RamSettings` instance
     pub fn with<F, R>(&self, mut f: F) -> R
     where
-        F: FnMut(&mut RamSettings<'a, T>) -> R,
+        F: FnMut(&mut RamSettings<N, T>) -> R,
     {
         self.0.lock(|settings| f(&mut *settings.borrow_mut()))
     }
@@ -622,7 +622,7 @@ where
     }
 }
 
-impl<M, T> Settings for &SharedRamSettings<'_, M, T>
+impl<const N: usize, M, T> Settings for &SharedRamSettings<N, M, T>
 where
     M: RawMutex,
     T: FnMut(RamSettingsChange) -> bool,

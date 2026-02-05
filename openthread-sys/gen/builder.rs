@@ -186,6 +186,7 @@ impl OpenThreadBuilder {
             .define("OT_APP_RCP", "OFF")
             .define("OT_BORDER_ROUTER", "OFF")
             .define("OT_BORDER_ROUTING", "OFF")
+            .define("OT_DNS_CLIENT", "ON") 
             .define("OT_SRP_CLIENT", "ON")
             .define("OT_SLAAC", "ON")
             .define("OT_ECDSA", "ON")
