@@ -113,7 +113,7 @@ impl Radio for EspRadio<'_> {
     ) -> Result<Option<PsduMeta>, Self::Error> {
         TX_SIGNAL.reset();
 
-        info!(
+        trace!(
             "802.15.4 TX: {} bytes ch{}",
             psdu.len(),
             self.config.channel
@@ -151,7 +151,7 @@ impl Radio for EspRadio<'_> {
 
         let rssi = raw.data[1..][psdu_len] as i8;
 
-        info!(
+        trace!(
             "802.15.4 RX: {} bytes ch{} rssi={}",
             psdu_len, raw.channel, rssi
         );

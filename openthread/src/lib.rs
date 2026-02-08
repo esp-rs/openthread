@@ -428,6 +428,12 @@ impl<'a> OpenThread<'a> {
 
     /// Set the Thread link mode configuration.
     ///
+    /// Note: the `rx_on_when_idle` radio config change is only applied once the device
+    /// is connected (has a role of Child, Router, or Leader). If called before attachment,
+    /// `otThreadSetLinkMode` is still sent to OpenThread, but the radio config update is
+    /// deferred until the device connects — this prevents the ESP radio driver from
+    /// behaving unexpectedly during the attach sequence.
+    ///
     /// Arguments:
     /// - `rx_on_when_idle`: If true, the device keeps its receiver on when idle.
     ///   This is required for devices that need to receive unsolicited messages
@@ -484,7 +490,7 @@ impl<'a> OpenThread<'a> {
     /// Common capability constants from `openthread_sys`:
     /// - `OT_RADIO_CAPS_ACK_TIMEOUT` (1): Radio supports ack timeout
     /// - `OT_RADIO_CAPS_CSMA_BACKOFF` (8): Radio supports CSMA backoff for frame transmission
-    pub fn set_radio_caps(&self, caps: u8) {
+    pub fn set_radio_caps(&self, caps: otRadioCaps) {
         self.activate().state().ot.radio_caps = caps;
     }
 
@@ -923,7 +929,7 @@ impl<'a> OpenThread<'a> {
                                 };
 
                                 if let Some(conf) = rx_conf {
-                                    info!("TX done, rx_when_idle=true, auto-switching to RX");
+                                    trace!("TX done, rx_when_idle=true, auto-switching to RX");
                                     cmd = RadioCommand::Rx(conf);
                                     continue;
                                 }
@@ -1170,7 +1176,7 @@ impl OtResources {
             changes: Signal::new(),
             radio: Signal::new(),
             radio_conf: Config::new(),
-            radio_caps: OT_RADIO_CAPS_ACK_TIMEOUT as u8,
+            radio_caps: OT_RADIO_CAPS_ACK_TIMEOUT as otRadioCaps,
         }));
 
         info!("OpenThread resources initialized");
@@ -1537,7 +1543,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_caps(&mut self) -> otRadioCaps {
-        let caps = self.state().ot.radio_caps as otRadioCaps;
+        let caps = self.state().ot.radio_caps;
         trace!("Plat radio caps callback, caps: {}", caps);
 
         caps
@@ -1658,7 +1664,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_transmit(&mut self, frame: &otRadioFrame) -> Result<(), OtError> {
-        info!(
+        trace!(
             "Plat radio TX cmd: {} bytes ch{}",
             frame.mLength, frame.mChannel
         );
@@ -1680,7 +1686,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_receive(&mut self, channel: u8) -> Result<(), OtError> {
-        info!("Plat radio RX cmd: ch{}", channel);
+        trace!("Plat radio RX cmd: ch{}", channel);
 
         let state = self.state();
 
@@ -1844,7 +1850,7 @@ struct OtState<'a> {
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Default: OT_RADIO_CAPS_ACK_TIMEOUT. Should match the actual hardware
     /// capabilities of the radio driver.
-    radio_caps: u8,
+    radio_caps: otRadioCaps,
     /// Resources for the radio (PHY data frames and their descriptors)
     radio_resources: &'a mut RadioResources,
     /// Resources for dealing with the operational dataset
