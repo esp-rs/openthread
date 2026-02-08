@@ -431,7 +431,8 @@ impl<'a> OpenThread<'a> {
     /// Note: the `rx_on_when_idle` radio config change is only applied once the device
     /// is connected (has a role of Child, Router, or Leader). If called before attachment,
     /// `otThreadSetLinkMode` is still sent to OpenThread, but the radio config update is
-    /// deferred until the device connects — this prevents the ESP radio driver from
+    /// stored as pending and automatically applied via the `plat_changed` callback when
+    /// the device role transitions to connected. This prevents the ESP radio driver from
     /// behaving unexpectedly during the attach sequence.
     ///
     /// Arguments:
@@ -457,17 +458,28 @@ impl<'a> OpenThread<'a> {
         // so we update the radio config directly to ensure the radio driver
         // keeps the radio awake when needed.
         //
-        // IMPORTANT: Only update radio_conf when device is already connected.
-        // set_link_mode() may be called BEFORE attach, and changing rx_when_idle
-        // too early causes the ESP radio driver to behave differently during attach.
+        // If the device is already connected, apply the change immediately.
+        // If not yet connected, store it as pending — it will be applied
+        // automatically via plat_changed when the device role becomes connected.
+        // This prevents the ESP radio driver from behaving unexpectedly during
+        // the attach sequence.
         let device_role: DeviceRole = unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
 
-        if device_role.is_connected() && state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
+        if device_role.is_connected() {
+            if state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
+                info!(
+                    "Updating radio config rx_when_idle: {} -> {}",
+                    state.ot.radio_conf.rx_when_idle, rx_on_when_idle
+                );
+                state.ot.radio_conf.rx_when_idle = rx_on_when_idle;
+            }
+            state.ot.pending_rx_when_idle = None;
+        } else {
             info!(
-                "Updating radio config rx_when_idle: {} -> {}",
-                state.ot.radio_conf.rx_when_idle, rx_on_when_idle
+                "Device not connected, deferring rx_when_idle: {}",
+                rx_on_when_idle
             );
-            state.ot.radio_conf.rx_when_idle = rx_on_when_idle;
+            state.ot.pending_rx_when_idle = Some(rx_on_when_idle);
         }
 
         let mode = otLinkModeConfig {
@@ -915,6 +927,12 @@ impl<'a> OpenThread<'a> {
                                     }
                                 }
 
+                                // Release the first activation before re-activating.
+                                // OtContext is an RAII guard — holding it while calling
+                                // activate() again would panic on the RefCell borrow.
+                                drop(state);
+                                drop(ot);
+
                                 // If rx_when_idle is enabled, automatically switch to RX after TX
                                 // This is required because OpenThread expects the radio to be
                                 // receiving when idle, without explicit plat_radio_receive() calls
@@ -999,6 +1017,10 @@ impl<'a> OpenThread<'a> {
                                         }
                                     }
                                 }
+
+                                // Release the first activation before re-activating.
+                                drop(state);
+                                drop(ot);
 
                                 // If rx_when_idle is enabled, continue receiving
                                 // The inner loop also listens for new commands, so if OpenThread
@@ -1177,6 +1199,7 @@ impl OtResources {
             radio: Signal::new(),
             radio_conf: Config::new(),
             radio_caps: OT_RADIO_CAPS_ACK_TIMEOUT as otRadioCaps,
+            pending_rx_when_idle: None,
         }));
 
         info!("OpenThread resources initialized");
@@ -1511,7 +1534,23 @@ impl<'a> OtContext<'a> {
 
     fn plat_changed(&mut self, _flags: u32) {
         trace!("Plat changed callback");
-        self.state().ot.changes.signal(());
+
+        let state = self.state();
+
+        // Apply deferred rx_when_idle if the device is now connected
+        if let Some(pending) = state.ot.pending_rx_when_idle {
+            let role: DeviceRole = unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
+            if role.is_connected() {
+                info!(
+                    "Applying deferred rx_when_idle: {} -> {}",
+                    state.ot.radio_conf.rx_when_idle, pending
+                );
+                state.ot.radio_conf.rx_when_idle = pending;
+                state.ot.pending_rx_when_idle = None;
+            }
+        }
+
+        state.ot.changes.signal(());
     }
 
     fn plat_now(&mut self) -> u32 {
@@ -1666,7 +1705,8 @@ impl<'a> OtContext<'a> {
     fn plat_radio_transmit(&mut self, frame: &otRadioFrame) -> Result<(), OtError> {
         trace!(
             "Plat radio TX cmd: {} bytes ch{}",
-            frame.mLength, frame.mChannel
+            frame.mLength,
+            frame.mChannel
         );
 
         let state = self.state();
@@ -1851,6 +1891,9 @@ struct OtState<'a> {
     /// Default: OT_RADIO_CAPS_ACK_TIMEOUT. Should match the actual hardware
     /// capabilities of the radio driver.
     radio_caps: otRadioCaps,
+    /// Deferred rx_when_idle value from set_link_mode called before device connects.
+    /// Applied automatically via plat_changed when the device role becomes connected.
+    pending_rx_when_idle: Option<bool>,
     /// Resources for the radio (PHY data frames and their descriptors)
     radio_resources: &'a mut RadioResources,
     /// Resources for dealing with the operational dataset

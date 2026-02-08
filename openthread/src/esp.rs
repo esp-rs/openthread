@@ -153,7 +153,9 @@ impl Radio for EspRadio<'_> {
 
         trace!(
             "802.15.4 RX: {} bytes ch{} rssi={}",
-            psdu_len, raw.channel, rssi
+            psdu_len,
+            raw.channel,
+            rssi
         );
 
         Ok(PsduMeta {
