@@ -77,8 +77,7 @@ use sys::{
     otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone,
     otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
     otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
-    otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_CAPS_CSMA_BACKOFF,
-    OT_RADIO_FRAME_MAX_SIZE,
+    otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -431,27 +430,30 @@ impl<'a> OpenThread<'a> {
     ///
     /// Arguments:
     /// - `rx_on_when_idle`: If true, the device keeps its receiver on when idle.
-    ///   This is required for devices that need to receive unsolicited messages.
-    /// - `device_type`: If true, the device is a Full Thread Device (FTD).
-    /// - `network_data`: If true, the device requests full Network Data.
+    ///   This is required for devices that need to receive unsolicited messages
+    ///   (e.g., SRP responses, Matter commands).
+    /// - `full_thread_device`: If true, the device operates as a Full Thread Device (FTD).
+    ///   Requires OpenThread compiled with `OT_FTD=ON`. Currently compiled as MTD only,
+    ///   so passing `true` will return an error (`kErrorInvalidArgs`).
+    /// - `receive_full_network_data`: If true, the device requests full Thread Network Data
+    ///   from the leader. If false, only stable (minimal) network data is requested.
     pub fn set_link_mode(
         &self,
         rx_on_when_idle: bool,
-        device_type: bool,
-        network_data: bool,
+        full_thread_device: bool,
+        receive_full_network_data: bool,
     ) -> Result<(), OtError> {
         let mut ot = self.activate();
         let state = ot.state();
 
         // Update radio config rx_when_idle to match link mode.
-        // OpenThread doesn't call otPlatRadioSetRxOnWhenIdle, so we must
-        // update the radio config directly here to ensure the ESP radio
-        // driver keeps the radio awake when needed.
+        // The OpenThread submodule predates otPlatRadioSetRxOnWhenIdle support,
+        // so we update the radio config directly to ensure the radio driver
+        // keeps the radio awake when needed.
         //
         // IMPORTANT: Only update radio_conf when device is already connected.
-        // set_link_mode() is called BEFORE attach in thread.rs, so we must
-        // not change rx_when_idle until the device is actually connected,
-        // otherwise the ESP radio driver behaves differently and attach fails.
+        // set_link_mode() may be called BEFORE attach, and changing rx_when_idle
+        // too early causes the ESP radio driver to behave differently during attach.
         let device_role: DeviceRole = unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
 
         if device_role.is_connected() && state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
@@ -466,12 +468,24 @@ impl<'a> OpenThread<'a> {
             _bitfield_align_1: [],
             _bitfield_1: otLinkModeConfig::new_bitfield_1(
                 rx_on_when_idle,
-                device_type,
-                network_data,
+                full_thread_device,
+                receive_full_network_data,
             ),
         };
 
         ot!(unsafe { otThreadSetLinkMode(state.ot.instance, mode) })
+    }
+
+    /// Set the radio capabilities reported to OpenThread.
+    ///
+    /// These should reflect the actual hardware capabilities of the radio driver.
+    /// Must be called before `run()`. Default: `OT_RADIO_CAPS_ACK_TIMEOUT`.
+    ///
+    /// Common capability constants from `openthread_sys`:
+    /// - `OT_RADIO_CAPS_ACK_TIMEOUT` (1): Radio supports ack timeout
+    /// - `OT_RADIO_CAPS_CSMA_BACKOFF` (8): Radio supports CSMA backoff for frame transmission
+    pub fn set_radio_caps(&self, caps: u8) {
+        self.activate().state().ot.radio_caps = caps;
     }
 
     /// Gets the list of IPv6 addresses currently assigned to the Thread interface
@@ -1156,6 +1170,7 @@ impl OtResources {
             changes: Signal::new(),
             radio: Signal::new(),
             radio_conf: Config::new(),
+            radio_caps: OT_RADIO_CAPS_ACK_TIMEOUT as u8,
         }));
 
         info!("OpenThread resources initialized");
@@ -1522,7 +1537,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_caps(&mut self) -> otRadioCaps {
-        let caps = (OT_RADIO_CAPS_ACK_TIMEOUT | OT_RADIO_CAPS_CSMA_BACKOFF) as _;
+        let caps = self.state().ot.radio_caps as otRadioCaps;
         trace!("Plat radio caps callback, caps: {}", caps);
 
         caps
@@ -1583,19 +1598,6 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.promiscuous != promiscuous {
             state.ot.radio_conf.promiscuous = promiscuous;
-        }
-    }
-
-    fn plat_radio_set_rx_on_when_idle(&mut self, enable: bool) {
-        info!(
-            "Plat radio set rx_on_when_idle callback, enable: {}",
-            enable
-        );
-
-        let state = self.state();
-
-        if state.ot.radio_conf.rx_when_idle != enable {
-            state.ot.radio_conf.rx_when_idle = enable;
         }
     }
 
@@ -1839,6 +1841,10 @@ struct OtState<'a> {
     radio: Signal<RadioCommand>,
     /// The latest radio configuration from the POV of OpenThread
     radio_conf: radio::Config,
+    /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
+    /// Default: OT_RADIO_CAPS_ACK_TIMEOUT. Should match the actual hardware
+    /// capabilities of the radio driver.
+    radio_caps: u8,
     /// Resources for the radio (PHY data frames and their descriptors)
     radio_resources: &'a mut RadioResources,
     /// Resources for dealing with the operational dataset

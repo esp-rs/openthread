@@ -2830,7 +2830,7 @@ pub type _bindgen_ty_4 = ::core::ffi::c_uint;
 /// Represents radio capabilities.
 ///
 /// The value is a bit-field indicating the capabilities supported by the radio. See `OT_RADIO_CAPS_*` definitions.
-pub type otRadioCaps = u16;
+pub type otRadioCaps = u8;
 ///< Radio supports no capability.
 pub const OT_RADIO_CAPS_NONE: _bindgen_ty_5 = 0;
 ///< Radio supports AckTime event.
@@ -2849,8 +2849,6 @@ pub const OT_RADIO_CAPS_TRANSMIT_SEC: _bindgen_ty_5 = 32;
 pub const OT_RADIO_CAPS_TRANSMIT_TIMING: _bindgen_ty_5 = 64;
 ///< Radio supports rx at specific time.
 pub const OT_RADIO_CAPS_RECEIVE_TIMING: _bindgen_ty_5 = 128;
-///< Radio supports RxOnWhenIdle setting.
-pub const OT_RADIO_CAPS_RX_ON_WHEN_IDLE: _bindgen_ty_5 = 256;
 /// Defines constants that are used to indicate different radio capabilities. See `otRadioCaps`.
 pub type _bindgen_ty_5 = ::core::ffi::c_uint;
 /// Represents the IEEE 802.15.4 PAN ID.
@@ -3730,16 +3728,6 @@ unsafe extern "C" {
     /// @param[in]  aInstance The OpenThread instance structure.
     /// @param[in]  aEnable   TRUE to enable or FALSE to disable promiscuous mode.
     pub fn otPlatRadioSetPromiscuous(aInstance: *mut otInstance, aEnable: bool);
-}
-unsafe extern "C" {
-    /// Enable/Disable RxOnWhenIdle mode.
-    ///
-    /// If a platform supports `OT_RADIO_CAPS_RX_ON_WHEN_IDLE` it must also support `OT_RADIO_CAPS_CSMA_BACKOFF` and handle
-    /// tx requests from sleepy children.
-    ///
-    /// @param[in]  aInstance    The OpenThread instance structure.
-    /// @param[in]  aEnable      TRUE to keep radio in Receive state, FALSE to put to Sleep state during idle periods.
-    pub fn otPlatRadioSetRxOnWhenIdle(aInstance: *mut otInstance, aEnable: bool);
 }
 unsafe extern "C" {
     /// Update MAC keys and key index
