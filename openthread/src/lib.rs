@@ -452,8 +452,7 @@ impl<'a> OpenThread<'a> {
         // set_link_mode() is called BEFORE attach in thread.rs, so we must
         // not change rx_when_idle until the device is actually connected,
         // otherwise the ESP radio driver behaves differently and attach fails.
-        let device_role: DeviceRole =
-            unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
+        let device_role: DeviceRole = unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
 
         if device_role.is_connected() && state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
             info!(
@@ -511,6 +510,36 @@ impl<'a> OpenThread<'a> {
     /// the tasks will fight with each other by each re-registering its own waker, thus keeping the CPU constantly busy.
     pub async fn wait_changed(&self) {
         poll_fn(move |cx| self.activate().state().ot.changes.poll_wait(cx)).await;
+    }
+
+    /// Check if rx_when_idle is enabled in the radio config.
+    ///
+    /// When `rx_when_idle` is true, the device can receive unsolicited messages
+    /// (like SRP server responses). This is essential for Matter-over-Thread.
+    pub fn get_rx_when_idle(&self) -> bool {
+        self.activate().state().ot.radio_conf.rx_when_idle
+    }
+
+    /// Wait until rx_when_idle becomes true.
+    ///
+    /// This is used by mDNS/SRP to wait for the link mode to be properly set
+    /// before registering services. Without rx_when_idle=true, the device
+    /// cannot receive SRP server responses, causing RESPONSE_TIMEOUT.
+    ///
+    /// Uses wait_changed() polling since there's no dedicated signal for
+    /// link mode changes.
+    pub async fn wait_rx_when_idle(&self) {
+        loop {
+            if self.get_rx_when_idle() {
+                return;
+            }
+            // Wait for any state change, then check again
+            embassy_futures::select::select(
+                self.wait_changed(),
+                embassy_time::Timer::after(embassy_time::Duration::from_millis(100)),
+            )
+            .await;
+        }
     }
 
     /// Run the OpenThread stack with the provided radio implementation.
@@ -866,6 +895,25 @@ impl<'a> OpenThread<'a> {
                                     }
                                 }
 
+                                // If rx_when_idle is enabled, automatically switch to RX after TX
+                                // This is required because OpenThread expects the radio to be
+                                // receiving when idle, without explicit plat_radio_receive() calls
+                                let rx_conf = {
+                                    let mut ot2 = self.activate();
+                                    let state2 = ot2.state();
+                                    if state2.ot.radio_conf.rx_when_idle {
+                                        Some(state2.ot.radio_conf.clone())
+                                    } else {
+                                        None
+                                    }
+                                };
+
+                                if let Some(conf) = rx_conf {
+                                    info!("TX done, rx_when_idle=true, auto-switching to RX");
+                                    cmd = RadioCommand::Rx(conf);
+                                    continue;
+                                }
+
                                 break;
                             }
                         }
@@ -930,6 +978,24 @@ impl<'a> OpenThread<'a> {
                                             );
                                         }
                                     }
+                                }
+
+                                // If rx_when_idle is enabled, continue receiving
+                                // The inner loop also listens for new commands, so if OpenThread
+                                // needs to TX, the new command will interrupt our RX
+                                let rx_conf = {
+                                    let mut ot2 = self.activate();
+                                    let state2 = ot2.state();
+                                    if state2.ot.radio_conf.rx_when_idle {
+                                        Some(state2.ot.radio_conf.clone())
+                                    } else {
+                                        None
+                                    }
+                                };
+
+                                if let Some(conf) = rx_conf {
+                                    cmd = RadioCommand::Rx(conf);
+                                    continue;
                                 }
 
                                 break;
@@ -1590,10 +1656,9 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_transmit(&mut self, frame: &otRadioFrame) -> Result<(), OtError> {
-        trace!(
-            "Plat radio transmit callback: {}, {:?}",
-            frame.mLength,
-            frame.mPsdu
+        info!(
+            "Plat radio TX cmd: {} bytes ch{}",
+            frame.mLength, frame.mChannel
         );
 
         let state = self.state();
@@ -1613,7 +1678,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_receive(&mut self, channel: u8) -> Result<(), OtError> {
-        trace!("Plat radio receive callback, channel: {}", channel);
+        info!("Plat radio RX cmd: ch{}", channel);
 
         let state = self.state();
 

@@ -5,7 +5,6 @@ use embassy_sync::signal::Signal;
 
 use esp_radio::ieee802154::{Config as EspConfig, Error};
 
-use crate::fmt::Bytes;
 use crate::{
     Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
 };
@@ -114,9 +113,9 @@ impl Radio for EspRadio<'_> {
     ) -> Result<Option<PsduMeta>, Self::Error> {
         TX_SIGNAL.reset();
 
-        trace!(
-            "ESP Radio, about to transmit: {} on channel {}",
-            Bytes(psdu),
+        info!(
+            "802.15.4 TX: {} bytes ch{}",
+            psdu.len(),
             self.config.channel
         );
 
@@ -124,7 +123,7 @@ impl Radio for EspRadio<'_> {
 
         TX_SIGNAL.wait().await;
 
-        trace!("ESP Radio, transmission done");
+        debug!("802.15.4 TX done");
 
         Ok(None)
     }
@@ -150,13 +149,12 @@ impl Radio for EspRadio<'_> {
         let psdu_len = (raw.data.len() - 1).min((raw.data[0] & 0x7f) as usize);
         psdu_buf[..psdu_len].copy_from_slice(&raw.data[1..][..psdu_len]);
 
-        trace!(
-            "ESP Radio, received: {} on channel {}",
-            Bytes(&psdu_buf[..psdu_len]),
-            raw.channel
-        );
-
         let rssi = raw.data[1..][psdu_len] as i8;
+
+        info!(
+            "802.15.4 RX: {} bytes ch{} rssi={}",
+            psdu_len, raw.channel, rssi
+        );
 
         Ok(PsduMeta {
             len: psdu_len,
