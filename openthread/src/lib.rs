@@ -559,8 +559,17 @@ impl<'a> OpenThread<'a> {
     /// before registering services. Without rx_when_idle=true, the device
     /// cannot receive SRP server responses, causing RESPONSE_TIMEOUT.
     ///
-    /// Uses wait_changed() polling since there's no dedicated signal for
+    /// Uses `wait_changed()` polling since there's no dedicated signal for
     /// link mode changes.
+    ///
+    /// # Waker contention
+    ///
+    /// This method shares the single waker in `wait_changed()`. If called
+    /// concurrently with `run()`, both futures will compete over the same
+    /// waker registration, causing spurious wake-ups and busy polling.
+    /// Call this method **before** starting `run()`, or use
+    /// `embassy_futures::select::select` to combine it with `run()` in a
+    /// single task.
     pub async fn wait_rx_when_idle(&self) {
         loop {
             if self.get_rx_when_idle() {
@@ -1466,7 +1475,7 @@ impl<'a> OtContext<'a> {
         let instance = context as *mut otInstance;
 
         Self::callback(instance).plat_srp_changed(
-            unsafe { &*host_info },
+            unsafe { host_info.as_ref() },
             unsafe { services.as_ref() },
             unsafe { removed_services.as_ref() },
         );
