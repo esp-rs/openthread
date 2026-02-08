@@ -951,7 +951,7 @@ impl<'a> OpenThread<'a> {
 
                                 // Release the first activation before re-activating
                                 // via rx_when_idle_conf (OtContext is an RAII guard).
-                                drop(state);
+                                let _ = state;
                                 drop(ot);
 
                                 // If rx_when_idle is enabled, automatically switch to RX after TX.
@@ -1031,7 +1031,7 @@ impl<'a> OpenThread<'a> {
 
                                 // Release the first activation before re-activating
                                 // via rx_when_idle_conf (OtContext is an RAII guard).
-                                drop(state);
+                                let _ = state;
                                 drop(ot);
 
                                 // If rx_when_idle is enabled, continue receiving.
