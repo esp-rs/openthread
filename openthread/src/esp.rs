@@ -123,7 +123,7 @@ impl Radio for EspRadio<'_> {
 
         TX_SIGNAL.wait().await;
 
-        debug!("802.15.4 TX done");
+        trace!("802.15.4 TX done");
 
         Ok(None)
     }
