@@ -1029,6 +1029,9 @@ impl<'a> OpenThread<'a> {
                                 // The inner loop also listens for new commands, so if
                                 // OpenThread needs to TX, it will interrupt our RX.
                                 if let Some(conf) = self.rx_when_idle_conf() {
+                                    // Yield to prevent a tight loop if receive() returns
+                                    // errors immediately (e.g. invalid radio config).
+                                    embassy_futures::yield_now().await;
                                     cmd = RadioCommand::Rx(conf);
                                     continue;
                                 }

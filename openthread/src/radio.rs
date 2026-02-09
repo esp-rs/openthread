@@ -127,7 +127,7 @@ bitflags! {
     #[repr(transparent)]
     #[derive(Default)]
     #[cfg_attr(not(feature = "defmt"), derive(Debug, Copy, Clone, Eq, PartialEq, Hash))]
-    pub struct OtRadioCaps: u16 {
+    pub struct OtRadioCaps: u8 {
         /// Radio supports ACK timeout for transmitted frames.
         const ACK_TIMEOUT = 1;
         /// Radio supports energy scan.
@@ -308,6 +308,10 @@ where
         T::mac_caps(self)
     }
 
+    fn ot_radio_caps(&mut self) -> OtRadioCaps {
+        T::ot_radio_caps(self)
+    }
+
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         T::set_config(self, config).await
     }
@@ -454,6 +458,10 @@ where
 
     fn mac_caps(&mut self) -> MacCapabilities {
         self.radio.mac_caps()
+    }
+
+    fn ot_radio_caps(&mut self) -> OtRadioCaps {
+        self.radio.ot_radio_caps()
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
