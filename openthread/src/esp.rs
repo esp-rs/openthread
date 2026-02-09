@@ -6,7 +6,8 @@ use embassy_sync::signal::Signal;
 use esp_radio::ieee802154::{Config as EspConfig, Error};
 
 use crate::{
-    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
+    Capabilities, Cca, Config, MacCapabilities, OtRadioCaps, PsduMeta, Radio, RadioError,
+    RadioErrorKind,
 };
 
 pub use esp_radio::ieee802154::Ieee802154;
@@ -93,6 +94,10 @@ impl Radio for EspRadio<'_> {
 
     fn mac_caps(&mut self) -> MacCapabilities {
         MacCapabilities::all()
+    }
+
+    fn ot_radio_caps(&mut self) -> OtRadioCaps {
+        OtRadioCaps::ACK_TIMEOUT | OtRadioCaps::CSMA_BACKOFF
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {

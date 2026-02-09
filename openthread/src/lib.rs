@@ -495,18 +495,6 @@ impl<'a> OpenThread<'a> {
         ot!(unsafe { otThreadSetLinkMode(state.ot.instance, mode) })
     }
 
-    /// Set the radio capabilities reported to OpenThread.
-    ///
-    /// These should reflect the actual hardware capabilities of the radio driver.
-    /// Must be called before `run()`. Default: `OT_RADIO_CAPS_ACK_TIMEOUT`.
-    ///
-    /// Common capability constants from `openthread_sys`:
-    /// - `OT_RADIO_CAPS_ACK_TIMEOUT` (1): Radio supports ack timeout
-    /// - `OT_RADIO_CAPS_CSMA_BACKOFF` (8): Radio supports CSMA backoff for frame transmission
-    pub fn set_radio_caps(&self, caps: otRadioCaps) {
-        self.activate().state().ot.radio_caps = caps;
-    }
-
     /// Gets the list of IPv6 addresses currently assigned to the Thread interface
     ///
     /// Arguments:
@@ -791,11 +779,14 @@ impl<'a> OpenThread<'a> {
     /// Arguments:
     /// - `radio`: The radio to be used by the OpenThread stack.
     /// - `delay`: The delay implementation to be used by the OpenThread stack.
-    async fn run_radio<R, T>(&self, radio: R, timer: T) -> !
+    async fn run_radio<R, T>(&self, mut radio: R, timer: T) -> !
     where
         R: Radio,
         T: MacRadioTimer,
     {
+        // Set OT radio caps from the driver itself
+        self.activate().state().ot.radio_caps = radio.ot_radio_caps().bits() as otRadioCaps;
+
         /// Fill the OpenThread frame structure based on the PSDU data returned by the radio
         fn fill_frame(
             frame: &mut otRadioFrame,
