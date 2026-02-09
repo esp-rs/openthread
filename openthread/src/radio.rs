@@ -118,6 +118,35 @@ bitflags! {
     }
 }
 
+bitflags! {
+    /// OpenThread platform radio capabilities.
+    ///
+    /// Reported to the OpenThread stack via `otPlatRadioGetCaps`.
+    /// Each radio driver should override `Radio::ot_radio_caps()` to report
+    /// the capabilities actually supported by the hardware.
+    #[repr(transparent)]
+    #[derive(Default)]
+    #[cfg_attr(not(feature = "defmt"), derive(Debug, Copy, Clone, Eq, PartialEq, Hash))]
+    pub struct OtRadioCaps: u8 {
+        /// Radio supports ACK timeout for transmitted frames.
+        const ACK_TIMEOUT = 1;
+        /// Radio supports energy scan.
+        const ENERGY_SCAN = 2;
+        /// Radio supports automatic retransmission of unacknowledged frames.
+        const TRANSMIT_RETRIES = 4;
+        /// Radio supports CSMA/CA backoff for frame transmission.
+        const CSMA_BACKOFF = 8;
+        /// Radio supports direct transition from sleep to TX.
+        const SLEEP_TO_TX = 16;
+        /// Radio supports frame security processing (encryption/decryption).
+        const TRANSMIT_SEC = 32;
+        /// Radio supports precise TX timing.
+        const TRANSMIT_TIMING = 64;
+        /// Radio supports precise RX timing.
+        const RECEIVE_TIMING = 128;
+    }
+}
+
 /// Radio configuration.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
@@ -214,6 +243,14 @@ pub trait Radio {
     /// If some of these are missing, `OpenThread` will emulate them in software.
     fn mac_caps(&mut self) -> MacCapabilities;
 
+    /// Get the OpenThread platform radio capabilities.
+    ///
+    /// Override this to report the actual hardware capabilities of the radio.
+    /// Default: `OtRadioCaps::ACK_TIMEOUT`.
+    fn ot_radio_caps(&mut self) -> OtRadioCaps {
+        OtRadioCaps::ACK_TIMEOUT
+    }
+
     /// Set the radio configuration.
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error>;
 
@@ -269,6 +306,10 @@ where
 
     fn mac_caps(&mut self) -> MacCapabilities {
         T::mac_caps(self)
+    }
+
+    fn ot_radio_caps(&mut self) -> OtRadioCaps {
+        T::ot_radio_caps(self)
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
@@ -417,6 +458,10 @@ where
 
     fn mac_caps(&mut self) -> MacCapabilities {
         self.radio.mac_caps()
+    }
+
+    fn ot_radio_caps(&mut self) -> OtRadioCaps {
+        self.radio.ot_radio_caps()
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {

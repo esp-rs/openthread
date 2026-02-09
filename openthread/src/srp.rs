@@ -936,13 +936,15 @@ impl OtContext<'_> {
 
     pub(crate) fn plat_srp_changed(
         &mut self,
-        host_info: &otSrpClientHostInfo,
+        host_info: Option<&otSrpClientHostInfo>,
         _services: Option<&otSrpClientService>,
         removed_services: Option<&otSrpClientService>,
     ) {
         trace!("Plat changed callback");
 
-        self.cleanup(host_info, removed_services);
+        if let Some(host_info) = host_info {
+            self.cleanup(host_info, removed_services);
+        }
 
         let state = self.state();
         if let Ok(srp) = state.srp() {

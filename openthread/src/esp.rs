@@ -5,9 +5,9 @@ use embassy_sync::signal::Signal;
 
 use esp_radio::ieee802154::{Config as EspConfig, Error};
 
-use crate::fmt::Bytes;
 use crate::{
-    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
+    Capabilities, Cca, Config, MacCapabilities, OtRadioCaps, PsduMeta, Radio, RadioError,
+    RadioErrorKind,
 };
 
 pub use esp_radio::ieee802154::Ieee802154;
@@ -96,6 +96,10 @@ impl Radio for EspRadio<'_> {
         MacCapabilities::all()
     }
 
+    fn ot_radio_caps(&mut self) -> OtRadioCaps {
+        OtRadioCaps::ACK_TIMEOUT | OtRadioCaps::CSMA_BACKOFF
+    }
+
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         if self.config != *config {
             debug!("Setting radio config: {:?}", config);
@@ -115,8 +119,8 @@ impl Radio for EspRadio<'_> {
         TX_SIGNAL.reset();
 
         trace!(
-            "ESP Radio, about to transmit: {} on channel {}",
-            Bytes(psdu),
+            "802.15.4 TX: {} bytes ch{}",
+            psdu.len(),
             self.config.channel
         );
 
@@ -124,7 +128,7 @@ impl Radio for EspRadio<'_> {
 
         TX_SIGNAL.wait().await;
 
-        trace!("ESP Radio, transmission done");
+        trace!("802.15.4 TX done");
 
         Ok(None)
     }
@@ -150,13 +154,14 @@ impl Radio for EspRadio<'_> {
         let psdu_len = (raw.data.len() - 1).min((raw.data[0] & 0x7f) as usize);
         psdu_buf[..psdu_len].copy_from_slice(&raw.data[1..][..psdu_len]);
 
-        trace!(
-            "ESP Radio, received: {} on channel {}",
-            Bytes(&psdu_buf[..psdu_len]),
-            raw.channel
-        );
-
         let rssi = raw.data[1..][psdu_len] as i8;
+
+        trace!(
+            "802.15.4 RX: {} bytes ch{} rssi={}",
+            psdu_len,
+            raw.channel,
+            rssi
+        );
 
         Ok(PsduMeta {
             len: psdu_len,

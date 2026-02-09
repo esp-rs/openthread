@@ -175,6 +175,11 @@ impl OpenThreadBuilder {
 
         let mut config = self.cmake_configurer.configure(Some(lib_dir));
 
+        // Increase message buffers for Matter + SRP (default 44 is too small)
+        config
+            .cflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128")
+            .cxxflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128");
+
         config
             .define("OT_LOG_LEVEL", "NOTE")
             .define("OT_FTD", "OFF")

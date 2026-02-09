@@ -72,12 +72,13 @@ use sys::{
     otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND, otError_OT_ERROR_NO_ACK,
     otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize, otInstanceInitSingle, otIp6Address,
     otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
-    otIp6SetEnabled, otIp6SetReceiveCallback, otMessage, otMessageFree,
+    otIp6SetEnabled, otIp6SetReceiveCallback, otLinkModeConfig, otMessage, otMessageFree,
     otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings,
     otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone,
     otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
     otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
-    OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
+    otThreadSetLinkMode, OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT,
+    OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -426,6 +427,74 @@ impl<'a> OpenThread<'a> {
         ot!(unsafe { otThreadSetEnabled(state.ot.instance, enable) })
     }
 
+    /// Set the Thread link mode configuration.
+    ///
+    /// Note: the `rx_on_when_idle` radio config change is only applied once the device
+    /// is connected (has a role of Child, Router, or Leader). If called before attachment,
+    /// `otThreadSetLinkMode` is still sent to OpenThread, but the radio config update is
+    /// stored as pending and automatically applied via the `plat_changed` callback when
+    /// the device role transitions to connected. This prevents the ESP radio driver from
+    /// behaving unexpectedly during the attach sequence.
+    ///
+    /// Arguments:
+    /// - `rx_on_when_idle`: If true, the device keeps its receiver on when idle.
+    ///   This is required for devices that need to receive unsolicited messages
+    ///   (e.g., SRP responses, Matter commands).
+    /// - `full_thread_device`: If true, the device operates as a Full Thread Device (FTD).
+    ///   Requires OpenThread compiled with `OT_FTD=ON`. Currently compiled as MTD only,
+    ///   so passing `true` will return an error (`kErrorInvalidArgs`).
+    /// - `receive_full_network_data`: If true, the device requests full Thread Network Data
+    ///   from the leader. If false, only stable (minimal) network data is requested.
+    pub fn set_link_mode(
+        &self,
+        rx_on_when_idle: bool,
+        full_thread_device: bool,
+        receive_full_network_data: bool,
+    ) -> Result<(), OtError> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        // Update radio config rx_when_idle to match link mode.
+        // The OpenThread submodule predates otPlatRadioSetRxOnWhenIdle support,
+        // so we update the radio config directly to ensure the radio driver
+        // keeps the radio awake when needed.
+        //
+        // If the device is already connected, apply the change immediately.
+        // If not yet connected, store it as pending — it will be applied
+        // automatically via plat_changed when the device role becomes connected.
+        // This prevents the ESP radio driver from behaving unexpectedly during
+        // the attach sequence.
+        let device_role: DeviceRole = unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
+
+        if device_role.is_connected() {
+            if state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
+                info!(
+                    "Updating radio config rx_when_idle: {} -> {}",
+                    state.ot.radio_conf.rx_when_idle, rx_on_when_idle
+                );
+                state.ot.radio_conf.rx_when_idle = rx_on_when_idle;
+            }
+            state.ot.pending_rx_when_idle = None;
+        } else {
+            info!(
+                "Device not connected, deferring rx_when_idle: {}",
+                rx_on_when_idle
+            );
+            state.ot.pending_rx_when_idle = Some(rx_on_when_idle);
+        }
+
+        let mode = otLinkModeConfig {
+            _bitfield_align_1: [],
+            _bitfield_1: otLinkModeConfig::new_bitfield_1(
+                rx_on_when_idle,
+                full_thread_device,
+                receive_full_network_data,
+            ),
+        };
+
+        ot!(unsafe { otThreadSetLinkMode(state.ot.instance, mode) })
+    }
+
     /// Gets the list of IPv6 addresses currently assigned to the Thread interface
     ///
     /// Arguments:
@@ -462,6 +531,45 @@ impl<'a> OpenThread<'a> {
     /// the tasks will fight with each other by each re-registering its own waker, thus keeping the CPU constantly busy.
     pub async fn wait_changed(&self) {
         poll_fn(move |cx| self.activate().state().ot.changes.poll_wait(cx)).await;
+    }
+
+    /// Check if rx_when_idle is enabled in the radio config.
+    ///
+    /// When `rx_when_idle` is true, the device can receive unsolicited messages
+    /// (like SRP server responses). This is essential for Matter-over-Thread.
+    pub fn get_rx_when_idle(&self) -> bool {
+        self.activate().state().ot.radio_conf.rx_when_idle
+    }
+
+    /// Wait until rx_when_idle becomes true.
+    ///
+    /// This is used by mDNS/SRP to wait for the link mode to be properly set
+    /// before registering services. Without rx_when_idle=true, the device
+    /// cannot receive SRP server responses, causing RESPONSE_TIMEOUT.
+    ///
+    /// Uses `wait_changed()` polling since there's no dedicated signal for
+    /// link mode changes.
+    ///
+    /// # Waker contention
+    ///
+    /// This method shares the single waker in `wait_changed()`. If called
+    /// concurrently with `run()`, both futures will compete over the same
+    /// waker registration, causing spurious wake-ups and busy polling.
+    /// Call this method **before** starting `run()`, or use
+    /// `embassy_futures::select::select` to combine it with `run()` in a
+    /// single task.
+    pub async fn wait_rx_when_idle(&self) {
+        loop {
+            if self.get_rx_when_idle() {
+                return;
+            }
+            // Wait for any state change, then check again
+            embassy_futures::select::select(
+                self.wait_changed(),
+                embassy_time::Timer::after(embassy_time::Duration::from_millis(100)),
+            )
+            .await;
+        }
     }
 
     /// Run the OpenThread stack with the provided radio implementation.
@@ -651,6 +759,18 @@ impl<'a> OpenThread<'a> {
         }
     }
 
+    /// Check if rx_when_idle is enabled and return the radio config if so.
+    /// Used after TX/RX completion to decide whether to auto-switch back to RX.
+    fn rx_when_idle_conf(&self) -> Option<radio::Config> {
+        let mut ot = self.activate();
+        let state = ot.state();
+        if state.ot.radio_conf.rx_when_idle {
+            Some(state.ot.radio_conf.clone())
+        } else {
+            None
+        }
+    }
+
     /// An async loop that sends or receives IEEE 802.15.4 frames, based on commands issued by the OT loop
     ///
     /// Needs to be a separate async loop, because OpenThread C is unaware of async/await and futures,
@@ -659,11 +779,14 @@ impl<'a> OpenThread<'a> {
     /// Arguments:
     /// - `radio`: The radio to be used by the OpenThread stack.
     /// - `delay`: The delay implementation to be used by the OpenThread stack.
-    async fn run_radio<R, T>(&self, radio: R, timer: T) -> !
+    async fn run_radio<R, T>(&self, mut radio: R, timer: T) -> !
     where
         R: Radio,
         T: MacRadioTimer,
     {
+        // Set OT radio caps from the driver itself
+        self.activate().state().ot.radio_caps = radio.ot_radio_caps().bits() as otRadioCaps;
+
         /// Fill the OpenThread frame structure based on the PSDU data returned by the radio
         fn fill_frame(
             frame: &mut otRadioFrame,
@@ -817,6 +940,20 @@ impl<'a> OpenThread<'a> {
                                     }
                                 }
 
+                                // Release the first activation before re-activating
+                                // via rx_when_idle_conf (OtContext is an RAII guard).
+                                let _ = state;
+                                drop(ot);
+
+                                // If rx_when_idle is enabled, automatically switch to RX after TX.
+                                // OpenThread expects the radio to be receiving when idle,
+                                // without explicit plat_radio_receive() calls.
+                                if let Some(conf) = self.rx_when_idle_conf() {
+                                    trace!("TX done, rx_when_idle=true, auto-switching to RX");
+                                    cmd = RadioCommand::Rx(conf);
+                                    continue;
+                                }
+
                                 break;
                             }
                         }
@@ -881,6 +1018,22 @@ impl<'a> OpenThread<'a> {
                                             );
                                         }
                                     }
+                                }
+
+                                // Release the first activation before re-activating
+                                // via rx_when_idle_conf (OtContext is an RAII guard).
+                                let _ = state;
+                                drop(ot);
+
+                                // If rx_when_idle is enabled, continue receiving.
+                                // The inner loop also listens for new commands, so if
+                                // OpenThread needs to TX, it will interrupt our RX.
+                                if let Some(conf) = self.rx_when_idle_conf() {
+                                    // Yield to prevent a tight loop if receive() returns
+                                    // errors immediately (e.g. invalid radio config).
+                                    embassy_futures::yield_now().await;
+                                    cmd = RadioCommand::Rx(conf);
+                                    continue;
                                 }
 
                                 break;
@@ -1041,6 +1194,8 @@ impl OtResources {
             changes: Signal::new(),
             radio: Signal::new(),
             radio_conf: Config::new(),
+            radio_caps: OT_RADIO_CAPS_ACK_TIMEOUT as otRadioCaps,
+            pending_rx_when_idle: None,
         }));
 
         info!("OpenThread resources initialized");
@@ -1292,16 +1447,29 @@ impl<'a> OtContext<'a> {
 
     #[cfg(feature = "srp")]
     unsafe extern "C" fn plat_c_srp_state_change_callback(
-        _error: otError,
+        error: otError,
         host_info: *const crate::sys::otSrpClientHostInfo,
         services: *const crate::sys::otSrpClientService,
         removed_services: *const crate::sys::otSrpClientService,
         context: *mut c_void,
     ) {
+        // Log SRP errors for debugging (OT_ERROR_NONE = 0)
+        if error != 0 {
+            if !host_info.is_null() {
+                let host_state = unsafe { (*host_info).mState };
+                warn!(
+                    "SRP callback error: code={}, host_state={}",
+                    error, host_state
+                );
+            } else {
+                warn!("SRP callback error: code={}", error);
+            }
+        }
+
         let instance = context as *mut otInstance;
 
         Self::callback(instance).plat_srp_changed(
-            unsafe { &*host_info },
+            unsafe { host_info.as_ref() },
             unsafe { services.as_ref() },
             unsafe { removed_services.as_ref() },
         );
@@ -1364,9 +1532,28 @@ impl<'a> OtContext<'a> {
         }
     }
 
-    fn plat_changed(&mut self, _flags: u32) {
-        trace!("Plat changed callback");
-        self.state().ot.changes.signal(());
+    fn plat_changed(&mut self, flags: u32) {
+        trace!("Plat changed callback, flags: {:#x}", flags);
+
+        let state = self.state();
+
+        // Apply deferred rx_when_idle only on role change events to avoid
+        // unnecessary otThreadGetDeviceRole calls on every state change.
+        if flags & OT_CHANGED_THREAD_ROLE != 0 {
+            if let Some(pending) = state.ot.pending_rx_when_idle {
+                let role: DeviceRole = unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
+                if role.is_connected() {
+                    info!(
+                        "Applying deferred rx_when_idle: {} -> {}",
+                        state.ot.radio_conf.rx_when_idle, pending
+                    );
+                    state.ot.radio_conf.rx_when_idle = pending;
+                    state.ot.pending_rx_when_idle = None;
+                }
+            }
+        }
+
+        state.ot.changes.signal(());
     }
 
     fn plat_now(&mut self) -> u32 {
@@ -1398,7 +1585,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_caps(&mut self) -> otRadioCaps {
-        let caps = OT_RADIO_CAPS_ACK_TIMEOUT as _;
+        let caps = self.state().ot.radio_caps;
         trace!("Plat radio caps callback, caps: {}", caps);
 
         caps
@@ -1520,9 +1707,9 @@ impl<'a> OtContext<'a> {
 
     fn plat_radio_transmit(&mut self, frame: &otRadioFrame) -> Result<(), OtError> {
         trace!(
-            "Plat radio transmit callback: {}, {:?}",
+            "Plat radio TX cmd: {} bytes ch{}",
             frame.mLength,
-            frame.mPsdu
+            frame.mChannel
         );
 
         let state = self.state();
@@ -1542,7 +1729,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_receive(&mut self, channel: u8) -> Result<(), OtError> {
-        trace!("Plat radio receive callback, channel: {}", channel);
+        trace!("Plat radio RX cmd: ch{}", channel);
 
         let state = self.state();
 
@@ -1703,6 +1890,13 @@ struct OtState<'a> {
     radio: Signal<RadioCommand>,
     /// The latest radio configuration from the POV of OpenThread
     radio_conf: radio::Config,
+    /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
+    /// Default: OT_RADIO_CAPS_ACK_TIMEOUT. Should match the actual hardware
+    /// capabilities of the radio driver.
+    radio_caps: otRadioCaps,
+    /// Deferred rx_when_idle value from set_link_mode called before device connects.
+    /// Applied automatically via plat_changed when the device role becomes connected.
+    pending_rx_when_idle: Option<bool>,
     /// Resources for the radio (PHY data frames and their descriptors)
     radio_resources: &'a mut RadioResources,
     /// Resources for dealing with the operational dataset
