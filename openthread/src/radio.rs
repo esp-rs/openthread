@@ -168,11 +168,11 @@ impl Config {
     pub const fn new() -> Self {
         Self {
             channel: 11,
-            power: 8,
+            power: 20,
             cca: Cca::Carrier,
             sfd: 0,
             promiscuous: false,
-            rx_when_idle: false,
+            rx_when_idle: true,
             pan_id: None,
             short_addr: None,
             ext_addr: None,

@@ -32,6 +32,15 @@ esp32h2 = ["esp-rtos/esp32h2", "esp-radio/esp32h2", "esp-backtrace/esp32h2", "es
 
 force-generate-bindings = ["openthread/force-generate-bindings"]
 
+[patch.crates-io]
+esp-hal = { git = "https://github.com/ivmarkov/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-rtos = { git = "https://github.com/ivmarkov/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-alloc = { git = "https://github.com/ivmarkov/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-backtrace = { git = "https://github.com/ivmarkov/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-println = { git = "https://github.com/ivmarkov/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-radio = { git = "https://github.com/ivmarkov/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-bootloader-esp-idf = { git = "https://github.com/ivmarkov/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+
 [dependencies]
 embassy-executor = "0.9"
 embassy-sync = "0.7"

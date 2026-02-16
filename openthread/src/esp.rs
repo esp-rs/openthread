@@ -3,20 +3,12 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
-use esp_radio::ieee802154::{Config as EspConfig, Error};
+use esp_radio::ieee802154::Config as EspConfig;
 
-use crate::{
-    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
-};
+use crate::fmt::Bytes;
+use crate::{Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioErrorKind};
 
 pub use esp_radio::ieee802154::Ieee802154;
-
-impl RadioError for Error {
-    fn kind(&self) -> RadioErrorKind {
-        // TODO
-        RadioErrorKind::Other
-    }
-}
 
 /// The `esp-hal` ESP IEEE 802.15.4 radio.
 pub struct EspRadio<'a> {
@@ -35,7 +27,9 @@ impl<'a> EspRadio<'a> {
         };
 
         this.driver.set_rx_available_callback_fn(Self::rx_callback);
-        this.driver.set_tx_done_callback_fn(Self::tx_callback);
+        this.driver.set_tx_done_callback_fn(Self::tx_done_callback);
+        this.driver
+            .set_tx_failed_callback_fn(Self::tx_failed_callback);
 
         this.update_driver_config();
 
@@ -69,6 +63,7 @@ impl<'a> EspRadio<'a> {
             pan_id: config.pan_id,
             short_addr: config.short_addr,
             ext_addr: config.ext_addr,
+            rx_queue_size: 50,
             ..Default::default()
         };
 
@@ -79,13 +74,17 @@ impl<'a> EspRadio<'a> {
         RX_SIGNAL.signal(());
     }
 
-    fn tx_callback() {
-        TX_SIGNAL.signal(());
+    fn tx_done_callback() {
+        TX_SIGNAL.signal(true); // success
+    }
+
+    fn tx_failed_callback() {
+        TX_SIGNAL.signal(false); // failure
     }
 }
 
 impl Radio for EspRadio<'_> {
-    type Error = Error;
+    type Error = RadioErrorKind;
 
     const CAPS: Capabilities = Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF) /* TODO: Depends on coex being off .union(Capabilities::RX_WHEN_IDLE) */;
 
@@ -105,8 +104,8 @@ impl Radio for EspRadio<'_> {
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        _cca: bool,
-        _ack_psdu_buf: Option<&mut [u8]>,
+        cca: bool,
+        ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         TX_SIGNAL.reset();
 
@@ -116,13 +115,46 @@ impl Radio for EspRadio<'_> {
             self.config.channel
         );
 
-        self.driver.transmit_raw(psdu)?;
+        self.driver
+            .transmit_raw(psdu, cca)
+            .map_err(|_| RadioErrorKind::Other)?;
 
-        TX_SIGNAL.wait().await;
+        let success = TX_SIGNAL.wait().await;
 
-        trace!("802.15.4 TX done");
+        if success {
+            trace!("ESP Radio, transmission done");
 
-        Ok(None)
+            if let Some(ack_psdu_buf) = ack_psdu_buf {
+                // After tx_done signal received, get the ACK frame:
+                if let Some(ack_frame) = self.driver.get_ack_frame() {
+                    let ack_psdu_len =
+                        (ack_frame.data.len() - 1).min((ack_frame.data[0] & 0x7f) as usize);
+                    ack_psdu_buf[..ack_psdu_len]
+                        .copy_from_slice(&ack_frame.data[1..][..ack_psdu_len]);
+
+                    trace!(
+                        "ESP Radio, received ACK: {} on channel {}",
+                        Bytes(&ack_psdu_buf[..ack_psdu_len]),
+                        ack_frame.channel
+                    );
+
+                    let rssi = ack_frame.data[1..][ack_psdu_len] as i8;
+
+                    return Ok(Some(PsduMeta {
+                        len: ack_psdu_len,
+                        channel: ack_frame.channel,
+                        rssi: Some(rssi),
+                    }));
+                }
+            }
+
+            Ok(None)
+        } else {
+            trace!("ESP Radio, transmission failed");
+
+            // Report as NoAck error so OpenThread SubMac retries
+            Err(RadioErrorKind::TxFailed)
+        }
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
@@ -164,5 +196,5 @@ impl Radio for EspRadio<'_> {
 }
 
 // Esp chips have a single radio, so having statics for these is OK
-static TX_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static TX_SIGNAL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 static RX_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
