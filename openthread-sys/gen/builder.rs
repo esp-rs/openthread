@@ -181,6 +181,7 @@ impl OpenThreadBuilder {
             .cxxflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128");
 
         config
+            .define("OT_THREAD_VERSION", "1.1")
             .define("OT_LOG_LEVEL", "NOTE")
             .define("OT_FTD", "OFF")
             .define("OT_MTD", "ON")
