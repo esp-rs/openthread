@@ -55,14 +55,10 @@ impl<'a> NrfRadio<'a> {
 impl Radio for NrfRadio<'_> {
     type Error = Error;
 
-    fn caps(&mut self) -> Capabilities {
-        Capabilities::RX_WHEN_IDLE
-    }
+    const CAPS: Capabilities = Capabilities::empty();
 
-    fn mac_caps(&mut self) -> MacCapabilities {
-        // The NRF radio does not have any MAC offloading capabilities
-        MacCapabilities::empty()
-    }
+    // The NRF radio does not have any MAC offloading capabilities
+    const MAC_CAPS: MacCapabilities = MacCapabilities::empty();
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         if self.config != *config {
@@ -78,6 +74,7 @@ impl Radio for NrfRadio<'_> {
     async fn transmit(
         &mut self,
         psdu: &[u8],
+        _csma: bool,
         _ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         trace!("NRF Radio, about to transmit: {}", Bytes(psdu));

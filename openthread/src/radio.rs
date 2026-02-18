@@ -19,7 +19,11 @@ use embassy_time::Instant;
 use mac::MacHeader;
 
 use crate::fmt::{bitflags, Bytes};
-use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
+use crate::sys::{
+    otRadioCaps, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_CAPS_CSMA_BACKOFF, OT_RADIO_CAPS_ENERGY_SCAN,
+    OT_RADIO_CAPS_RECEIVE_TIMING, OT_RADIO_CAPS_SLEEP_TO_TX, OT_RADIO_CAPS_TRANSMIT_RETRIES,
+    OT_RADIO_CAPS_TRANSMIT_SEC, OT_RADIO_CAPS_TRANSMIT_TIMING, OT_RADIO_FRAME_MAX_SIZE,
+};
 
 /// The error kind for radio errors.
 // TODO: Fill in with extra variants
@@ -84,16 +88,28 @@ pub enum Cca {
 
 bitflags! {
     /// Radio PHY capabilities.
+    ///
+    /// Reported to the OpenThread stack via `otPlatRadioGetCaps`.
     #[repr(transparent)]
     #[derive(Default)]
     #[cfg_attr(not(feature = "defmt"), derive(Debug, Copy, Clone, Eq, PartialEq, Hash))]
-    pub struct Capabilities: u16 {
-        /// Radio supports receiving during idle state.
-        const RX_WHEN_IDLE = 0x01;
-        /// Radio supports sleep mode.
-        const SLEEP = 0x02;
+    pub struct Capabilities: u8 /*: otRadioCaps - defmt::bitflags! can't grok this*/ {
+        /// Radio supports ACK timeout for transmitted frames.
+        const ACK_TIMEOUT = OT_RADIO_CAPS_ACK_TIMEOUT as u8;
         /// Radio supports energy scan.
-        const ENERGY_SCAN = 0x04;
+        const ENERGY_SCAN = OT_RADIO_CAPS_ENERGY_SCAN as u8;
+        /// Radio supports automatic retransmission of unacknowledged frames.
+        const TRANSMIT_RETRIES = OT_RADIO_CAPS_TRANSMIT_RETRIES as u8;
+        /// Radio supports CSMA/CA backoff for frame transmission.
+        const CSMA_BACKOFF = OT_RADIO_CAPS_CSMA_BACKOFF as u8;
+        /// Radio supports direct transition from sleep to TX.
+        const SLEEP_TO_TX = OT_RADIO_CAPS_SLEEP_TO_TX as u8;
+        /// Radio supports frame security processing (encryption/decryption).
+        const TRANSMIT_SEC = OT_RADIO_CAPS_TRANSMIT_SEC as u8;
+        /// Radio supports precise TX timing.
+        const TRANSMIT_TIMING = OT_RADIO_CAPS_TRANSMIT_TIMING as u8;
+        /// Radio supports precise RX timing.
+        const RECEIVE_TIMING = OT_RADIO_CAPS_RECEIVE_TIMING as u8;
     }
 }
 
@@ -115,35 +131,6 @@ bitflags! {
         const FILTER_SHORT_ADDR = 0x10;
         /// Radio supports filtering of PHY frames by their extended address in the MAC payload.
         const FILTER_EXT_ADDR = 0x20;
-    }
-}
-
-bitflags! {
-    /// OpenThread platform radio capabilities.
-    ///
-    /// Reported to the OpenThread stack via `otPlatRadioGetCaps`.
-    /// Each radio driver should override `Radio::ot_radio_caps()` to report
-    /// the capabilities actually supported by the hardware.
-    #[repr(transparent)]
-    #[derive(Default)]
-    #[cfg_attr(not(feature = "defmt"), derive(Debug, Copy, Clone, Eq, PartialEq, Hash))]
-    pub struct OtRadioCaps: u8 {
-        /// Radio supports ACK timeout for transmitted frames.
-        const ACK_TIMEOUT = 1;
-        /// Radio supports energy scan.
-        const ENERGY_SCAN = 2;
-        /// Radio supports automatic retransmission of unacknowledged frames.
-        const TRANSMIT_RETRIES = 4;
-        /// Radio supports CSMA/CA backoff for frame transmission.
-        const CSMA_BACKOFF = 8;
-        /// Radio supports direct transition from sleep to TX.
-        const SLEEP_TO_TX = 16;
-        /// Radio supports frame security processing (encryption/decryption).
-        const TRANSMIT_SEC = 32;
-        /// Radio supports precise TX timing.
-        const TRANSMIT_TIMING = 64;
-        /// Radio supports precise RX timing.
-        const RECEIVE_TIMING = 128;
     }
 }
 
@@ -236,20 +223,12 @@ pub trait Radio {
     /// The error type for radio operations.
     type Error: RadioError;
 
-    /// Get the radio capabilities.
-    fn caps(&mut self) -> Capabilities;
+    /// Radio capabilities.
+    const CAPS: Capabilities;
 
-    /// Get the radio "MAC-offloading" capabilities.
+    /// Radio "MAC-offloading" capabilities.
     /// If some of these are missing, `OpenThread` will emulate them in software.
-    fn mac_caps(&mut self) -> MacCapabilities;
-
-    /// Get the OpenThread platform radio capabilities.
-    ///
-    /// Override this to report the actual hardware capabilities of the radio.
-    /// Default: `OtRadioCaps::ACK_TIMEOUT`.
-    fn ot_radio_caps(&mut self) -> OtRadioCaps {
-        OtRadioCaps::ACK_TIMEOUT
-    }
+    const MAC_CAPS: MacCapabilities;
 
     /// Set the radio configuration.
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error>;
@@ -273,6 +252,7 @@ pub trait Radio {
     ///
     /// Arguments:
     /// - `psdu`: The PSDU to transmit as part of the frame.
+    /// - `cca`: Whether to perform clear channel assessment (CCA) before transmitting the frame.
     /// - `ack_psdu_buf`: The buffer to store the received ACK PSDU if the radio is capable of reporting received ACKs.
     ///
     /// Returns:
@@ -281,6 +261,7 @@ pub trait Radio {
     async fn transmit(
         &mut self,
         psdu: &[u8],
+        cca: bool,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error>;
 
@@ -300,17 +281,9 @@ where
 {
     type Error = T::Error;
 
-    fn caps(&mut self) -> Capabilities {
-        T::caps(self)
-    }
+    const CAPS: Capabilities = T::CAPS;
 
-    fn mac_caps(&mut self) -> MacCapabilities {
-        T::mac_caps(self)
-    }
-
-    fn ot_radio_caps(&mut self) -> OtRadioCaps {
-        T::ot_radio_caps(self)
-    }
+    const MAC_CAPS: MacCapabilities = T::MAC_CAPS;
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         T::set_config(self, config).await
@@ -319,9 +292,10 @@ where
     async fn transmit(
         &mut self,
         psdu: &[u8],
+        cca: bool,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
-        T::transmit(self, psdu, ack_psdu_buf).await
+        T::transmit(self, psdu, cca, ack_psdu_buf).await
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
@@ -452,17 +426,9 @@ where
 {
     type Error = MacRadioError<R::Error>;
 
-    fn caps(&mut self) -> Capabilities {
-        self.radio.caps()
-    }
+    const CAPS: Capabilities = R::CAPS;
 
-    fn mac_caps(&mut self) -> MacCapabilities {
-        self.radio.mac_caps()
-    }
-
-    fn ot_radio_caps(&mut self) -> OtRadioCaps {
-        self.radio.ot_radio_caps()
-    }
+    const MAC_CAPS: MacCapabilities = R::MAC_CAPS;
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.radio
@@ -481,14 +447,15 @@ where
     async fn transmit(
         &mut self,
         psdu: &[u8],
+        cca: bool,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         trace!("MacRadio, about to transmit");
 
-        if self.radio.mac_caps().contains(MacCapabilities::TX_ACK) {
+        if R::MAC_CAPS.contains(MacCapabilities::TX_ACK) {
             let result = self
                 .radio
-                .transmit(psdu, ack_psdu_buf)
+                .transmit(psdu, cca, ack_psdu_buf)
                 .await
                 .map_err(Self::Error::Io);
 
@@ -497,7 +464,7 @@ where
             result
         } else {
             self.radio
-                .transmit(psdu, None)
+                .transmit(psdu, cca, None)
                 .await
                 .map_err(Self::Error::Io)?;
 
@@ -567,9 +534,7 @@ where
 
             trace!("MacRadio, received: {}, meta: {:?}", Bytes(psdu), psdu_meta);
 
-            let mac_caps = self.radio.mac_caps();
-
-            if mac_caps != MacCapabilities::all() {
+            if R::MAC_CAPS != MacCapabilities::all() {
                 if self.mac_header.load(psdu).is_none() {
                     trace!(
                         "MacRadio, received frame with invalid MAC header, dropping: {}",
@@ -578,8 +543,8 @@ where
                     continue;
                 }
 
-                if !mac_caps.contains(MacCapabilities::PROMISCUOUS) && !self.promiscuous {
-                    if !mac_caps.contains(MacCapabilities::FILTER_PAN_ID)
+                if !R::MAC_CAPS.contains(MacCapabilities::PROMISCUOUS) && !self.promiscuous {
+                    if !R::MAC_CAPS.contains(MacCapabilities::FILTER_PAN_ID)
                         && self.mac_header.pan_id != MacHeader::BROADCAST_PAN_ID
                         && self.mac_header.pan_id != self.pan_id
                     {
@@ -590,7 +555,7 @@ where
                         continue;
                     }
 
-                    if !mac_caps.contains(MacCapabilities::FILTER_SHORT_ADDR)
+                    if !R::MAC_CAPS.contains(MacCapabilities::FILTER_SHORT_ADDR)
                         && self.mac_header.dst_short_addr != MacHeader::BROADCAST_SHORT_ADDR
                         && self.mac_header.dst_short_addr != self.short_addr
                     {
@@ -601,7 +566,7 @@ where
                         continue;
                     }
 
-                    if !mac_caps.contains(MacCapabilities::FILTER_EXT_ADDR)
+                    if !R::MAC_CAPS.contains(MacCapabilities::FILTER_EXT_ADDR)
                         && self.mac_header.dst_ext_addr != MacHeader::BROADCAST_EXT_ADDR
                         && self.mac_header.dst_ext_addr != self.ext_addr
                     {
@@ -612,7 +577,8 @@ where
                         continue;
                     }
 
-                    if !mac_caps.contains(MacCapabilities::RX_ACK) && self.mac_header.needs_ack() {
+                    if !R::MAC_CAPS.contains(MacCapabilities::RX_ACK) && self.mac_header.needs_ack()
+                    {
                         let ack_len = self.mac_header.prep_ack(&mut self.ack_psdu_buf);
                         let ack_psdu = &mut self.ack_psdu_buf[..ack_len];
 
@@ -623,7 +589,7 @@ where
                         }
 
                         self.radio
-                            .transmit(ack_psdu, None)
+                            .transmit(ack_psdu, false /*TODO: or true?*/, None)
                             .await
                             .map_err(Self::Error::TxAckFailed)?;
                     }
@@ -722,9 +688,7 @@ impl Default for ProxyRadioResources {
 ///   by passing it to `OpenThread::run`
 /// - `PhyRadioRunner`, which is `Send` and therefore can be sent to a separate executor - to run the radio.
 ///   Invoke `PhyRadioRunner::run(<the-phy-radio>, <delay-provider>).await` in that separate executor.
-pub struct ProxyRadio<'a> {
-    /// The radio capabilities. Should match what the PHY radio reports
-    caps: Capabilities,
+pub struct ProxyRadio<'a, const CAPS: otRadioCaps> {
     /// The request channel to the PHY radio
     request: Sender<'a, CriticalSectionRawMutex, ProxyRadioRequest>,
     /// The response channel from the PHY radio
@@ -739,19 +703,15 @@ pub struct ProxyRadio<'a> {
     config: Config,
 }
 
-impl<'a> ProxyRadio<'a> {
+impl<'a, const CAPS: otRadioCaps> ProxyRadio<'a, CAPS> {
     const INIT_REQUEST: [ProxyRadioRequest; 1] = [ProxyRadioRequest::new()];
     const INIT_RESPONSE: [ProxyRadioResponse; 1] = [ProxyRadioResponse::new()];
 
     /// Create a new `ProxyRadio` and its `PhyRadioRunner` instances.
     ///
     /// Arguments:
-    /// - `caps`: The radio capabilities. Should match the ones of the PHY radio
     /// - `resources`: The radio proxy resources
-    pub fn new(
-        caps: Capabilities,
-        resources: &'a mut ProxyRadioResources,
-    ) -> (Self, PhyRadioRunner<'a>) {
+    pub fn new(resources: &'a mut ProxyRadioResources) -> (Self, PhyRadioRunner<'a>) {
         resources.request_buf.write(Self::INIT_REQUEST);
         resources.response_buf.write(Self::INIT_RESPONSE);
 
@@ -775,7 +735,7 @@ impl<'a> ProxyRadio<'a> {
 
         let state = unsafe { resources.state.assume_init_mut() };
 
-        state.split(caps)
+        state.split::<CAPS>()
     }
 
     /// Clear any cancelled response from the driver
@@ -791,18 +751,14 @@ impl<'a> ProxyRadio<'a> {
     }
 }
 
-impl Radio for ProxyRadio<'_> {
+impl<const CAPS: otRadioCaps> Radio for ProxyRadio<'_, CAPS> {
     type Error = RadioErrorKind;
 
-    fn caps(&mut self) -> Capabilities {
-        self.caps
-    }
+    const CAPS: Capabilities = Capabilities::from_bits_truncate(CAPS);
 
-    fn mac_caps(&mut self) -> MacCapabilities {
-        // ... because the actual PHY radio on the other side
-        // of the pipe will be wrapped with `MacRadio` if it cannot do ACKs and filtering in hardware
-        MacCapabilities::all()
-    }
+    // ... because the actual PHY radio on the other side
+    // of the pipe will be wrapped with `MacRadio` if it cannot do ACKs and filtering in hardware
+    const MAC_CAPS: MacCapabilities = MacCapabilities::all();
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         // There is no separate command for updating the configuration
@@ -814,6 +770,7 @@ impl Radio for ProxyRadio<'_> {
     async fn transmit(
         &mut self,
         psdu: &[u8],
+        cca: bool,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         trace!("ProxyRadio, about to transmit: {}", Bytes(psdu));
@@ -825,6 +782,7 @@ impl Radio for ProxyRadio<'_> {
 
             req.tx = true;
             req.config = self.config.clone();
+            req.cca = cca;
             req.psdu.clear();
             unwrap!(req.psdu.extend_from_slice(psdu));
 
@@ -1022,7 +980,7 @@ impl PhyRadioRunner<'_> {
 
             let result = if request.tx {
                 Self::with_cancel(
-                    radio.transmit(&request.psdu, Some(&mut response.psdu)),
+                    radio.transmit(&request.psdu, request.cca, Some(&mut response.psdu)),
                     cancel,
                 )
                 .await?
@@ -1107,13 +1065,12 @@ impl<'a> ProxyRadioState<'a> {
     }
 
     /// Split the state into the proxy radio and the PHY radio runner.
-    fn split(&mut self, caps: Capabilities) -> (ProxyRadio<'_>, PhyRadioRunner<'_>) {
+    fn split<const CAPS: otRadioCaps>(&mut self) -> (ProxyRadio<'_, CAPS>, PhyRadioRunner<'_>) {
         let (request_sender, request_receiver) = self.request.split();
         let (response_sender, response_receiver) = self.response.split();
 
         (
             ProxyRadio {
-                caps,
                 request: request_sender,
                 response: response_receiver,
                 cancelled: Cell::new(false),
@@ -1135,6 +1092,9 @@ impl<'a> ProxyRadioState<'a> {
 struct ProxyRadioRequest {
     /// Transmit or receive
     tx: bool,
+    /// Whether to perform clear channel assessment (CCA) before transmitting the frame
+    /// (only relevant for TX requests, should be ignored for RX requests)
+    cca: bool,
     /// The radio configuration for the TX/RX operation
     config: Config,
     /// The PSDU to transmit for the TX operation
@@ -1146,6 +1106,7 @@ impl ProxyRadioRequest {
     const fn new() -> Self {
         Self {
             tx: false,
+            cca: false,
             config: Config::new(),
             psdu: heapless::Vec::new(),
         }

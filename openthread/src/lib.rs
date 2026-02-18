@@ -429,13 +429,6 @@ impl<'a> OpenThread<'a> {
 
     /// Set the Thread link mode configuration.
     ///
-    /// Note: the `rx_on_when_idle` radio config change is only applied once the device
-    /// is connected (has a role of Child, Router, or Leader). If called before attachment,
-    /// `otThreadSetLinkMode` is still sent to OpenThread, but the radio config update is
-    /// stored as pending and automatically applied via the `plat_changed` callback when
-    /// the device role transitions to connected. This prevents the ESP radio driver from
-    /// behaving unexpectedly during the attach sequence.
-    ///
     /// Arguments:
     /// - `rx_on_when_idle`: If true, the device keeps its receiver on when idle.
     ///   This is required for devices that need to receive unsolicited messages
@@ -453,35 +446,6 @@ impl<'a> OpenThread<'a> {
     ) -> Result<(), OtError> {
         let mut ot = self.activate();
         let state = ot.state();
-
-        // Update radio config rx_when_idle to match link mode.
-        // The OpenThread submodule predates otPlatRadioSetRxOnWhenIdle support,
-        // so we update the radio config directly to ensure the radio driver
-        // keeps the radio awake when needed.
-        //
-        // If the device is already connected, apply the change immediately.
-        // If not yet connected, store it as pending — it will be applied
-        // automatically via plat_changed when the device role becomes connected.
-        // This prevents the ESP radio driver from behaving unexpectedly during
-        // the attach sequence.
-        let device_role: DeviceRole = unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
-
-        if device_role.is_connected() {
-            if state.ot.radio_conf.rx_when_idle != rx_on_when_idle {
-                info!(
-                    "Updating radio config rx_when_idle: {} -> {}",
-                    state.ot.radio_conf.rx_when_idle, rx_on_when_idle
-                );
-                state.ot.radio_conf.rx_when_idle = rx_on_when_idle;
-            }
-            state.ot.pending_rx_when_idle = None;
-        } else {
-            info!(
-                "Device not connected, deferring rx_when_idle: {}",
-                rx_on_when_idle
-            );
-            state.ot.pending_rx_when_idle = Some(rx_on_when_idle);
-        }
 
         let mode = otLinkModeConfig {
             _bitfield_align_1: [],
@@ -779,13 +743,13 @@ impl<'a> OpenThread<'a> {
     /// Arguments:
     /// - `radio`: The radio to be used by the OpenThread stack.
     /// - `delay`: The delay implementation to be used by the OpenThread stack.
-    async fn run_radio<R, T>(&self, mut radio: R, timer: T) -> !
+    async fn run_radio<R, T>(&self, radio: R, timer: T) -> !
     where
         R: Radio,
         T: MacRadioTimer,
     {
-        // Set OT radio caps from the driver itself
-        self.activate().state().ot.radio_caps = radio.ot_radio_caps().bits() as otRadioCaps;
+        // Fetch the radio capabilities from the driver
+        self.activate().state().ot.radio_caps = R::CAPS.bits();
 
         /// Fill the OpenThread frame structure based on the PSDU data returned by the radio
         fn fill_frame(
@@ -840,9 +804,12 @@ impl<'a> OpenThread<'a> {
 
                 match cmd {
                     RadioCommand::Tx(_) => {
-                        let psdu_len = {
+                        let (cca, psdu_len) = {
                             let mut ot = self.activate();
                             let state = ot.state();
+
+                            let cca = unsafe { state.ot.radio_resources.snd_frame.mInfo.mTxInfo }
+                                .mCsmaCaEnabled();
 
                             let psdu_len = state.ot.radio_resources.snd_frame.mLength as usize;
                             psdu_buf[..psdu_len]
@@ -855,7 +822,7 @@ impl<'a> OpenThread<'a> {
                                 );
                             }
 
-                            psdu_len
+                            (cca, psdu_len)
                         };
 
                         trace!(
@@ -865,9 +832,11 @@ impl<'a> OpenThread<'a> {
 
                         let result = {
                             let mut new_cmd = pin!(radio_cmd());
-                            let mut tx = pin!(
-                                radio.transmit(&psdu_buf[..psdu_len], Some(&mut ack_psdu_buf))
-                            );
+                            let mut tx = pin!(radio.transmit(
+                                &psdu_buf[..psdu_len],
+                                cca,
+                                Some(&mut ack_psdu_buf)
+                            ));
 
                             embassy_futures::select::select(&mut new_cmd, &mut tx).await
                         };
@@ -1891,8 +1860,7 @@ struct OtState<'a> {
     /// The latest radio configuration from the POV of OpenThread
     radio_conf: radio::Config,
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
-    /// Default: OT_RADIO_CAPS_ACK_TIMEOUT. Should match the actual hardware
-    /// capabilities of the radio driver.
+    /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,
     /// Deferred rx_when_idle value from set_link_mode called before device connects.
     /// Applied automatically via plat_changed when the device role becomes connected.
