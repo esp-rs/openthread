@@ -6,8 +6,7 @@ use embassy_sync::signal::Signal;
 use esp_radio::ieee802154::{Config as EspConfig, Error};
 
 use crate::{
-    Capabilities, Cca, Config, MacCapabilities, OtRadioCaps, PsduMeta, Radio, RadioError,
-    RadioErrorKind,
+    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
 };
 
 pub use esp_radio::ieee802154::Ieee802154;
@@ -88,17 +87,9 @@ impl<'a> EspRadio<'a> {
 impl Radio for EspRadio<'_> {
     type Error = Error;
 
-    fn caps(&mut self) -> Capabilities {
-        Capabilities::RX_WHEN_IDLE
-    }
+    const CAPS: Capabilities = Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF) /* TODO: Depends on coex being off .union(Capabilities::RX_WHEN_IDLE) */;
 
-    fn mac_caps(&mut self) -> MacCapabilities {
-        MacCapabilities::all()
-    }
-
-    fn ot_radio_caps(&mut self) -> OtRadioCaps {
-        OtRadioCaps::ACK_TIMEOUT | OtRadioCaps::CSMA_BACKOFF
-    }
+    const MAC_CAPS: MacCapabilities = MacCapabilities::all();
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         if self.config != *config {
@@ -114,6 +105,7 @@ impl Radio for EspRadio<'_> {
     async fn transmit(
         &mut self,
         psdu: &[u8],
+        _cca: bool,
         _ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         TX_SIGNAL.reset();
