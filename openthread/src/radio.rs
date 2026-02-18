@@ -93,23 +93,23 @@ bitflags! {
     #[repr(transparent)]
     #[derive(Default)]
     #[cfg_attr(not(feature = "defmt"), derive(Debug, Copy, Clone, Eq, PartialEq, Hash))]
-    pub struct Capabilities: u8 /*: otRadioCaps - defmt::bitflags! can't grok this*/ {
+    pub struct Capabilities: u16 /*: otRadioCaps - defmt::bitflags! can't grok this*/ {
         /// Radio supports ACK timeout for transmitted frames.
-        const ACK_TIMEOUT = OT_RADIO_CAPS_ACK_TIMEOUT as u8;
+        const ACK_TIMEOUT = OT_RADIO_CAPS_ACK_TIMEOUT as u16;
         /// Radio supports energy scan.
-        const ENERGY_SCAN = OT_RADIO_CAPS_ENERGY_SCAN as u8;
+        const ENERGY_SCAN = OT_RADIO_CAPS_ENERGY_SCAN as u16;
         /// Radio supports automatic retransmission of unacknowledged frames.
-        const TRANSMIT_RETRIES = OT_RADIO_CAPS_TRANSMIT_RETRIES as u8;
+        const TRANSMIT_RETRIES = OT_RADIO_CAPS_TRANSMIT_RETRIES as u16;
         /// Radio supports CSMA/CA backoff for frame transmission.
-        const CSMA_BACKOFF = OT_RADIO_CAPS_CSMA_BACKOFF as u8;
+        const CSMA_BACKOFF = OT_RADIO_CAPS_CSMA_BACKOFF as u16;
         /// Radio supports direct transition from sleep to TX.
-        const SLEEP_TO_TX = OT_RADIO_CAPS_SLEEP_TO_TX as u8;
+        const SLEEP_TO_TX = OT_RADIO_CAPS_SLEEP_TO_TX as u16;
         /// Radio supports frame security processing (encryption/decryption).
-        const TRANSMIT_SEC = OT_RADIO_CAPS_TRANSMIT_SEC as u8;
+        const TRANSMIT_SEC = OT_RADIO_CAPS_TRANSMIT_SEC as u16;
         /// Radio supports precise TX timing.
-        const TRANSMIT_TIMING = OT_RADIO_CAPS_TRANSMIT_TIMING as u8;
+        const TRANSMIT_TIMING = OT_RADIO_CAPS_TRANSMIT_TIMING as u16;
         /// Radio supports precise RX timing.
-        const RECEIVE_TIMING = OT_RADIO_CAPS_RECEIVE_TIMING as u8;
+        const RECEIVE_TIMING = OT_RADIO_CAPS_RECEIVE_TIMING as u16;
     }
 }
 

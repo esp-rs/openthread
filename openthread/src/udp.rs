@@ -8,7 +8,7 @@ use crate::signal::Signal;
 use crate::sys::{
     otError_OT_ERROR_DROP, otError_OT_ERROR_NO_BUFS, otIp6Address, otIp6Address__bindgen_ty_1,
     otMessage, otMessageAppend, otMessageGetLength, otMessageInfo, otMessageRead,
-    otNetifIdentifier_OT_NETIF_THREAD, otSockAddr, otUdpBind, otUdpClose, otUdpConnect,
+    otNetifIdentifier_OT_NETIF_THREAD_INTERNAL, otSockAddr, otUdpBind, otUdpClose, otUdpConnect,
     otUdpNewMessage, otUdpOpen, otUdpSend, otUdpSocket,
 };
 use crate::{ot, to_ot_addr, to_sock_addr, Bytes, OpenThread, OtContext, OtError};
@@ -36,7 +36,7 @@ impl<'a> UdpSocket<'a> {
                     state.ot.instance,
                     &mut unwrap!(state.udp.as_mut()).sockets[this.slot].ot_socket,
                     &to_ot_addr(local),
-                    otNetifIdentifier_OT_NETIF_THREAD,
+                    otNetifIdentifier_OT_NETIF_THREAD_INTERNAL,
                 );
             }
         }
@@ -395,6 +395,7 @@ impl UdpSocketCtx {
                     },
                     mPort: 0,
                 },
+                mNetifId: otNetifIdentifier_OT_NETIF_THREAD_INTERNAL,
                 mHandler: None,
                 mContext: core::ptr::null_mut(),
                 mHandle: core::ptr::null_mut(),

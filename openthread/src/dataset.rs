@@ -166,18 +166,18 @@ impl OperationalDataset<'_> {
         raw_dataset.mComponents = Default::default();
 
         let c = &mut raw_dataset.mComponents;
-        c.set_mIsActiveTimestampPresent(active_timestamp_present);
-        c.set_mIsPendingTimestampPresent(pending_timestamp_present);
-        c.set_mIsNetworkKeyPresent(network_key_present);
-        c.set_mIsNetworkNamePresent(network_name_present);
-        c.set_mIsExtendedPanIdPresent(extended_pan_present);
-        c.set_mIsMeshLocalPrefixPresent(mesh_local_prefix_present);
-        c.set_mIsDelayPresent(delay_present);
-        c.set_mIsPanIdPresent(pan_id_present);
-        c.set_mIsChannelPresent(channel_present);
-        c.set_mIsPskcPresent(pskc_present);
-        c.set_mIsSecurityPolicyPresent(security_policy_present);
-        c.set_mIsChannelMaskPresent(channel_mask_present);
+        c.mIsActiveTimestampPresent = active_timestamp_present;
+        c.mIsPendingTimestampPresent = pending_timestamp_present;
+        c.mIsNetworkKeyPresent = network_key_present;
+        c.mIsNetworkNamePresent = network_name_present;
+        c.mIsExtendedPanIdPresent = extended_pan_present;
+        c.mIsMeshLocalPrefixPresent = mesh_local_prefix_present;
+        c.mIsDelayPresent = delay_present;
+        c.mIsPanIdPresent = pan_id_present;
+        c.mIsChannelPresent = channel_present;
+        c.mIsPskcPresent = pskc_present;
+        c.mIsSecurityPolicyPresent = security_policy_present;
+        c.mIsChannelMaskPresent = channel_mask_present;
     }
 
     /// Extract the regular and extended PAN IDs from the raw dataset.
@@ -187,11 +187,11 @@ impl OperationalDataset<'_> {
         (
             raw_dataset
                 .mComponents
-                .mIsPanIdPresent()
+                .mIsPanIdPresent
                 .then_some(raw_dataset.mPanId),
             raw_dataset
                 .mComponents
-                .mIsExtendedPanIdPresent()
+                .mIsExtendedPanIdPresent
                 .then_some(raw_dataset.mExtendedPanId.m8),
         )
     }
