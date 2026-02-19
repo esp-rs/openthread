@@ -63,6 +63,9 @@ impl<'a> EspRadio<'a> {
             pan_id: config.pan_id,
             short_addr: config.short_addr,
             ext_addr: config.ext_addr,
+            // The default of 10 is too small for OpenThread,
+            // which can have bursts of incoming frames, so we increase it to 50.
+            // TODO: See if we can get by with a smaller number to save memory.
             rx_queue_size: 50,
             ..Default::default()
         };
@@ -86,7 +89,10 @@ impl<'a> EspRadio<'a> {
 impl Radio for EspRadio<'_> {
     type Error = RadioErrorKind;
 
-    const CAPS: Capabilities = Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF) /* TODO: Depends on coex being off .union(Capabilities::RX_WHEN_IDLE) */;
+    const CAPS: Capabilities = Capabilities::ACK_TIMEOUT
+        .union(Capabilities::CSMA_BACKOFF)
+        // .union(Capabilities::RX_ON_WHEN_IDLE) TODO: Depends on coex being off in ESP-IDF
+        ;
 
     const MAC_CAPS: MacCapabilities = MacCapabilities::all();
 
@@ -110,7 +116,7 @@ impl Radio for EspRadio<'_> {
         TX_SIGNAL.reset();
 
         trace!(
-            "802.15.4 TX: {} bytes ch{}",
+            "802.15.4: About to TX {} bytes ch{}",
             psdu.len(),
             self.config.channel
         );
@@ -122,37 +128,53 @@ impl Radio for EspRadio<'_> {
         let success = TX_SIGNAL.wait().await;
 
         if success {
-            trace!("ESP Radio, transmission done");
+            trace!("802.15.4: TX done");
 
             if let Some(ack_psdu_buf) = ack_psdu_buf {
                 // After tx_done signal received, get the ACK frame:
                 if let Some(ack_frame) = self.driver.get_ack_frame() {
-                    let ack_psdu_len =
-                        (ack_frame.data.len() - 1).min((ack_frame.data[0] & 0x7f) as usize);
-                    ack_psdu_buf[..ack_psdu_len]
-                        .copy_from_slice(&ack_frame.data[1..][..ack_psdu_len]);
+                    if ack_frame.data.len() >= 1 {
+                        // Must have at least 1 byte for PSDU
+                        let ack_psdu_len =
+                            (ack_frame.data.len() - 1).min((ack_frame.data[0] & 0x7f) as usize);
 
-                    trace!(
-                        "ESP Radio, received ACK: {} on channel {}",
-                        Bytes(&ack_psdu_buf[..ack_psdu_len]),
-                        ack_frame.channel
-                    );
+                        if ack_psdu_len <= ack_psdu_buf.len() {
+                            ack_psdu_buf[..ack_psdu_len]
+                                .copy_from_slice(&ack_frame.data[1..][..ack_psdu_len]);
 
-                    let rssi = ack_frame.data[1..][ack_psdu_len] as i8;
+                            trace!(
+                                "802.15.4: ACK: {} on ch{}",
+                                Bytes(&ack_psdu_buf[..ack_psdu_len]),
+                                ack_frame.channel
+                            );
 
-                    return Ok(Some(PsduMeta {
-                        len: ack_psdu_len,
-                        channel: ack_frame.channel,
-                        rssi: Some(rssi),
-                    }));
+                            // Only read RSSI if there is at least one byte after the PSDU.
+                            let rssi = if ack_frame.data.len() > 1 + ack_psdu_len {
+                                Some(ack_frame.data[1..][ack_psdu_len] as i8)
+                            } else {
+                                None
+                            };
+
+                            return Ok(Some(PsduMeta {
+                                len: ack_psdu_len,
+                                channel: ack_frame.channel,
+                                rssi,
+                            }));
+                        } else {
+                            trace!(
+                                "802.15.4: ACK frame too large for provided buffer: {} bytes",
+                                ack_psdu_len
+                            );
+                        }
+                    }
                 }
             }
 
             Ok(None)
         } else {
-            trace!("ESP Radio, transmission failed");
+            trace!("802.15.4: TX failed");
 
-            // Report as NoAck error so OpenThread SubMac retries
+            // Report as a failure so OpenThread SubMac retries
             Err(RadioErrorKind::TxFailed)
         }
     }
@@ -160,10 +182,7 @@ impl Radio for EspRadio<'_> {
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         RX_SIGNAL.reset();
 
-        trace!(
-            "ESP Radio, about to receive on channel {}",
-            self.config.channel
-        );
+        trace!("802.15.4: About to RX on ch{}", self.config.channel);
 
         self.driver.start_receive();
 
@@ -175,13 +194,32 @@ impl Radio for EspRadio<'_> {
             RX_SIGNAL.wait().await;
         };
 
+        if raw.data.len() < 1 {
+            // Must have at least 1 byte for PSDU
+            return Err(RadioErrorKind::Other);
+        }
+
         let psdu_len = (raw.data.len() - 1).min((raw.data[0] & 0x7f) as usize);
+        if psdu_len > psdu_buf.len() {
+            // PSDU length is larger than the provided buffer
+            trace!(
+                "802.15.4: Received frame too large for provided buffer: {} bytes",
+                psdu_len
+            );
+            return Err(RadioErrorKind::Other);
+        }
+
         psdu_buf[..psdu_len].copy_from_slice(&raw.data[1..][..psdu_len]);
 
-        let rssi = raw.data[1..][psdu_len] as i8;
+        // Only read RSSI if there is at least one byte after the PSDU.
+        let rssi = if raw.data.len() > 1 + psdu_len {
+            Some(raw.data[1..][psdu_len] as i8)
+        } else {
+            None
+        };
 
         trace!(
-            "802.15.4 RX: {} bytes ch{} rssi={}",
+            "802.15.4: RX {} bytes ch{} rssi={:?}",
             psdu_len,
             raw.channel,
             rssi
@@ -190,7 +228,7 @@ impl Radio for EspRadio<'_> {
         Ok(PsduMeta {
             len: psdu_len,
             channel: raw.channel,
-            rssi: Some(rssi),
+            rssi,
         })
     }
 }
