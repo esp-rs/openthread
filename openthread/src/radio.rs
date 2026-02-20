@@ -17,6 +17,9 @@ use embassy_sync::zerocopy_channel::{Channel, Receiver, Sender};
 use embassy_time::Instant;
 
 use mac::MacHeader;
+use openthread_sys::{
+    OT_RADIO_CAPS_ALT_SHORT_ADDR, OT_RADIO_CAPS_RX_ON_WHEN_IDLE, OT_RADIO_CAPS_TRANSMIT_FRAME_POWER,
+};
 
 use crate::fmt::{bitflags, Bytes};
 use crate::sys::{
@@ -110,6 +113,12 @@ bitflags! {
         const TRANSMIT_TIMING = OT_RADIO_CAPS_TRANSMIT_TIMING as u16;
         /// Radio supports precise RX timing.
         const RECEIVE_TIMING = OT_RADIO_CAPS_RECEIVE_TIMING as u16;
+        /// Radio supports receiving when idle.
+        const RX_ON_WHEN_IDLE = OT_RADIO_CAPS_RX_ON_WHEN_IDLE as u16;
+        /// Radio supports setting the transmit frame power.
+        const TRANSMIT_FRAME_POWER = OT_RADIO_CAPS_TRANSMIT_FRAME_POWER as u16;
+        /// Radio supports alternative short address.
+        const ALT_SHORT_ADDR = OT_RADIO_CAPS_ALT_SHORT_ADDR as u16;
     }
 }
 
@@ -168,11 +177,14 @@ impl Config {
     pub const fn new() -> Self {
         Self {
             channel: 11,
-            power: 8,
+            // Run with max power by default
+            // TODO: Figure out how to have this specified by the user
+            power: 20,
             cca: Cca::Carrier,
             sfd: 0,
             promiscuous: false,
-            rx_when_idle: false,
+            // OpenThread can have bursts of incoming frames, so we need to receive during idle state to not miss them.
+            rx_when_idle: true,
             pan_id: None,
             short_addr: None,
             ext_addr: None,

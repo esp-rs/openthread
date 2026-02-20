@@ -1708,6 +1708,18 @@ impl<'a> OtContext<'a> {
         Ok(())
     }
 
+    fn plat_radio_set_rx_on_when_idle(&mut self, on: bool) {
+        info!("Plat radio set RX on when idle callback, on: {}", on);
+
+        let state = self.state();
+
+        if state.ot.radio_conf.rx_when_idle != on {
+            // Defer applying the new rx_when_idle value until the next role change event, to avoid
+            // unnecessary otThreadGetDeviceRole calls on every state change.
+            state.ot.pending_rx_when_idle = Some(on);
+        }
+    }
+
     fn plat_settings_init(&mut self, sensitive_keys: &[u16]) {
         info!(
             "Plat settings init callback, sensitive keys: {:?}",

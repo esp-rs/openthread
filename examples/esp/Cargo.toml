@@ -30,6 +30,15 @@ default = ["esp32c6"]
 esp32c6 = ["esp-rtos/esp32c6", "esp-radio/esp32c6", "esp-backtrace/esp32c6", "esp-println/esp32c6", "esp-bootloader-esp-idf/esp32c6"]
 esp32h2 = ["esp-rtos/esp32h2", "esp-radio/esp32h2", "esp-backtrace/esp32h2", "esp-println/esp32h2", "esp-bootloader-esp-idf/esp32h2"]
 
+[patch.crates-io]
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+
 [dependencies]
 embassy-executor = "0.9"
 embassy-sync = "0.7"
