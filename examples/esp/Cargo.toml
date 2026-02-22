@@ -30,6 +30,8 @@ default = ["esp32c6"]
 esp32c6 = ["esp-rtos/esp32c6", "esp-radio/esp32c6", "esp-backtrace/esp32c6", "esp-println/esp32c6", "esp-bootloader-esp-idf/esp32c6"]
 esp32h2 = ["esp-rtos/esp32h2", "esp-radio/esp32h2", "esp-backtrace/esp32h2", "esp-println/esp32h2", "esp-bootloader-esp-idf/esp32h2"]
 
+force-generate-bindings = ["openthread/force-generate-bindings"]
+
 [dependencies]
 embassy-executor = "0.9"
 embassy-sync = "0.7"
