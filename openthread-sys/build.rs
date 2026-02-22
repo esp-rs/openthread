@@ -17,6 +17,7 @@ fn main() -> Result<()> {
     let host = env::var("HOST").unwrap();
     let target = env::var("TARGET").unwrap();
 
+    let use_gcc = env::var("CARGO_FEATURE_USE_GCC").is_ok();
     let force_esp_riscv_toolchain = env::var("CARGO_FEATURE_FORCE_ESP_RISCV_TOOLCHAIN").is_ok();
 
     let pregen_bindings = env::var("CARGO_FEATURE_FORCE_GENERATE_BINDINGS").is_err();
@@ -33,16 +34,25 @@ fn main() -> Result<()> {
         // Nothing to do for ESP-IDF, `esp-idf-sys` will do everything for us
         None
     } else {
+        let clang_sysroot = if use_gcc {
+            None
+        } else {
+            // For clang, we can use our own cross-platform sysroot.
+            let path = crate_root_path.join("gen").join("sysroot");
+            builder::OpenThreadBuilder::track(&path);
+            Some(path)
+        };
+
         // Need to do on-the-fly build and bindings' generation
         let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
         let builder = builder::OpenThreadBuilder::new(
-            false,
+            !use_gcc,
             crate_root_path.clone(),
             Some(target),
             Some(host),
             None,
-            None,
+            clang_sysroot,
             None,
             force_esp_riscv_toolchain,
         );
