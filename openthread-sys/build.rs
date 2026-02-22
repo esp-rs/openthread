@@ -37,6 +37,7 @@ fn main() -> Result<()> {
         let out = PathBuf::from(env::var_os("OUT_DIR").unwrap());
 
         let builder = builder::OpenThreadBuilder::new(
+            false,
             crate_root_path.clone(),
             Some(target),
             Some(host),
