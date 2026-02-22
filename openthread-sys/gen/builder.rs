@@ -216,7 +216,7 @@ impl OpenThreadBuilder {
     /// Re-run the build script if the file or directory has changed.
     #[allow(unused)]
     pub fn track(file_or_dir: &Path) {
-        println!("cargo:rerun-if-changed={}", file_or_dir.display())
+        println!("cargo::rerun-if-changed={}", file_or_dir.display())
     }
 
     /// A heuristics (we don't have anything better) to signal to `bindgen` whether the GCC toolchain
