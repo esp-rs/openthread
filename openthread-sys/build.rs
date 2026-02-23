@@ -58,7 +58,7 @@ fn main() -> Result<()> {
             bindings.display()
         );
 
-        println!("cargo:rustc-link-search={}", libs_dir.display());
+        println!("cargo::rustc-link-search={}", libs_dir.display());
 
         for entry in std::fs::read_dir(libs_dir)? {
             let entry = entry?;
@@ -72,7 +72,7 @@ fn main() -> Result<()> {
                     file_name.trim_end_matches(".lib")
                 };
 
-                println!("cargo:rustc-link-lib=static={lib_name}");
+                println!("cargo::rustc-link-lib=static={lib_name}");
             }
         }
     }
