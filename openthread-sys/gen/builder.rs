@@ -19,6 +19,7 @@ impl OpenThreadBuilder {
     /// Create a new OpenThreadBuilder
     ///
     /// Arguments:
+    /// - `force_clang`: If true, force the use of Clang as the compiler.
     /// - `crate_root_path`: Path to the root of the crate
     /// - `cmake_rust_target`: Optional target for CMake when building Openthread, with Rust target-triple syntax. If not specified, the "TARGET" env variable will be used
     /// - `cmake_host_rust_target`: Optional host target for the build
@@ -30,6 +31,7 @@ impl OpenThreadBuilder {
     ///   (`riscv32-esp-elf-gcc`) rather than the derived `riscv32-unknown-elf-gcc` toolchain which is the "official" RISC-V one
     ///   (https://github.com/riscv-collab/riscv-gnu-toolchain)
     pub fn new(
+        force_clang: bool,
         crate_root_path: PathBuf,
         cmake_rust_target: Option<String>,
         cmake_host_rust_target: Option<String>,
@@ -40,6 +42,8 @@ impl OpenThreadBuilder {
     ) -> Self {
         Self {
             cmake_configurer: CMakeConfigurer::new(
+                force_clang,
+                clang_sysroot_path.clone(),
                 crate_root_path.clone(),
                 cmake_rust_target,
                 cmake_host_rust_target,
@@ -230,7 +234,10 @@ impl OpenThreadBuilder {
 }
 
 // TODO: Move to `embuild`
+#[derive(Clone)]
 pub struct CMakeConfigurer {
+    pub force_clang: bool,
+    pub clang_sysroot_path: Option<PathBuf>,
     pub project_path: PathBuf,
     pub cmake_rust_target: Option<String>,
     pub cmake_host_rust_target: Option<String>,
@@ -242,6 +249,8 @@ impl CMakeConfigurer {
     /// Create a new OpenThreadBuilder
     ///
     /// Arguments:
+    /// - `force_clang`: If true, force the use of Clang as the compiler.
+    /// - `clang_sysroot_path`: Optional path to a sysroot directory. Only used if `force_clang` is true.
     /// - `project_path`: Path to the root of the CMake project
     /// - `cmake_rust_target`: Optional target for CMake when building Openthread, with Rust target-triple syntax. If not specified, the "TARGET" env variable will be used
     /// - `cmake_host_rust_target`: Optional host target for the build
@@ -249,6 +258,8 @@ impl CMakeConfigurer {
     ///   (`riscv32-esp-elf-gcc`) rather than the derived `riscv32-unknown-elf-gcc` toolchain which is the "official" RISC-V one
     ///   (https://github.com/riscv-collab/riscv-gnu-toolchain)
     pub const fn new(
+        force_clang: bool,
+        clang_sysroot_path: Option<PathBuf>,
         project_path: PathBuf,
         cmake_rust_target: Option<String>,
         cmake_host_rust_target: Option<String>,
@@ -256,6 +267,8 @@ impl CMakeConfigurer {
         empty_toolchain_file: PathBuf,
     ) -> Self {
         Self {
+            force_clang,
+            clang_sysroot_path,
             project_path,
             cmake_rust_target,
             cmake_host_rust_target,
@@ -315,7 +328,7 @@ impl CMakeConfigurer {
         }
 
         for arg in self.derive_c_args() {
-            config.cflag(arg).cxxflag(arg);
+            config.cflag(&arg).cxxflag(arg);
         }
 
         if let Some(target) = &self.cmake_rust_target {
@@ -330,7 +343,20 @@ impl CMakeConfigurer {
     }
 
     pub fn derive_sysroot(&self) -> Option<PathBuf> {
-        let (compiler, gnu) = self.derive_c_compiler();
+        if self.force_clang {
+            if let Some(clang_sysroot_path) = self.clang_sysroot_path.clone() {
+                // If clang is used and there is a pre-defined sysroot path for it, use it
+                return Some(clang_sysroot_path);
+            }
+        }
+
+        // Only GCC has a sysroot, so try to locate the sysroot using GCC first
+        let unforce_clang = Self {
+            force_clang: false,
+            ..self.clone()
+        };
+
+        let (compiler, gnu) = unforce_clang.derive_c_compiler();
 
         if gnu {
             let output = Command::new(compiler).arg("-print-sysroot").output().ok()?;
@@ -369,41 +395,102 @@ impl CMakeConfigurer {
     }
 
     fn derive_forced_c_compiler(&self) -> Option<(PathBuf, bool)> {
-        match self.target().as_str() {
-            "xtensa-esp32-none-elf"
-            | "xtensa-esp32-espidf"
-            | "xtensa-esp32s2-none-elf"
-            | "xtensa-esp32s2-espidf"
-            | "xtensa-esp32s3-none-elf"
-            | "xtensa-esp32s3-espidf" => Some((PathBuf::from("xtensa-esp-elf-gcc"), true)),
-            "riscv32imc-unknown-none-elf"
-            | "riscv32imc-esp-espidf"
-            | "riscv32imac-unknown-none-elf"
-            | "riscv32imac-esp-espidf"
-            | "riscv32imafc-unknown-none-elf"
-            | "riscv32imafc-esp-espidf" => {
-                if self.force_esp_riscv_toolchain {
-                    Some((PathBuf::from("riscv32-esp-elf-gcc"), true))
-                } else {
-                    None
+        if self.force_clang {
+            Some((PathBuf::from("clang"), false))
+        } else {
+            match self.target().as_str() {
+                "xtensa-esp32-none-elf" | "xtensa-esp32-espidf" => {
+                    Some((PathBuf::from("xtensa-esp32-elf-gcc"), true))
                 }
+                "xtensa-esp32s2-none-elf" | "xtensa-esp32s2-espidf" => {
+                    Some((PathBuf::from("xtensa-esp32s2-elf-gcc"), true))
+                }
+                "xtensa-esp32s3-none-elf" | "xtensa-esp32s3-espidf" => {
+                    Some((PathBuf::from("xtensa-esp32s3-elf-gcc"), true))
+                }
+                "riscv32imc-unknown-none-elf"
+                | "riscv32imc-esp-espidf"
+                | "riscv32imac-unknown-none-elf"
+                | "riscv32imac-esp-espidf"
+                | "riscv32imafc-unknown-none-elf"
+                | "riscv32imafc-esp-espidf" => {
+                    if self.force_esp_riscv_toolchain {
+                        Some((PathBuf::from("riscv32-esp-elf-gcc"), true))
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
             }
-            _ => None,
         }
     }
 
-    fn derive_c_args(&self) -> &[&str] {
-        match self.target().as_str() {
-            "xtensa-esp32-none-elf" | "xtensa-esp32-espidf" => {
-                &["target=xtensa-esp-elf", "-mcpu=esp32"]
+    fn derive_c_args(&self) -> Vec<String> {
+        let mut args = Vec::new();
+
+        args.extend(
+            self.derive_c_target_args()
+                .iter()
+                .map(|arg| arg.to_string()),
+        );
+
+        if self.force_clang {
+            if let Some(sysroot_path) = self.derive_sysroot() {
+                args.push("-fbuiltin".to_string());
+                // OpenThread uses C++, but does not use any of the C++ standard
+                // library features, instead preferring to use the C standard library.
+                // This is very helpful for us because it means we don't have to
+                // provide any STL headers in our sysroot.
+                args.push("-nostdinc++".to_string());
+                args.push(format!("-I{}", sysroot_path.join("include").display()));
+                args.push(format!("--sysroot={}", sysroot_path.display()));
             }
-            "xtensa-esp32s2-none-elf" | "xtensa-esp32s2-espidf" => {
-                &["target=xtensa-esp-elf", "-mcpu=esp32s2"]
+        }
+
+        args
+    }
+
+    fn derive_c_target_args(&self) -> &[&str] {
+        if self.force_clang {
+            match self.target().as_str() {
+                "riscv32imc-unknown-none-elf" | "riscv32imc-esp-espidf" => {
+                    &["--target=riscv32-esp-elf", "-march=rv32imc", "-mabi=ilp32"]
+                }
+                "riscv32imac-unknown-none-elf" | "riscv32imac-esp-espidf" => {
+                    &["--target=riscv32-esp-elf", "-march=rv32imac", "-mabi=ilp32"]
+                }
+                "riscv32imafc-unknown-none-elf" | "riscv32imafc-esp-espidf" => &[
+                    "--target=riscv32-esp-elf",
+                    "-march=rv32imafc",
+                    "-mabi=ilp32",
+                ],
+                "xtensa-esp32-none-elf" | "xtensa-esp32-espidf" => {
+                    &["--target=xtensa-esp-elf", "-mcpu=esp32"]
+                }
+                "xtensa-esp32s2-none-elf" | "xtensa-esp32s2-espidf" => {
+                    &["--target=xtensa-esp-elf", "-mcpu=esp32s2"]
+                }
+                "xtensa-esp32s3-none-elf" | "xtensa-esp32s3-espidf" => {
+                    &["--target=xtensa-esp-elf", "-mcpu=esp32s3"]
+                }
+                _ => &[],
             }
-            "xtensa-esp32s3-none-elf" | "xtensa-esp32s3-espidf" => {
-                &["target=xtensa-esp-elf", "-mcpu=esp32s3"]
+        } else {
+            match self.target().as_str() {
+                "riscv32imc-unknown-none-elf" | "riscv32imc-esp-espidf" => {
+                    &["-march=rv32imc", "-mabi=ilp32"]
+                }
+                "riscv32imac-unknown-none-elf" | "riscv32imac-esp-espidf" => {
+                    &["-march=rv32imac", "-mabi=ilp32"]
+                }
+                "riscv32imafc-unknown-none-elf" | "riscv32imafc-esp-espidf" => {
+                    &["-march=rv32imafc", "-mabi=ilp32"]
+                }
+                "xtensa-esp32-none-elf" | "xtensa-esp32-espidf" => &["-mlongcalls"],
+                "xtensa-esp32s2-none-elf" | "xtensa-esp32s2-espidf" => &["-mlongcalls"],
+                "xtensa-esp32s3-none-elf" | "xtensa-esp32s3-espidf" => &["-mlongcalls"],
+                _ => &[],
             }
-            _ => &[],
         }
     }
 
