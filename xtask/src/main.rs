@@ -54,13 +54,16 @@ fn main() -> Result<()> {
         force_esp_riscv_toolchain,
     }) = args.command
     {
+        let clang_sysroot = sys_crate_root_path.join("gen").join("sysroot");
         let builder = builder::OpenThreadBuilder::new(
+            // Always use clang here for convenience.
+            true,
             sys_crate_root_path.clone(),
             Some(target.clone()),
             // Fake host, but we do need to pass something to CMake
             Some("x86_64-unknown-linux-gnu".into()),
             None,
-            None,
+            Some(clang_sysroot),
             None,
             force_esp_riscv_toolchain,
         );
