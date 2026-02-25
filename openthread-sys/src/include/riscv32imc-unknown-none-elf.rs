@@ -137,132 +137,6 @@ where
         }
     }
 }
-pub const __OBSOLETE_MATH_DEFAULT: u32 = 1;
-pub const __OBSOLETE_MATH: u32 = 1;
-pub const __NEWLIB_H__: u32 = 1;
-pub const _NEWLIB_VERSION_H__: u32 = 1;
-pub const _NEWLIB_VERSION: &[u8; 6] = b"4.3.0\0";
-pub const __NEWLIB__: u32 = 4;
-pub const __NEWLIB_MINOR__: u32 = 3;
-pub const __NEWLIB_PATCHLEVEL__: u32 = 0;
-pub const _ATEXIT_DYNAMIC_ALLOC: u32 = 1;
-pub const _FSEEK_OPTIMIZATION: u32 = 1;
-pub const _FVWRITE_IN_STREAMIO: u32 = 1;
-pub const _HAVE_CC_INHIBIT_LOOP_TO_LIBCALL: u32 = 1;
-pub const _HAVE_INITFINI_ARRAY: u32 = 1;
-pub const _HAVE_LONG_DOUBLE: u32 = 1;
-pub const _ICONV_ENABLED: u32 = 1;
-pub const _MB_LEN_MAX: u32 = 1;
-pub const _NANO_MALLOC: u32 = 1;
-pub const _REENT_CHECK_VERIFY: u32 = 1;
-pub const _RETARGETABLE_LOCKING: u32 = 1;
-pub const _UNBUF_STREAM_OPT: u32 = 1;
-pub const _WANT_IO_C99_FORMATS: u32 = 1;
-pub const _WANT_IO_LONG_LONG: u32 = 1;
-pub const _WANT_IO_POS_ARGS: u32 = 1;
-pub const _WANT_REENT_BACKWARD_BINARY_COMPAT: u32 = 1;
-pub const _WANT_REENT_SMALL: u32 = 1;
-pub const _WANT_USE_GDTOA: u32 = 1;
-pub const _DEFAULT_SOURCE: u32 = 1;
-pub const _POSIX_SOURCE: u32 = 1;
-pub const _POSIX_C_SOURCE: u32 = 200809;
-pub const _ATFILE_SOURCE: u32 = 1;
-pub const __ATFILE_VISIBLE: u32 = 1;
-pub const __BSD_VISIBLE: u32 = 1;
-pub const __GNU_VISIBLE: u32 = 0;
-pub const __ISO_C_VISIBLE: u32 = 2011;
-pub const __LARGEFILE_VISIBLE: u32 = 0;
-pub const __MISC_VISIBLE: u32 = 1;
-pub const __POSIX_VISIBLE: u32 = 200809;
-pub const __SVID_VISIBLE: u32 = 1;
-pub const __XSI_VISIBLE: u32 = 0;
-pub const __SSP_FORTIFY_LEVEL: u32 = 0;
-pub const _POSIX_THREADS: u32 = 1;
-pub const _POSIX_TIMEOUTS: u32 = 1;
-pub const _POSIX_TIMERS: u32 = 1;
-pub const _POSIX_MONOTONIC_CLOCK: u32 = 200112;
-pub const _POSIX_CLOCK_SELECTION: u32 = 200112;
-pub const _UNIX98_THREAD_MUTEX_ATTRIBUTES: u32 = 1;
-pub const _POSIX_READER_WRITER_LOCKS: u32 = 200112;
-pub const __BUFSIZ__: u32 = 128;
-pub const __RAND_MAX: u32 = 2147483647;
-pub const __have_longlong64: u32 = 1;
-pub const __have_long32: u32 = 1;
-pub const ___int8_t_defined: u32 = 1;
-pub const ___int16_t_defined: u32 = 1;
-pub const ___int32_t_defined: u32 = 1;
-pub const ___int64_t_defined: u32 = 1;
-pub const ___int_least8_t_defined: u32 = 1;
-pub const ___int_least16_t_defined: u32 = 1;
-pub const ___int_least32_t_defined: u32 = 1;
-pub const ___int_least64_t_defined: u32 = 1;
-pub const _NULL: u32 = 0;
-pub const _ATEXIT_SIZE: u32 = 32;
-pub const _RAND48_SEED_0: u32 = 13070;
-pub const _RAND48_SEED_1: u32 = 43981;
-pub const _RAND48_SEED_2: u32 = 4660;
-pub const _RAND48_MULT_0: u32 = 58989;
-pub const _RAND48_MULT_1: u32 = 57068;
-pub const _RAND48_MULT_2: u32 = 5;
-pub const _RAND48_ADD: u32 = 11;
-pub const _REENT_EMERGENCY_SIZE: u32 = 25;
-pub const _REENT_ASCTIME_SIZE: u32 = 26;
-pub const _REENT_SIGNAL_SIZE: u32 = 24;
-pub const __GNUCLIKE_ASM: u32 = 3;
-pub const __GNUCLIKE___TYPEOF: u32 = 1;
-pub const __GNUCLIKE___SECTION: u32 = 1;
-pub const __GNUCLIKE_CTOR_SECTION_HANDLING: u32 = 1;
-pub const __GNUCLIKE_BUILTIN_CONSTANT_P: u32 = 1;
-pub const __GNUCLIKE_BUILTIN_VARARGS: u32 = 1;
-pub const __GNUCLIKE_BUILTIN_STDARG: u32 = 1;
-pub const __GNUCLIKE_BUILTIN_VAALIST: u32 = 1;
-pub const __GNUC_VA_LIST_COMPATIBILITY: u32 = 1;
-pub const __GNUCLIKE_BUILTIN_NEXT_ARG: u32 = 1;
-pub const __GNUCLIKE_BUILTIN_MEMCPY: u32 = 1;
-pub const __CC_SUPPORTS_INLINE: u32 = 1;
-pub const __CC_SUPPORTS___INLINE: u32 = 1;
-pub const __CC_SUPPORTS___INLINE__: u32 = 1;
-pub const __CC_SUPPORTS___FUNC__: u32 = 1;
-pub const __CC_SUPPORTS_WARNING: u32 = 1;
-pub const __CC_SUPPORTS_VARADIC_XXX: u32 = 1;
-pub const __CC_SUPPORTS_DYNAMIC_ARRAY_INIT: u32 = 1;
-pub const EXIT_FAILURE: u32 = 1;
-pub const EXIT_SUCCESS: u32 = 0;
-pub const RAND_MAX: u32 = 2147483647;
-pub const __bool_true_false_are_defined: u32 = 1;
-pub const true_: u32 = 1;
-pub const false_: u32 = 0;
-pub const __int20: u32 = 2;
-pub const __int20__: u32 = 2;
-pub const __INT8: &[u8; 3] = b"hh\0";
-pub const __INT16: &[u8; 2] = b"h\0";
-pub const __INT64: &[u8; 3] = b"ll\0";
-pub const __FAST8: &[u8; 3] = b"hh\0";
-pub const __FAST16: &[u8; 2] = b"h\0";
-pub const __FAST64: &[u8; 3] = b"ll\0";
-pub const __LEAST8: &[u8; 3] = b"hh\0";
-pub const __LEAST16: &[u8; 2] = b"h\0";
-pub const __LEAST64: &[u8; 3] = b"ll\0";
-pub const __int8_t_defined: u32 = 1;
-pub const __int16_t_defined: u32 = 1;
-pub const __int32_t_defined: u32 = 1;
-pub const __int64_t_defined: u32 = 1;
-pub const __int_least8_t_defined: u32 = 1;
-pub const __int_least16_t_defined: u32 = 1;
-pub const __int_least32_t_defined: u32 = 1;
-pub const __int_least64_t_defined: u32 = 1;
-pub const __int_fast8_t_defined: u32 = 1;
-pub const __int_fast16_t_defined: u32 = 1;
-pub const __int_fast32_t_defined: u32 = 1;
-pub const __int_fast64_t_defined: u32 = 1;
-pub const WINT_MIN: u32 = 0;
-pub const OT_LOG_LEVEL_NONE: u32 = 0;
-pub const OT_LOG_LEVEL_CRIT: u32 = 1;
-pub const OT_LOG_LEVEL_WARN: u32 = 2;
-pub const OT_LOG_LEVEL_NOTE: u32 = 3;
-pub const OT_LOG_LEVEL_INFO: u32 = 4;
-pub const OT_LOG_LEVEL_DEBG: u32 = 5;
-pub const OPENTHREAD_API_VERSION: u32 = 450;
 pub const OT_UPTIME_STRING_SIZE: u32 = 24;
 pub const OT_CHANGED_IP6_ADDRESS_ADDED: u32 = 1;
 pub const OT_CHANGED_IP6_ADDRESS_REMOVED: u32 = 2;
@@ -296,16 +170,6 @@ pub const OT_CHANGED_ACTIVE_DATASET: u32 = 268435456;
 pub const OT_CHANGED_PENDING_DATASET: u32 = 536870912;
 pub const OT_CHANGED_NAT64_TRANSLATOR_STATE: u32 = 1073741824;
 pub const OT_CHANGED_PARENT_LINK_QUALITY: u32 = 2147483648;
-pub const OT_CRYPTO_SHA256_HASH_SIZE: u32 = 32;
-pub const OT_CRYPTO_ECDSA_MAX_DER_SIZE: u32 = 125;
-pub const OT_CRYPTO_ECDSA_PUBLIC_KEY_SIZE: u32 = 64;
-pub const OT_CRYPTO_ECDSA_SIGNATURE_SIZE: u32 = 64;
-pub const OT_CRYPTO_PBDKF2_MAX_SALT_SIZE: u32 = 30;
-pub const OT_PANID_BROADCAST: u32 = 65535;
-pub const OT_EXT_ADDRESS_SIZE: u32 = 8;
-pub const CSL_IE_HEADER_BYTES_LO: u32 = 4;
-pub const CSL_IE_HEADER_BYTES_HI: u32 = 13;
-pub const OT_MAC_KEY_SIZE: u32 = 16;
 pub const OT_IP6_PREFIX_SIZE: u32 = 8;
 pub const OT_IP6_PREFIX_BITSIZE: u32 = 64;
 pub const OT_IP6_IID_SIZE: u32 = 8;
@@ -317,6 +181,14 @@ pub const OT_IP6_ADDRESS_STRING_SIZE: u32 = 40;
 pub const OT_IP6_SOCK_ADDR_STRING_SIZE: u32 = 48;
 pub const OT_IP6_PREFIX_STRING_SIZE: u32 = 45;
 pub const OT_IP6_MAX_MLR_ADDRESSES: u32 = 15;
+pub const OT_CRYPTO_SHA256_HASH_SIZE: u32 = 32;
+pub const OT_CRYPTO_ECDSA_MAX_DER_SIZE: u32 = 125;
+pub const OT_CRYPTO_ECDSA_PUBLIC_KEY_SIZE: u32 = 64;
+pub const OT_CRYPTO_ECDSA_SIGNATURE_SIZE: u32 = 64;
+pub const OT_CRYPTO_PBDKF2_MAX_SALT_SIZE: u32 = 30;
+pub const OT_PANID_BROADCAST: u32 = 65535;
+pub const OT_EXT_ADDRESS_SIZE: u32 = 8;
+pub const OT_MAC_KEY_SIZE: u32 = 16;
 pub const OT_NETWORK_KEY_SIZE: u32 = 16;
 pub const OT_NETWORK_NAME_MAX_SIZE: u32 = 16;
 pub const OT_EXT_PAN_ID_SIZE: u32 = 8;
@@ -369,982 +241,23 @@ pub const OT_NETWORK_MAX_ROUTER_ID: u32 = 62;
 pub const OT_NEIGHBOR_INFO_ITERATOR_INIT: u32 = 0;
 pub const OT_JOINER_ADVDATA_MAX_LENGTH: u32 = 64;
 pub const OT_DURATION_STRING_SIZE: u32 = 21;
+pub const OT_IP4_ADDRESS_SIZE: u32 = 4;
+pub const OT_IP4_ADDRESS_STRING_SIZE: u32 = 17;
+pub const OT_IP4_CIDR_STRING_SIZE: u32 = 20;
+pub const OT_NETWORK_DATA_ITERATOR_INIT: u32 = 0;
+pub const OT_SERVICE_DATA_MAX_SIZE: u32 = 252;
+pub const OT_SERVER_DATA_MAX_SIZE: u32 = 248;
+pub const OT_LOG_LEVEL_NONE: u32 = 0;
+pub const OT_LOG_LEVEL_CRIT: u32 = 1;
+pub const OT_LOG_LEVEL_WARN: u32 = 2;
+pub const OT_LOG_LEVEL_NOTE: u32 = 3;
+pub const OT_LOG_LEVEL_INFO: u32 = 4;
+pub const OT_LOG_LEVEL_DEBG: u32 = 5;
 pub const OT_DNS_MAX_NAME_SIZE: u32 = 255;
 pub const OT_DNS_MAX_LABEL_SIZE: u32 = 64;
 pub const OT_DNS_TXT_KEY_MIN_LENGTH: u32 = 1;
 pub const OT_DNS_TXT_KEY_MAX_LENGTH: u32 = 9;
 pub const OT_DNS_TXT_KEY_ITER_MAX_LENGTH: u32 = 64;
-pub const OPENTHREAD_CONFIG_SRP_CLIENT_AUTO_START_API_ENABLE: u32 = 1;
-pub type wchar_t = ::core::ffi::c_int;
-#[repr(C)]
-#[repr(align(16))]
-#[derive(Copy, Clone)]
-pub struct max_align_t {
-    pub __clang_max_align_nonce1: ::core::ffi::c_longlong,
-    pub __bindgen_padding_0: u64,
-    pub __clang_max_align_nonce2: u128,
-}
-pub type wint_t = ::core::ffi::c_uint;
-pub type __int8_t = ::core::ffi::c_schar;
-pub type __uint8_t = ::core::ffi::c_uchar;
-pub type __int16_t = ::core::ffi::c_short;
-pub type __uint16_t = ::core::ffi::c_ushort;
-pub type __int32_t = ::core::ffi::c_int;
-pub type __uint32_t = ::core::ffi::c_uint;
-pub type __int64_t = ::core::ffi::c_longlong;
-pub type __uint64_t = ::core::ffi::c_ulonglong;
-pub type __int_least8_t = ::core::ffi::c_schar;
-pub type __uint_least8_t = ::core::ffi::c_uchar;
-pub type __int_least16_t = ::core::ffi::c_short;
-pub type __uint_least16_t = ::core::ffi::c_ushort;
-pub type __int_least32_t = ::core::ffi::c_int;
-pub type __uint_least32_t = ::core::ffi::c_uint;
-pub type __int_least64_t = ::core::ffi::c_longlong;
-pub type __uint_least64_t = ::core::ffi::c_ulonglong;
-pub type __intmax_t = ::core::ffi::c_longlong;
-pub type __uintmax_t = ::core::ffi::c_ulonglong;
-pub type __intptr_t = ::core::ffi::c_int;
-pub type __uintptr_t = ::core::ffi::c_uint;
-pub type __blkcnt_t = ::core::ffi::c_long;
-pub type __blksize_t = ::core::ffi::c_long;
-pub type __fsblkcnt_t = __uint64_t;
-pub type __fsfilcnt_t = __uint32_t;
-pub type _off_t = ::core::ffi::c_long;
-pub type __pid_t = ::core::ffi::c_int;
-pub type __dev_t = ::core::ffi::c_short;
-pub type __uid_t = ::core::ffi::c_ushort;
-pub type __gid_t = ::core::ffi::c_ushort;
-pub type __id_t = __uint32_t;
-pub type __ino_t = ::core::ffi::c_ushort;
-pub type __mode_t = __uint32_t;
-pub type _off64_t = ::core::ffi::c_longlong;
-pub type __off_t = _off_t;
-pub type __loff_t = _off64_t;
-pub type __key_t = ::core::ffi::c_long;
-pub type _fpos_t = ::core::ffi::c_long;
-pub type __size_t = ::core::ffi::c_uint;
-pub type _ssize_t = ::core::ffi::c_int;
-pub type __ssize_t = _ssize_t;
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _mbstate_t {
-    pub __count: ::core::ffi::c_int,
-    pub __value: _mbstate_t__bindgen_ty_1,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub union _mbstate_t__bindgen_ty_1 {
-    pub __wch: wint_t,
-    pub __wchb: [::core::ffi::c_uchar; 4usize],
-}
-pub type _iconv_t = *mut ::core::ffi::c_void;
-pub type __clock_t = ::core::ffi::c_ulong;
-pub type __time_t = __int_least64_t;
-pub type __clockid_t = ::core::ffi::c_ulong;
-pub type __daddr_t = ::core::ffi::c_long;
-pub type __timer_t = ::core::ffi::c_ulong;
-pub type __sa_family_t = __uint8_t;
-pub type __socklen_t = __uint32_t;
-pub type __nl_item = ::core::ffi::c_int;
-pub type __nlink_t = ::core::ffi::c_ushort;
-pub type __suseconds_t = ::core::ffi::c_long;
-pub type __useconds_t = ::core::ffi::c_ulong;
-pub type __va_list = __builtin_va_list;
-pub type __ULong = ::core::ffi::c_ulong;
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct __lock {
-    _unused: [u8; 0],
-}
-pub type _LOCK_T = *mut __lock;
-unsafe extern "C" {
-    pub fn __retarget_lock_init(lock: *mut _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_init_recursive(lock: *mut _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_close(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_close_recursive(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_acquire(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_acquire_recursive(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_try_acquire(lock: _LOCK_T) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_try_acquire_recursive(lock: _LOCK_T) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_release(lock: _LOCK_T);
-}
-unsafe extern "C" {
-    pub fn __retarget_lock_release_recursive(lock: _LOCK_T);
-}
-pub type _flock_t = _LOCK_T;
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct __locale_t {
-    _unused: [u8; 0],
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _Bigint {
-    pub _next: *mut _Bigint,
-    pub _k: ::core::ffi::c_int,
-    pub _maxwds: ::core::ffi::c_int,
-    pub _sign: ::core::ffi::c_int,
-    pub _wds: ::core::ffi::c_int,
-    pub _x: [__ULong; 1usize],
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct __tm {
-    pub __tm_sec: ::core::ffi::c_int,
-    pub __tm_min: ::core::ffi::c_int,
-    pub __tm_hour: ::core::ffi::c_int,
-    pub __tm_mday: ::core::ffi::c_int,
-    pub __tm_mon: ::core::ffi::c_int,
-    pub __tm_year: ::core::ffi::c_int,
-    pub __tm_wday: ::core::ffi::c_int,
-    pub __tm_yday: ::core::ffi::c_int,
-    pub __tm_isdst: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _on_exit_args {
-    pub _fnargs: [*mut ::core::ffi::c_void; 32usize],
-    pub _dso_handle: [*mut ::core::ffi::c_void; 32usize],
-    pub _fntypes: __ULong,
-    pub _is_cxa: __ULong,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _atexit {
-    pub _next: *mut _atexit,
-    pub _ind: ::core::ffi::c_int,
-    pub _fns: [::core::option::Option<unsafe extern "C" fn()>; 32usize],
-    pub _on_exit_args_ptr: *mut _on_exit_args,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct __sbuf {
-    pub _base: *mut ::core::ffi::c_uchar,
-    pub _size: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct __sFILE {
-    pub _p: *mut ::core::ffi::c_uchar,
-    pub _r: ::core::ffi::c_int,
-    pub _w: ::core::ffi::c_int,
-    pub _flags: ::core::ffi::c_short,
-    pub _file: ::core::ffi::c_short,
-    pub _bf: __sbuf,
-    pub _lbfsize: ::core::ffi::c_int,
-    pub _data: *mut _reent,
-    pub _cookie: *mut ::core::ffi::c_void,
-    pub _read: ::core::option::Option<
-        unsafe extern "C" fn(
-            arg1: *mut _reent,
-            arg2: *mut ::core::ffi::c_void,
-            arg3: *mut ::core::ffi::c_char,
-            arg4: ::core::ffi::c_int,
-        ) -> _ssize_t,
-    >,
-    pub _write: ::core::option::Option<
-        unsafe extern "C" fn(
-            arg1: *mut _reent,
-            arg2: *mut ::core::ffi::c_void,
-            arg3: *const ::core::ffi::c_char,
-            arg4: ::core::ffi::c_int,
-        ) -> _ssize_t,
-    >,
-    pub _seek: ::core::option::Option<
-        unsafe extern "C" fn(
-            arg1: *mut _reent,
-            arg2: *mut ::core::ffi::c_void,
-            arg3: _fpos_t,
-            arg4: ::core::ffi::c_int,
-        ) -> _fpos_t,
-    >,
-    pub _close: ::core::option::Option<
-        unsafe extern "C" fn(
-            arg1: *mut _reent,
-            arg2: *mut ::core::ffi::c_void,
-        ) -> ::core::ffi::c_int,
-    >,
-    pub _ub: __sbuf,
-    pub _up: *mut ::core::ffi::c_uchar,
-    pub _ur: ::core::ffi::c_int,
-    pub _ubuf: [::core::ffi::c_uchar; 3usize],
-    pub _nbuf: [::core::ffi::c_uchar; 1usize],
-    pub _lb: __sbuf,
-    pub _blksize: ::core::ffi::c_int,
-    pub _offset: _off_t,
-    pub _lock: _flock_t,
-    pub _mbstate: _mbstate_t,
-    pub _flags2: ::core::ffi::c_int,
-}
-pub type __FILE = __sFILE;
-unsafe extern "C" {
-    pub static mut __sf: [__FILE; 3usize];
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _glue {
-    pub _next: *mut _glue,
-    pub _niobs: ::core::ffi::c_int,
-    pub _iobs: *mut __FILE,
-}
-unsafe extern "C" {
-    pub static mut __sglue: _glue;
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _rand48 {
-    pub _seed: [::core::ffi::c_ushort; 3usize],
-    pub _mult: [::core::ffi::c_ushort; 3usize],
-    pub _add: ::core::ffi::c_ushort,
-    pub _rand_next: ::core::ffi::c_ulonglong,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _mprec {
-    pub _result: *mut _Bigint,
-    pub _result_k: ::core::ffi::c_int,
-    pub _p5s: *mut _Bigint,
-    pub _freelist: *mut *mut _Bigint,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _misc_reent {
-    pub _strtok_last: *mut ::core::ffi::c_char,
-    pub _mblen_state: _mbstate_t,
-    pub _wctomb_state: _mbstate_t,
-    pub _mbtowc_state: _mbstate_t,
-    pub _l64a_buf: [::core::ffi::c_char; 8usize],
-    pub _getdate_err: ::core::ffi::c_int,
-    pub _mbrlen_state: _mbstate_t,
-    pub _mbrtowc_state: _mbstate_t,
-    pub _mbsrtowcs_state: _mbstate_t,
-    pub _wcrtomb_state: _mbstate_t,
-    pub _wcsrtombs_state: _mbstate_t,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct _reent {
-    pub _errno: ::core::ffi::c_int,
-    pub _stdin: *mut __FILE,
-    pub _stdout: *mut __FILE,
-    pub _stderr: *mut __FILE,
-    pub _inc: ::core::ffi::c_int,
-    pub _emergency: *mut ::core::ffi::c_char,
-    pub _reserved_0: ::core::ffi::c_int,
-    pub _reserved_1: ::core::ffi::c_int,
-    pub _locale: *mut __locale_t,
-    pub _mp: *mut _mprec,
-    pub __cleanup: ::core::option::Option<unsafe extern "C" fn(arg1: *mut _reent)>,
-    pub _gamma_signgam: ::core::ffi::c_int,
-    pub _cvtlen: ::core::ffi::c_int,
-    pub _cvtbuf: *mut ::core::ffi::c_char,
-    pub _r48: *mut _rand48,
-    pub _localtime_buf: *mut __tm,
-    pub _asctime_buf: *mut ::core::ffi::c_char,
-    pub _sig_func: *mut ::core::option::Option<unsafe extern "C" fn(arg1: ::core::ffi::c_int)>,
-    pub _reserved_6: *mut _atexit,
-    pub _reserved_7: _atexit,
-    pub _reserved_8: _glue,
-    pub __sf: *mut __FILE,
-    pub _misc: *mut _misc_reent,
-    pub _signal_buf: *mut ::core::ffi::c_char,
-}
-unsafe extern "C" {
-    pub fn __assert(
-        arg1: *const ::core::ffi::c_char,
-        arg2: ::core::ffi::c_int,
-        arg3: *const ::core::ffi::c_char,
-    ) -> !;
-}
-unsafe extern "C" {
-    pub fn __assert_func(
-        arg1: *const ::core::ffi::c_char,
-        arg2: ::core::ffi::c_int,
-        arg3: *const ::core::ffi::c_char,
-        arg4: *const ::core::ffi::c_char,
-    ) -> !;
-}
-unsafe extern "C" {
-    pub static mut _impure_ptr: *mut _reent;
-}
-unsafe extern "C" {
-    pub static mut _impure_data: _reent;
-}
-unsafe extern "C" {
-    pub fn __getreent() -> *mut _reent;
-}
-unsafe extern "C" {
-    pub static mut __atexit: *mut _atexit;
-}
-unsafe extern "C" {
-    pub static mut __atexit0: _atexit;
-}
-unsafe extern "C" {
-    pub static mut __stdio_exit_handler: ::core::option::Option<unsafe extern "C" fn()>;
-}
-unsafe extern "C" {
-    pub fn _reclaim_reent(arg1: *mut _reent);
-}
-unsafe extern "C" {
-    pub fn _fwalk_sglue(
-        arg1: *mut _reent,
-        arg2: ::core::option::Option<
-            unsafe extern "C" fn(arg1: *mut _reent, arg2: *mut __FILE) -> ::core::ffi::c_int,
-        >,
-        arg3: *mut _glue,
-    ) -> ::core::ffi::c_int;
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct div_t {
-    pub quot: ::core::ffi::c_int,
-    pub rem: ::core::ffi::c_int,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct ldiv_t {
-    pub quot: ::core::ffi::c_long,
-    pub rem: ::core::ffi::c_long,
-}
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct lldiv_t {
-    pub quot: ::core::ffi::c_longlong,
-    pub rem: ::core::ffi::c_longlong,
-}
-pub type __compar_fn_t = ::core::option::Option<
-    unsafe extern "C" fn(
-        arg1: *const ::core::ffi::c_void,
-        arg2: *const ::core::ffi::c_void,
-    ) -> ::core::ffi::c_int,
->;
-unsafe extern "C" {
-    pub fn __locale_mb_cur_max() -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn abort() -> !;
-}
-unsafe extern "C" {
-    pub fn abs(arg1: ::core::ffi::c_int) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn arc4random() -> __uint32_t;
-}
-unsafe extern "C" {
-    pub fn arc4random_uniform(arg1: __uint32_t) -> __uint32_t;
-}
-unsafe extern "C" {
-    pub fn arc4random_buf(arg1: *mut ::core::ffi::c_void, arg2: usize);
-}
-unsafe extern "C" {
-    pub fn atexit(__func: ::core::option::Option<unsafe extern "C" fn()>) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn atof(__nptr: *const ::core::ffi::c_char) -> f64;
-}
-unsafe extern "C" {
-    pub fn atoff(__nptr: *const ::core::ffi::c_char) -> f32;
-}
-unsafe extern "C" {
-    pub fn atoi(__nptr: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _atoi_r(arg1: *mut _reent, __nptr: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn atol(__nptr: *const ::core::ffi::c_char) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn _atol_r(arg1: *mut _reent, __nptr: *const ::core::ffi::c_char) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn bsearch(
-        __key: *const ::core::ffi::c_void,
-        __base: *const ::core::ffi::c_void,
-        __nmemb: usize,
-        __size: usize,
-        _compar: __compar_fn_t,
-    ) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn calloc(arg1: ::core::ffi::c_uint, arg2: ::core::ffi::c_uint)
-        -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    pub fn div(__numer: ::core::ffi::c_int, __denom: ::core::ffi::c_int) -> div_t;
-}
-unsafe extern "C" {
-    pub fn exit(__status: ::core::ffi::c_int) -> !;
-}
-unsafe extern "C" {
-    pub fn free(arg1: *mut ::core::ffi::c_void);
-}
-unsafe extern "C" {
-    pub fn getenv(__string: *const ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn _getenv_r(
-        arg1: *mut _reent,
-        __string: *const ::core::ffi::c_char,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn _findenv(
-        arg1: *const ::core::ffi::c_char,
-        arg2: *mut ::core::ffi::c_int,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn _findenv_r(
-        arg1: *mut _reent,
-        arg2: *const ::core::ffi::c_char,
-        arg3: *mut ::core::ffi::c_int,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub static mut suboptarg: *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn getsubopt(
-        arg1: *mut *mut ::core::ffi::c_char,
-        arg2: *const *mut ::core::ffi::c_char,
-        arg3: *mut *mut ::core::ffi::c_char,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn labs(arg1: ::core::ffi::c_long) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn ldiv(__numer: ::core::ffi::c_long, __denom: ::core::ffi::c_long) -> ldiv_t;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn malloc(arg1: ::core::ffi::c_uint) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    pub fn mblen(arg1: *const ::core::ffi::c_char, arg2: usize) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _mblen_r(
-        arg1: *mut _reent,
-        arg2: *const ::core::ffi::c_char,
-        arg3: usize,
-        arg4: *mut _mbstate_t,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn mbtowc(
-        arg1: *mut wchar_t,
-        arg2: *const ::core::ffi::c_char,
-        arg3: usize,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _mbtowc_r(
-        arg1: *mut _reent,
-        arg2: *mut wchar_t,
-        arg3: *const ::core::ffi::c_char,
-        arg4: usize,
-        arg5: *mut _mbstate_t,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn wctomb(arg1: *mut ::core::ffi::c_char, arg2: wchar_t) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _wctomb_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: wchar_t,
-        arg4: *mut _mbstate_t,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn mbstowcs(arg1: *mut wchar_t, arg2: *const ::core::ffi::c_char, arg3: usize) -> usize;
-}
-unsafe extern "C" {
-    pub fn _mbstowcs_r(
-        arg1: *mut _reent,
-        arg2: *mut wchar_t,
-        arg3: *const ::core::ffi::c_char,
-        arg4: usize,
-        arg5: *mut _mbstate_t,
-    ) -> usize;
-}
-unsafe extern "C" {
-    pub fn wcstombs(arg1: *mut ::core::ffi::c_char, arg2: *const wchar_t, arg3: usize) -> usize;
-}
-unsafe extern "C" {
-    pub fn _wcstombs_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: *const wchar_t,
-        arg4: usize,
-        arg5: *mut _mbstate_t,
-    ) -> usize;
-}
-unsafe extern "C" {
-    pub fn mkdtemp(arg1: *mut ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn mkstemp(arg1: *mut ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn mkstemps(arg1: *mut ::core::ffi::c_char, arg2: ::core::ffi::c_int)
-        -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn mktemp(arg1: *mut ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn _mkdtemp_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_char,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn _mkostemp_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _mkostemps_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: ::core::ffi::c_int,
-        arg4: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _mkstemp_r(arg1: *mut _reent, arg2: *mut ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _mkstemps_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _mktemp_r(arg1: *mut _reent, arg2: *mut ::core::ffi::c_char)
-        -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn qsort(
-        __base: *mut ::core::ffi::c_void,
-        __nmemb: usize,
-        __size: usize,
-        _compar: __compar_fn_t,
-    );
-}
-unsafe extern "C" {
-    pub fn rand() -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn realloc(
-        arg1: *mut ::core::ffi::c_void,
-        arg2: ::core::ffi::c_uint,
-    ) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn reallocarray(
-        arg1: *mut ::core::ffi::c_void,
-        arg2: usize,
-        arg3: usize,
-    ) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn reallocf(arg1: *mut ::core::ffi::c_void, arg2: usize) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    pub fn realpath(
-        path: *const ::core::ffi::c_char,
-        resolved_path: *mut ::core::ffi::c_char,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn rpmatch(response: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn srand(__seed: ::core::ffi::c_uint);
-}
-unsafe extern "C" {
-    pub fn strtod(__n: *const ::core::ffi::c_char, __end_PTR: *mut *mut ::core::ffi::c_char)
-        -> f64;
-}
-unsafe extern "C" {
-    pub fn _strtod_r(
-        arg1: *mut _reent,
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-    ) -> f64;
-}
-unsafe extern "C" {
-    pub fn strtof(__n: *const ::core::ffi::c_char, __end_PTR: *mut *mut ::core::ffi::c_char)
-        -> f32;
-}
-unsafe extern "C" {
-    pub fn strtol(
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn _strtol_r(
-        arg1: *mut _reent,
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn strtoul(
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_ulong;
-}
-unsafe extern "C" {
-    pub fn _strtoul_r(
-        arg1: *mut _reent,
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_ulong;
-}
-unsafe extern "C" {
-    pub fn system(__string: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn a64l(__input: *const ::core::ffi::c_char) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn l64a(__input: ::core::ffi::c_long) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn _l64a_r(arg1: *mut _reent, __input: ::core::ffi::c_long) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn on_exit(
-        __func: ::core::option::Option<
-            unsafe extern "C" fn(arg1: ::core::ffi::c_int, arg2: *mut ::core::ffi::c_void),
-        >,
-        __arg: *mut ::core::ffi::c_void,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _Exit(__status: ::core::ffi::c_int) -> !;
-}
-unsafe extern "C" {
-    pub fn putenv(__string: *mut ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _putenv_r(arg1: *mut _reent, __string: *mut ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _reallocf_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_void,
-        arg3: usize,
-    ) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    pub fn setenv(
-        __string: *const ::core::ffi::c_char,
-        __value: *const ::core::ffi::c_char,
-        __overwrite: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _setenv_r(
-        arg1: *mut _reent,
-        __string: *const ::core::ffi::c_char,
-        __value: *const ::core::ffi::c_char,
-        __overwrite: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn __itoa(
-        arg1: ::core::ffi::c_int,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: ::core::ffi::c_int,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn __utoa(
-        arg1: ::core::ffi::c_uint,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: ::core::ffi::c_int,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn itoa(
-        arg1: ::core::ffi::c_int,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: ::core::ffi::c_int,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn utoa(
-        arg1: ::core::ffi::c_uint,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: ::core::ffi::c_int,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn rand_r(__seed: *mut ::core::ffi::c_uint) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn drand48() -> f64;
-}
-unsafe extern "C" {
-    pub fn _drand48_r(arg1: *mut _reent) -> f64;
-}
-unsafe extern "C" {
-    pub fn erand48(arg1: *mut ::core::ffi::c_ushort) -> f64;
-}
-unsafe extern "C" {
-    pub fn _erand48_r(arg1: *mut _reent, arg2: *mut ::core::ffi::c_ushort) -> f64;
-}
-unsafe extern "C" {
-    pub fn jrand48(arg1: *mut ::core::ffi::c_ushort) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn _jrand48_r(arg1: *mut _reent, arg2: *mut ::core::ffi::c_ushort) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn lcong48(arg1: *mut ::core::ffi::c_ushort);
-}
-unsafe extern "C" {
-    pub fn _lcong48_r(arg1: *mut _reent, arg2: *mut ::core::ffi::c_ushort);
-}
-unsafe extern "C" {
-    pub fn lrand48() -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn _lrand48_r(arg1: *mut _reent) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn mrand48() -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn _mrand48_r(arg1: *mut _reent) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn nrand48(arg1: *mut ::core::ffi::c_ushort) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn _nrand48_r(arg1: *mut _reent, arg2: *mut ::core::ffi::c_ushort) -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn seed48(arg1: *mut ::core::ffi::c_ushort) -> *mut ::core::ffi::c_ushort;
-}
-unsafe extern "C" {
-    pub fn _seed48_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_ushort,
-    ) -> *mut ::core::ffi::c_ushort;
-}
-unsafe extern "C" {
-    pub fn srand48(arg1: ::core::ffi::c_long);
-}
-unsafe extern "C" {
-    pub fn _srand48_r(arg1: *mut _reent, arg2: ::core::ffi::c_long);
-}
-unsafe extern "C" {
-    pub fn initstate(
-        arg1: ::core::ffi::c_uint,
-        arg2: *mut ::core::ffi::c_char,
-        arg3: usize,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn random() -> ::core::ffi::c_long;
-}
-unsafe extern "C" {
-    pub fn setstate(arg1: *mut ::core::ffi::c_char) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn srandom(arg1: ::core::ffi::c_uint);
-}
-unsafe extern "C" {
-    pub fn atoll(__nptr: *const ::core::ffi::c_char) -> ::core::ffi::c_longlong;
-}
-unsafe extern "C" {
-    pub fn _atoll_r(
-        arg1: *mut _reent,
-        __nptr: *const ::core::ffi::c_char,
-    ) -> ::core::ffi::c_longlong;
-}
-unsafe extern "C" {
-    pub fn llabs(arg1: ::core::ffi::c_longlong) -> ::core::ffi::c_longlong;
-}
-unsafe extern "C" {
-    pub fn lldiv(__numer: ::core::ffi::c_longlong, __denom: ::core::ffi::c_longlong) -> lldiv_t;
-}
-unsafe extern "C" {
-    pub fn strtoll(
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_longlong;
-}
-unsafe extern "C" {
-    pub fn _strtoll_r(
-        arg1: *mut _reent,
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_longlong;
-}
-unsafe extern "C" {
-    pub fn strtoull(
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_ulonglong;
-}
-unsafe extern "C" {
-    pub fn _strtoull_r(
-        arg1: *mut _reent,
-        __n: *const ::core::ffi::c_char,
-        __end_PTR: *mut *mut ::core::ffi::c_char,
-        __base: ::core::ffi::c_int,
-    ) -> ::core::ffi::c_ulonglong;
-}
-unsafe extern "C" {
-    pub fn cfree(arg1: *mut ::core::ffi::c_void);
-}
-unsafe extern "C" {
-    pub fn unsetenv(__string: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _unsetenv_r(
-        arg1: *mut _reent,
-        __string: *const ::core::ffi::c_char,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn posix_memalign(
-        arg1: *mut *mut ::core::ffi::c_void,
-        arg2: usize,
-        arg3: usize,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn _dtoa_r(
-        arg1: *mut _reent,
-        arg2: f64,
-        arg3: ::core::ffi::c_int,
-        arg4: ::core::ffi::c_int,
-        arg5: *mut ::core::ffi::c_int,
-        arg6: *mut ::core::ffi::c_int,
-        arg7: *mut *mut ::core::ffi::c_char,
-    ) -> *mut ::core::ffi::c_char;
-}
-unsafe extern "C" {
-    pub fn _malloc_r(arg1: *mut _reent, arg2: usize) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    pub fn _calloc_r(arg1: *mut _reent, arg2: usize, arg3: usize) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    pub fn _free_r(arg1: *mut _reent, arg2: *mut ::core::ffi::c_void);
-}
-unsafe extern "C" {
-    pub fn _realloc_r(
-        arg1: *mut _reent,
-        arg2: *mut ::core::ffi::c_void,
-        arg3: usize,
-    ) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    pub fn _mstats_r(arg1: *mut _reent, arg2: *mut ::core::ffi::c_char);
-}
-unsafe extern "C" {
-    pub fn _system_r(arg1: *mut _reent, arg2: *const ::core::ffi::c_char) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn __eprintf(
-        arg1: *const ::core::ffi::c_char,
-        arg2: *const ::core::ffi::c_char,
-        arg3: ::core::ffi::c_uint,
-        arg4: *const ::core::ffi::c_char,
-    );
-}
-unsafe extern "C" {
-    #[link_name = "\u{1}__bsd_qsort_r"]
-    pub fn qsort_r(
-        __base: *mut ::core::ffi::c_void,
-        __nmemb: usize,
-        __size: usize,
-        __thunk: *mut ::core::ffi::c_void,
-        _compar: ::core::option::Option<
-            unsafe extern "C" fn(
-                arg1: *mut ::core::ffi::c_void,
-                arg2: *const ::core::ffi::c_void,
-                arg3: *const ::core::ffi::c_void,
-            ) -> ::core::ffi::c_int,
-        >,
-    );
-}
-unsafe extern "C" {
-    #[must_use]
-    pub fn aligned_alloc(
-        arg1: ::core::ffi::c_uint,
-        arg2: ::core::ffi::c_uint,
-    ) -> *mut ::core::ffi::c_void;
-}
-unsafe extern "C" {
-    pub fn at_quick_exit(
-        arg1: ::core::option::Option<unsafe extern "C" fn()>,
-    ) -> ::core::ffi::c_int;
-}
-unsafe extern "C" {
-    pub fn quick_exit(arg1: ::core::ffi::c_int) -> !;
-}
-pub type intmax_t = __intmax_t;
-pub type uintmax_t = __uintmax_t;
-pub type int_least8_t = __int_least8_t;
-pub type uint_least8_t = __uint_least8_t;
-pub type int_least16_t = __int_least16_t;
-pub type uint_least16_t = __uint_least16_t;
-pub type int_least32_t = __int_least32_t;
-pub type uint_least32_t = __uint_least32_t;
-pub type int_least64_t = __int_least64_t;
-pub type uint_least64_t = __uint_least64_t;
-pub type int_fast8_t = ::core::ffi::c_schar;
-pub type uint_fast8_t = ::core::ffi::c_uchar;
-pub type int_fast16_t = ::core::ffi::c_short;
-pub type uint_fast16_t = ::core::ffi::c_ushort;
-pub type int_fast32_t = ::core::ffi::c_int;
-pub type uint_fast32_t = ::core::ffi::c_uint;
-pub type int_fast64_t = ::core::ffi::c_longlong;
-pub type uint_fast64_t = ::core::ffi::c_ulonglong;
 /// No error.
 pub const otError_OT_ERROR_NONE: otError = 0;
 /// Operational failed.
@@ -1432,90 +345,6 @@ unsafe extern "C" {
     /// @returns  A string representation of an otError.
     pub fn otThreadErrorToString(aError: otError) -> *const ::core::ffi::c_char;
 }
-pub type __gnuc_va_list = __builtin_va_list;
-pub type va_list = __builtin_va_list;
-/// Represents the log level.
-pub type otLogLevel = ::core::ffi::c_int;
-///< OpenThread API
-pub const otLogRegion_OT_LOG_REGION_API: otLogRegion = 1;
-///< MLE
-pub const otLogRegion_OT_LOG_REGION_MLE: otLogRegion = 2;
-///< EID-to-RLOC mapping.
-pub const otLogRegion_OT_LOG_REGION_ARP: otLogRegion = 3;
-///< Network Data
-pub const otLogRegion_OT_LOG_REGION_NET_DATA: otLogRegion = 4;
-///< ICMPv6
-pub const otLogRegion_OT_LOG_REGION_ICMP: otLogRegion = 5;
-///< IPv6
-pub const otLogRegion_OT_LOG_REGION_IP6: otLogRegion = 6;
-///< TCP
-pub const otLogRegion_OT_LOG_REGION_TCP: otLogRegion = 7;
-///< IEEE 802.15.4 MAC
-pub const otLogRegion_OT_LOG_REGION_MAC: otLogRegion = 8;
-///< Memory
-pub const otLogRegion_OT_LOG_REGION_MEM: otLogRegion = 9;
-///< NCP
-pub const otLogRegion_OT_LOG_REGION_NCP: otLogRegion = 10;
-///< Mesh Commissioning Protocol
-pub const otLogRegion_OT_LOG_REGION_MESH_COP: otLogRegion = 11;
-///< Network Diagnostic
-pub const otLogRegion_OT_LOG_REGION_NET_DIAG: otLogRegion = 12;
-///< Platform
-pub const otLogRegion_OT_LOG_REGION_PLATFORM: otLogRegion = 13;
-///< CoAP
-pub const otLogRegion_OT_LOG_REGION_COAP: otLogRegion = 14;
-///< CLI
-pub const otLogRegion_OT_LOG_REGION_CLI: otLogRegion = 15;
-///< OpenThread Core
-pub const otLogRegion_OT_LOG_REGION_CORE: otLogRegion = 16;
-///< Utility module
-pub const otLogRegion_OT_LOG_REGION_UTIL: otLogRegion = 17;
-///< Backbone Router (available since Thread 1.2)
-pub const otLogRegion_OT_LOG_REGION_BBR: otLogRegion = 18;
-///< Multicast Listener Registration (available since Thread 1.2)
-pub const otLogRegion_OT_LOG_REGION_MLR: otLogRegion = 19;
-///< Domain Unicast Address (available since Thread 1.2)
-pub const otLogRegion_OT_LOG_REGION_DUA: otLogRegion = 20;
-///< Border Router
-pub const otLogRegion_OT_LOG_REGION_BR: otLogRegion = 21;
-///< Service Registration Protocol (SRP)
-pub const otLogRegion_OT_LOG_REGION_SRP: otLogRegion = 22;
-///< DNS
-pub const otLogRegion_OT_LOG_REGION_DNS: otLogRegion = 23;
-/// Represents log regions.
-///
-/// The support for log region is removed and instead each core module can define its own name to appended to the logs.
-/// However, the `otLogRegion` enumeration is still defined as before to help with platforms which we may be using it
-/// in their `otPlatLog()` implementation. The OT core will always emit all logs with `OT_LOG_REGION_CORE`.
-pub type otLogRegion = ::core::ffi::c_uint;
-unsafe extern "C" {
-    /// Outputs logs.
-    ///
-    /// Note that the support for log region is removed. The OT core will always emit all logs with `OT_LOG_REGION_CORE`
-    /// as @p aLogRegion.
-    ///
-    /// @param[in]  aLogLevel   The log level.
-    /// @param[in]  aLogRegion  The log region.
-    /// @param[in]  aFormat     A pointer to the format string.
-    /// @param[in]  ...         Arguments for the format specification.
-    pub fn otPlatLog(
-        aLogLevel: otLogLevel,
-        aLogRegion: otLogRegion,
-        aFormat: *const ::core::ffi::c_char,
-        ...
-    );
-}
-unsafe extern "C" {
-    /// Handles OpenThread log level changes.
-    ///
-    /// This platform function is called whenever the OpenThread log level changes.
-    /// This platform function is optional since an empty weak implementation has been provided.
-    ///
-    /// @note Only applicable when `OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE=1`.
-    ///
-    /// @param[in]  aLogLevel  The new OpenThread log level.
-    pub fn otPlatLogHandleLevelChanged(aLogLevel: otLogLevel);
-}
 #[repr(C)]
 #[derive(Copy, Clone)]
 pub struct otInstance {
@@ -1566,6 +395,17 @@ unsafe extern "C" {
     ///
     /// @returns  A pointer to the new OpenThread instance.
     pub fn otInstanceInitMultiple(aIdx: u8) -> *mut otInstance;
+}
+unsafe extern "C" {
+    /// Gets the index of the OpenThread instance when multiple instance is in use.
+    ///
+    /// This function is available when both `OPENTHREAD_CONFIG_MULTIPLE_INSTANCE_ENABLE` and
+    /// `OPENTHREAD_CONFIG_MULTIPLE_STATIC_INSTANCE_ENABLE` are enabled.
+    ///
+    /// @param[in] aInstance The reference of the OpenThread instance to get index.
+    ///
+    /// @returns The index of the OpenThread instance.
+    pub fn otInstanceGetIndex(aInstance: *mut otInstance) -> u8;
 }
 unsafe extern "C" {
     /// Gets the instance identifier.
@@ -1750,7 +590,7 @@ pub const otMessageOrigin_OT_MESSAGE_ORIGIN_HOST_UNTRUSTED: otMessageOrigin = 2;
 pub type otMessageOrigin = ::core::ffi::c_uint;
 /// Represents a message settings.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otMessageSettings {
     ///< TRUE if the message should be secured at Layer 2.
     pub mLinkSecurityEnabled: bool,
@@ -1759,7 +599,7 @@ pub struct otMessageSettings {
 }
 /// Represents link-specific information for messages received from the Thread radio.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otThreadLinkInfo {
     ///< Source PAN ID
     pub mPanId: u16,
@@ -2108,9 +948,18 @@ pub struct otMessageQueue {
     ///< Opaque data used by the implementation.
     pub mData: *mut ::core::ffi::c_void,
 }
+impl Default for otMessageQueue {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 /// Represents information about a message queue.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otMessageQueueInfo {
     ///< Number of messages in the queue.
     pub mNumMessages: u16,
@@ -2121,7 +970,7 @@ pub struct otMessageQueueInfo {
 }
 /// Represents the message buffer information for different queues used by OpenThread stack.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otBufferInfo {
     ///< The total number of buffers in the messages pool (0xffff if unknown).
     pub mTotalBuffers: u16,
@@ -2214,6 +1063,1745 @@ unsafe extern "C" {
     /// @param[in]   aInstance    A pointer to the OpenThread instance.
     pub fn otMessageResetBufferInfo(aInstance: *mut otInstance);
 }
+/// @struct otIp6InterfaceIdentifier
+///
+/// Represents the Interface Identifier of an IPv6 address.
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct otIp6InterfaceIdentifier {
+    ///< The Interface Identifier accessor fields
+    pub mFields: otIp6InterfaceIdentifier__bindgen_ty_1,
+}
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub union otIp6InterfaceIdentifier__bindgen_ty_1 {
+    ///< 8-bit fields
+    pub m8: [u8; 8usize],
+    ///< 16-bit fields
+    pub m16: [u16; 4usize],
+    ///< 32-bit fields
+    pub m32: [u32; 2usize],
+}
+impl Default for otIp6InterfaceIdentifier__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for otIp6InterfaceIdentifier {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// @struct otIp6NetworkPrefix
+///
+/// Represents the Network Prefix of an IPv6 address (most significant 64 bits of the address).
+#[repr(C, packed)]
+#[derive(Default, Copy, Clone)]
+pub struct otIp6NetworkPrefix {
+    ///< The Network Prefix.
+    pub m8: [u8; 8usize],
+}
+/// @struct otIp6AddressComponents
+///
+/// Represents the components of an IPv6 address.
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct otIp6AddressComponents {
+    ///< The Network Prefix (most significant 64 bits of the address)
+    pub mNetworkPrefix: otIp6NetworkPrefix,
+    ///< The Interface Identifier (least significant 64 bits of the address)
+    pub mIid: otIp6InterfaceIdentifier,
+}
+impl Default for otIp6AddressComponents {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// @struct otIp6Address
+///
+/// Represents an IPv6 address.
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct otIp6Address {
+    ///< IPv6 accessor fields
+    pub mFields: otIp6Address__bindgen_ty_1,
+}
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub union otIp6Address__bindgen_ty_1 {
+    ///< 8-bit fields
+    pub m8: [u8; 16usize],
+    ///< 16-bit fields
+    pub m16: [u16; 8usize],
+    ///< 32-bit fields
+    pub m32: [u32; 4usize],
+    ///< IPv6 address components
+    pub mComponents: otIp6AddressComponents,
+}
+impl Default for otIp6Address__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for otIp6Address {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// @struct otIp6Prefix
+///
+/// Represents an IPv6 prefix.
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct otIp6Prefix {
+    ///< The IPv6 prefix.
+    pub mPrefix: otIp6Address,
+    ///< The IPv6 prefix length (in bits).
+    pub mLength: u8,
+}
+impl Default for otIp6Prefix {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+///< Thread assigned address (ALOC, RLOC, MLEID, etc)
+pub const OT_ADDRESS_ORIGIN_THREAD: _bindgen_ty_1 = 0;
+///< SLAAC assigned address
+pub const OT_ADDRESS_ORIGIN_SLAAC: _bindgen_ty_1 = 1;
+///< DHCPv6 assigned address
+pub const OT_ADDRESS_ORIGIN_DHCPV6: _bindgen_ty_1 = 2;
+///< Manually assigned address
+pub const OT_ADDRESS_ORIGIN_MANUAL: _bindgen_ty_1 = 3;
+/// IPv6 Address origins
+pub type _bindgen_ty_1 = ::core::ffi::c_uint;
+/// Represents an IPv6 network interface unicast address.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otNetifAddress {
+    ///< The IPv6 unicast address.
+    pub mAddress: otIp6Address,
+    ///< The Prefix length (in bits).
+    pub mPrefixLength: u8,
+    ///< The IPv6 address origin.
+    pub mAddressOrigin: u8,
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+    ///< A pointer to the next network interface address.
+    pub mNext: *const otNetifAddress,
+}
+impl Default for otNetifAddress {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otNetifAddress {
+    #[inline]
+    pub fn mPreferred(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mPreferred(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mPreferred_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mPreferred_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mValid(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mValid(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mValid_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mValid_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mScopeOverrideValid(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mScopeOverrideValid(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mScopeOverrideValid_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mScopeOverrideValid_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mScopeOverride(&self) -> ::core::ffi::c_uint {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(3usize, 4u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mScopeOverride(&mut self, val: ::core::ffi::c_uint) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            self._bitfield_1.set(3usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mScopeOverride_raw(this: *const Self) -> ::core::ffi::c_uint {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                4u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mScopeOverride_raw(this: *mut Self, val: ::core::ffi::c_uint) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mRloc(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mRloc(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mRloc_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mRloc_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mMeshLocal(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mMeshLocal(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mMeshLocal_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mMeshLocal_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mSrpRegistered(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mSrpRegistered(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mSrpRegistered_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mSrpRegistered_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        mPreferred: bool,
+        mValid: bool,
+        mScopeOverrideValid: bool,
+        mScopeOverride: ::core::ffi::c_uint,
+        mRloc: bool,
+        mMeshLocal: bool,
+        mSrpRegistered: bool,
+    ) -> __BindgenBitfieldUnit<[u8; 2usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let mPreferred: u8 = unsafe { ::core::mem::transmute(mPreferred) };
+            mPreferred as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let mValid: u8 = unsafe { ::core::mem::transmute(mValid) };
+            mValid as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let mScopeOverrideValid: u8 = unsafe { ::core::mem::transmute(mScopeOverrideValid) };
+            mScopeOverrideValid as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 4u8, {
+            let mScopeOverride: u32 = unsafe { ::core::mem::transmute(mScopeOverride) };
+            mScopeOverride as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let mRloc: u8 = unsafe { ::core::mem::transmute(mRloc) };
+            mRloc as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let mMeshLocal: u8 = unsafe { ::core::mem::transmute(mMeshLocal) };
+            mMeshLocal as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let mSrpRegistered: u8 = unsafe { ::core::mem::transmute(mSrpRegistered) };
+            mSrpRegistered as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+/// Represents an IPv6 network interface multicast address.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otNetifMulticastAddress {
+    ///< The IPv6 multicast address.
+    pub mAddress: otIp6Address,
+    ///< A pointer to the next network interface multicast address.
+    pub mNext: *const otNetifMulticastAddress,
+}
+impl Default for otNetifMulticastAddress {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// Represents an IPv6 socket address.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otSockAddr {
+    ///< An IPv6 address.
+    pub mAddress: otIp6Address,
+    ///< A transport-layer port.
+    pub mPort: u16,
+}
+impl Default for otSockAddr {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+///< Non-ECT
+pub const OT_ECN_NOT_CAPABLE: _bindgen_ty_2 = 0;
+///< ECT(0)
+pub const OT_ECN_CAPABLE_0: _bindgen_ty_2 = 2;
+///< ECT(1)
+pub const OT_ECN_CAPABLE_1: _bindgen_ty_2 = 1;
+///< Congestion encountered (CE)
+pub const OT_ECN_MARKED: _bindgen_ty_2 = 3;
+/// ECN statuses, represented as in the IP header.
+pub type _bindgen_ty_2 = ::core::ffi::c_uint;
+/// Represents the local and peer IPv6 socket addresses.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otMessageInfo {
+    ///< The local IPv6 address.
+    pub mSockAddr: otIp6Address,
+    ///< The peer IPv6 address.
+    pub mPeerAddr: otIp6Address,
+    ///< The local transport-layer port.
+    pub mSockPort: u16,
+    ///< The peer transport-layer port.
+    pub mPeerPort: u16,
+    ///< The IPv6 Hop Limit value. Only applies if `mAllowZeroHopLimit` is FALSE.
+    ///< If `0`, IPv6 Hop Limit is default value `OPENTHREAD_CONFIG_IP6_HOP_LIMIT_DEFAULT`.
+    ///< Otherwise, specifies the IPv6 Hop Limit.
+    pub mHopLimit: u8,
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+}
+impl Default for otMessageInfo {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otMessageInfo {
+    #[inline]
+    pub fn mEcn(&self) -> u8 {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mEcn(&mut self, val: u8) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mEcn_raw(this: *const Self) -> u8 {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mEcn_raw(this: *mut Self, val: u8) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mIsHostInterface(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mIsHostInterface(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mIsHostInterface_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mIsHostInterface_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mAllowZeroHopLimit(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mAllowZeroHopLimit(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mAllowZeroHopLimit_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mAllowZeroHopLimit_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mMulticastLoop(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mMulticastLoop(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mMulticastLoop_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mMulticastLoop_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        mEcn: u8,
+        mIsHostInterface: bool,
+        mAllowZeroHopLimit: bool,
+        mMulticastLoop: bool,
+    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let mEcn: u8 = unsafe { ::core::mem::transmute(mEcn) };
+            mEcn as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let mIsHostInterface: u8 = unsafe { ::core::mem::transmute(mIsHostInterface) };
+            mIsHostInterface as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let mAllowZeroHopLimit: u8 = unsafe { ::core::mem::transmute(mAllowZeroHopLimit) };
+            mAllowZeroHopLimit as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let mMulticastLoop: u8 = unsafe { ::core::mem::transmute(mMulticastLoop) };
+            mMulticastLoop as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+///< IPv6 Hop-by-Hop Option
+pub const OT_IP6_PROTO_HOP_OPTS: _bindgen_ty_3 = 0;
+///< Transmission Control Protocol
+pub const OT_IP6_PROTO_TCP: _bindgen_ty_3 = 6;
+///< User Datagram
+pub const OT_IP6_PROTO_UDP: _bindgen_ty_3 = 17;
+///< IPv6 encapsulation
+pub const OT_IP6_PROTO_IP6: _bindgen_ty_3 = 41;
+///< Routing Header for IPv6
+pub const OT_IP6_PROTO_ROUTING: _bindgen_ty_3 = 43;
+///< Fragment Header for IPv6
+pub const OT_IP6_PROTO_FRAGMENT: _bindgen_ty_3 = 44;
+///< ICMP for IPv6
+pub const OT_IP6_PROTO_ICMP6: _bindgen_ty_3 = 58;
+///< No Next Header for IPv6
+pub const OT_IP6_PROTO_NONE: _bindgen_ty_3 = 59;
+///< Destination Options for IPv6
+pub const OT_IP6_PROTO_DST_OPTS: _bindgen_ty_3 = 60;
+/// Internet Protocol Numbers.
+pub type _bindgen_ty_3 = ::core::ffi::c_uint;
+unsafe extern "C" {
+    /// Brings the IPv6 interface up or down.
+    ///
+    /// Call this to enable or disable IPv6 communication.
+    ///
+    /// @param[in] aInstance A pointer to an OpenThread instance.
+    /// @param[in] aEnabled  TRUE to enable IPv6, FALSE otherwise.
+    ///
+    /// @retval OT_ERROR_NONE            Successfully brought the IPv6 interface up/down.
+    /// @retval OT_ERROR_INVALID_STATE   IPv6 interface is not available since device is operating in raw-link mode
+    ///                                  (applicable only when `OPENTHREAD_CONFIG_LINK_RAW_ENABLE` feature is enabled).
+    pub fn otIp6SetEnabled(aInstance: *mut otInstance, aEnabled: bool) -> otError;
+}
+unsafe extern "C" {
+    /// Indicates whether or not the IPv6 interface is up.
+    ///
+    /// @param[in] aInstance A pointer to an OpenThread instance.
+    ///
+    /// @retval TRUE   The IPv6 interface is enabled.
+    /// @retval FALSE  The IPv6 interface is disabled.
+    pub fn otIp6IsEnabled(aInstance: *mut otInstance) -> bool;
+}
+unsafe extern "C" {
+    /// Adds a Network Interface Address to the Thread interface.
+    ///
+    /// The passed-in instance @p aAddress is copied by the Thread interface. The Thread interface only
+    /// supports a fixed number of externally added unicast addresses. See `OPENTHREAD_CONFIG_IP6_MAX_EXT_UCAST_ADDRS`.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aAddress  A pointer to a Network Interface Address.
+    ///
+    /// @retval OT_ERROR_NONE          Successfully added (or updated) the Network Interface Address.
+    /// @retval OT_ERROR_INVALID_ARGS  The IP Address indicated by @p aAddress is an internal address.
+    /// @retval OT_ERROR_NO_BUFS       The Network Interface is already storing the maximum allowed external addresses.
+    pub fn otIp6AddUnicastAddress(
+        aInstance: *mut otInstance,
+        aAddress: *const otNetifAddress,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Removes a Network Interface Address from the Thread interface.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aAddress  A pointer to an IP Address.
+    ///
+    /// @retval OT_ERROR_NONE          Successfully removed the Network Interface Address.
+    /// @retval OT_ERROR_INVALID_ARGS  The IP Address indicated by @p aAddress is an internal address.
+    /// @retval OT_ERROR_NOT_FOUND     The IP Address indicated by @p aAddress was not found.
+    pub fn otIp6RemoveUnicastAddress(
+        aInstance: *mut otInstance,
+        aAddress: *const otIp6Address,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Gets the list of IPv6 addresses assigned to the Thread interface.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    ///
+    /// @returns A pointer to the first Network Interface Address.
+    pub fn otIp6GetUnicastAddresses(aInstance: *mut otInstance) -> *const otNetifAddress;
+}
+unsafe extern "C" {
+    /// Indicates whether or not a unicast IPv6 address is assigned to the Thread interface.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aAddress  A pointer to the unicast address.
+    ///
+    /// @retval TRUE   If @p aAddress is assigned to the Thread interface.
+    /// @retval FALSE  If @p aAddress is not assigned to the Thread interface.
+    pub fn otIp6HasUnicastAddress(
+        aInstance: *mut otInstance,
+        aAddress: *const otIp6Address,
+    ) -> bool;
+}
+unsafe extern "C" {
+    /// Subscribes the Thread interface to a Network Interface Multicast Address.
+    ///
+    /// The passed in instance @p aAddress will be copied by the Thread interface. The Thread interface only
+    /// supports a fixed number of externally added multicast addresses. See `OPENTHREAD_CONFIG_IP6_MAX_EXT_MCAST_ADDRS`.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aAddress  A pointer to an IP Address.
+    ///
+    /// @retval OT_ERROR_NONE           Successfully subscribed to the Network Interface Multicast Address.
+    /// @retval OT_ERROR_ALREADY        The multicast address is already subscribed.
+    /// @retval OT_ERROR_INVALID_ARGS   The IP Address indicated by @p aAddress is an invalid multicast address.
+    /// @retval OT_ERROR_REJECTED       The IP Address indicated by @p aAddress is an internal multicast address.
+    /// @retval OT_ERROR_NO_BUFS        The Network Interface is already storing the maximum allowed external multicast
+    ///                                 addresses.
+    pub fn otIp6SubscribeMulticastAddress(
+        aInstance: *mut otInstance,
+        aAddress: *const otIp6Address,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Unsubscribes the Thread interface to a Network Interface Multicast Address.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aAddress  A pointer to an IP Address.
+    ///
+    /// @retval OT_ERROR_NONE          Successfully unsubscribed to the Network Interface Multicast Address.
+    /// @retval OT_ERROR_REJECTED      The IP Address indicated by @p aAddress is an internal address.
+    /// @retval OT_ERROR_NOT_FOUND     The IP Address indicated by @p aAddress was not found.
+    pub fn otIp6UnsubscribeMulticastAddress(
+        aInstance: *mut otInstance,
+        aAddress: *const otIp6Address,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Gets the list of IPv6 multicast addresses subscribed to the Thread interface.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    ///
+    /// @returns A pointer to the first Network Interface Multicast Address.
+    pub fn otIp6GetMulticastAddresses(aInstance: *mut otInstance)
+        -> *const otNetifMulticastAddress;
+}
+unsafe extern "C" {
+    /// Allocate a new message buffer for sending an IPv6 message.
+    ///
+    /// @note If @p aSettings is 'NULL', the link layer security is enabled and the message priority is set to
+    /// OT_MESSAGE_PRIORITY_NORMAL by default.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aSettings  A pointer to the message settings or NULL to set default settings.
+    ///
+    /// @returns A pointer to the message buffer or NULL if no message buffers are available or parameters are invalid.
+    ///
+    /// @sa otMessageFree
+    pub fn otIp6NewMessage(
+        aInstance: *mut otInstance,
+        aSettings: *const otMessageSettings,
+    ) -> *mut otMessage;
+}
+unsafe extern "C" {
+    /// Allocate a new message buffer and write the IPv6 datagram to the message buffer for sending an IPv6 message.
+    ///
+    /// @note If @p aSettings is NULL, the link layer security is enabled and the message priority is obtained from IPv6
+    ///       message itself.
+    ///       If @p aSettings is not NULL, the @p aSetting->mPriority is ignored and obtained from IPv6 message itself.
+    ///
+    /// @param[in]  aInstance    A pointer to an OpenThread instance.
+    /// @param[in]  aData        A pointer to the IPv6 datagram buffer.
+    /// @param[in]  aDataLength  The size of the IPv6 datagram buffer pointed by @p aData.
+    /// @param[in]  aSettings    A pointer to the message settings or NULL to set default settings.
+    ///
+    /// @returns A pointer to the message or NULL if malformed IPv6 header or insufficient message buffers are available.
+    ///
+    /// @sa otMessageFree
+    pub fn otIp6NewMessageFromBuffer(
+        aInstance: *mut otInstance,
+        aData: *const u8,
+        aDataLength: u16,
+        aSettings: *const otMessageSettings,
+    ) -> *mut otMessage;
+}
+/// Pointer is called when an IPv6 datagram is received.
+///
+/// @param[in]  aMessage  A pointer to the message buffer containing the received IPv6 datagram. This function transfers
+///                       the ownership of the @p aMessage to the receiver of the callback. The message should be
+///                       freed by the receiver of the callback after it is processed (see otMessageFree()).
+/// @param[in]  aContext  A pointer to application-specific context.
+pub type otIp6ReceiveCallback = ::core::option::Option<
+    unsafe extern "C" fn(aMessage: *mut otMessage, aContext: *mut ::core::ffi::c_void),
+>;
+unsafe extern "C" {
+    /// Registers a callback to provide received IPv6 datagrams.
+    ///
+    /// By default, this callback does not pass Thread control traffic.  See otIp6SetReceiveFilterEnabled() to
+    /// change the Thread control traffic filter setting.
+    ///
+    /// @param[in]  aInstance         A pointer to an OpenThread instance.
+    /// @param[in]  aCallback         A pointer to a function that is called when an IPv6 datagram is received or
+    ///                               NULL to disable the callback.
+    /// @param[in]  aCallbackContext  A pointer to application-specific context.
+    ///
+    /// @sa otIp6IsReceiveFilterEnabled
+    /// @sa otIp6SetReceiveFilterEnabled
+    pub fn otIp6SetReceiveCallback(
+        aInstance: *mut otInstance,
+        aCallback: otIp6ReceiveCallback,
+        aCallbackContext: *mut ::core::ffi::c_void,
+    );
+}
+/// Represents IPv6 address information.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otIp6AddressInfo {
+    ///< A pointer to the IPv6 address.
+    pub mAddress: *const otIp6Address,
+    ///< The prefix length of mAddress if it is a unicast address.
+    pub mPrefixLength: u8,
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+    pub __bindgen_padding_0: u16,
+}
+impl Default for otIp6AddressInfo {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otIp6AddressInfo {
+    #[inline]
+    pub fn mScope(&self) -> u8 {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 4u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mScope(&mut self, val: u8) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 4u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mScope_raw(this: *const Self) -> u8 {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                4u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mScope_raw(this: *mut Self, val: u8) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                4u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mPreferred(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mPreferred(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mPreferred_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mPreferred_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mMeshLocal(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mMeshLocal(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mMeshLocal_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mMeshLocal_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        mScope: u8,
+        mPreferred: bool,
+        mMeshLocal: bool,
+    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 4u8, {
+            let mScope: u8 = unsafe { ::core::mem::transmute(mScope) };
+            mScope as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let mPreferred: u8 = unsafe { ::core::mem::transmute(mPreferred) };
+            mPreferred as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let mMeshLocal: u8 = unsafe { ::core::mem::transmute(mMeshLocal) };
+            mMeshLocal as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+/// Pointer is called when an internal IPv6 address is added or removed.
+///
+/// @param[in]   aAddressInfo        A pointer to the IPv6 address information.
+/// @param[in]   aIsAdded            TRUE if the @p aAddress was added, FALSE if @p aAddress was removed.
+/// @param[in]   aContext            A pointer to application-specific context.
+pub type otIp6AddressCallback = ::core::option::Option<
+    unsafe extern "C" fn(
+        aAddressInfo: *const otIp6AddressInfo,
+        aIsAdded: bool,
+        aContext: *mut ::core::ffi::c_void,
+    ),
+>;
+unsafe extern "C" {
+    /// Registers a callback to notify internal IPv6 address changes.
+    ///
+    /// @param[in]   aInstance           A pointer to an OpenThread instance.
+    /// @param[in]   aCallback           A pointer to a function that is called when an internal IPv6 address is added or
+    ///                                  removed. NULL to disable the callback.
+    /// @param[in]   aCallbackContext    A pointer to application-specific context.
+    pub fn otIp6SetAddressCallback(
+        aInstance: *mut otInstance,
+        aCallback: otIp6AddressCallback,
+        aCallbackContext: *mut ::core::ffi::c_void,
+    );
+}
+unsafe extern "C" {
+    /// Indicates whether or not Thread control traffic is filtered out when delivering IPv6 datagrams
+    /// via the callback specified in otIp6SetReceiveCallback().
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    ///
+    /// @returns  TRUE if Thread control traffic is filtered out, FALSE otherwise.
+    ///
+    /// @sa otIp6SetReceiveCallback
+    /// @sa otIp6SetReceiveFilterEnabled
+    pub fn otIp6IsReceiveFilterEnabled(aInstance: *mut otInstance) -> bool;
+}
+unsafe extern "C" {
+    /// Sets whether or not Thread control traffic is filtered out when delivering IPv6 datagrams
+    /// via the callback specified in otIp6SetReceiveCallback().
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aEnabled  TRUE if Thread control traffic is filtered out, FALSE otherwise.
+    ///
+    /// @sa otIp6SetReceiveCallback
+    /// @sa otIsReceiveIp6FilterEnabled
+    pub fn otIp6SetReceiveFilterEnabled(aInstance: *mut otInstance, aEnabled: bool);
+}
+unsafe extern "C" {
+    /// Sends an IPv6 datagram via the Thread interface.
+    ///
+    /// The caller transfers ownership of @p aMessage when making this call. OpenThread will free @p aMessage when
+    /// processing is complete, including when a value other than `OT_ERROR_NONE` is returned.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aMessage  A pointer to the message buffer containing the IPv6 datagram.
+    ///
+    /// @retval OT_ERROR_NONE                    Successfully processed the message.
+    /// @retval OT_ERROR_DROP                    Message was well-formed but not fully processed due to packet processing
+    /// rules.
+    /// @retval OT_ERROR_NO_BUFS                 Could not allocate necessary message buffers when processing the datagram.
+    /// @retval OT_ERROR_NO_ROUTE                No route to host.
+    /// @retval OT_ERROR_INVALID_SOURCE_ADDRESS  Source address is invalid, e.g. an anycast address or a multicast address.
+    /// @retval OT_ERROR_PARSE                   Encountered a malformed header when processing the message.
+    /// @retval OT_ERROR_INVALID_ARGS            The message's metadata is invalid, e.g. the message uses
+    ///                                          `OT_MESSAGE_ORIGIN_THREAD_NETIF` as the origin.
+    pub fn otIp6Send(aInstance: *mut otInstance, aMessage: *mut otMessage) -> otError;
+}
+unsafe extern "C" {
+    /// Adds a port to the allowed unsecured port list.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aPort     The port value.
+    ///
+    /// @retval OT_ERROR_NONE         The port was successfully added to the allowed unsecure port list.
+    /// @retval OT_ERROR_INVALID_ARGS The port is invalid (value 0 is reserved for internal use).
+    /// @retval OT_ERROR_NO_BUFS      The unsecure port list is full.
+    pub fn otIp6AddUnsecurePort(aInstance: *mut otInstance, aPort: u16) -> otError;
+}
+unsafe extern "C" {
+    /// Removes a port from the allowed unsecure port list.
+    ///
+    /// @note This function removes @p aPort by overwriting @p aPort with the element after @p aPort in the internal port
+    ///       list. Be careful when calling otIp6GetUnsecurePorts() followed by otIp6RemoveUnsecurePort() to remove unsecure
+    ///       ports.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aPort     The port value.
+    ///
+    /// @retval OT_ERROR_NONE         The port was successfully removed from the allowed unsecure port list.
+    /// @retval OT_ERROR_INVALID_ARGS The port is invalid (value 0 is reserved for internal use).
+    /// @retval OT_ERROR_NOT_FOUND    The port was not found in the unsecure port list.
+    pub fn otIp6RemoveUnsecurePort(aInstance: *mut otInstance, aPort: u16) -> otError;
+}
+unsafe extern "C" {
+    /// Removes all ports from the allowed unsecure port list.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    pub fn otIp6RemoveAllUnsecurePorts(aInstance: *mut otInstance);
+}
+unsafe extern "C" {
+    /// Returns a pointer to the unsecure port list.
+    ///
+    /// @note Port value 0 is used to indicate an invalid entry.
+    ///
+    /// @param[in]   aInstance    A pointer to an OpenThread instance.
+    /// @param[out]  aNumEntries  The number of entries in the list.
+    ///
+    /// @returns A pointer to the unsecure port list.
+    pub fn otIp6GetUnsecurePorts(aInstance: *mut otInstance, aNumEntries: *mut u8) -> *const u16;
+}
+unsafe extern "C" {
+    /// Test if two IPv6 addresses are the same.
+    ///
+    /// @param[in]  aFirst   A pointer to the first IPv6 address to compare.
+    /// @param[in]  aSecond  A pointer to the second IPv6 address to compare.
+    ///
+    /// @retval TRUE   The two IPv6 addresses are the same.
+    /// @retval FALSE  The two IPv6 addresses are not the same.
+    pub fn otIp6IsAddressEqual(aFirst: *const otIp6Address, aSecond: *const otIp6Address) -> bool;
+}
+unsafe extern "C" {
+    /// Test if two IPv6 prefixes are the same.
+    ///
+    /// @param[in]  aFirst   A pointer to the first IPv6 prefix to compare.
+    /// @param[in]  aSecond  A pointer to the second IPv6 prefix to compare.
+    ///
+    /// @retval TRUE   The two IPv6 prefixes are the same.
+    /// @retval FALSE  The two IPv6 prefixes are not the same.
+    pub fn otIp6ArePrefixesEqual(aFirst: *const otIp6Prefix, aSecond: *const otIp6Prefix) -> bool;
+}
+unsafe extern "C" {
+    /// Converts a human-readable IPv6 address string into a binary representation.
+    ///
+    /// @param[in]   aString   A pointer to a NULL-terminated string.
+    /// @param[out]  aAddress  A pointer to an IPv6 address.
+    ///
+    /// @retval OT_ERROR_NONE   Successfully parsed @p aString and updated @p aAddress.
+    /// @retval OT_ERROR_PARSE  Failed to parse @p aString as an IPv6 address.
+    pub fn otIp6AddressFromString(
+        aString: *const ::core::ffi::c_char,
+        aAddress: *mut otIp6Address,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Converts a human-readable IPv6 prefix string into a binary representation.
+    ///
+    /// The @p aString parameter should be a string in the format "<address>/<plen>", where `<address>` is an IPv6
+    /// address and `<plen>` is a prefix length.
+    ///
+    /// @param[in]   aString  A pointer to a NULL-terminated string.
+    /// @param[out]  aPrefix  A pointer to an IPv6 prefix.
+    ///
+    /// @retval OT_ERROR_NONE   Successfully parsed the string as an IPv6 prefix and updated @p aPrefix.
+    /// @retval OT_ERROR_PARSE  Failed to parse @p aString as an IPv6 prefix.
+    pub fn otIp6PrefixFromString(
+        aString: *const ::core::ffi::c_char,
+        aPrefix: *mut otIp6Prefix,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Converts a given IPv6 address to a human-readable string.
+    ///
+    /// The IPv6 address string is formatted as 16 hex values separated by ':' (i.e., "%x:%x:%x:...:%x").
+    ///
+    /// If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be truncated
+    /// but the outputted string is always null-terminated.
+    ///
+    /// @param[in]  aAddress  A pointer to an IPv6 address (MUST NOT be NULL).
+    /// @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be NULL).
+    /// @param[in]  aSize     The size of @p aBuffer (in bytes). Recommended to use `OT_IP6_ADDRESS_STRING_SIZE`.
+    pub fn otIp6AddressToString(
+        aAddress: *const otIp6Address,
+        aBuffer: *mut ::core::ffi::c_char,
+        aSize: u16,
+    );
+}
+unsafe extern "C" {
+    /// Converts a given IPv6 socket address to a human-readable string.
+    ///
+    /// The IPv6 socket address string is formatted as [`address`]:`port` where `address` is shown
+    /// as 16 hex values separated by `:` and `port` is the port number in decimal format,
+    /// for example "[%x:%x:...:%x]:%u".
+    ///
+    /// If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be truncated
+    /// but the outputted string is always null-terminated.
+    ///
+    /// @param[in]  aSockAddr A pointer to an IPv6 socket address (MUST NOT be NULL).
+    /// @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be NULL).
+    /// @param[in]  aSize     The size of @p aBuffer (in bytes). Recommended to use `OT_IP6_SOCK_ADDR_STRING_SIZE`.
+    pub fn otIp6SockAddrToString(
+        aSockAddr: *const otSockAddr,
+        aBuffer: *mut ::core::ffi::c_char,
+        aSize: u16,
+    );
+}
+unsafe extern "C" {
+    /// Converts a given IPv6 prefix to a human-readable string.
+    ///
+    /// The IPv6 address string is formatted as "%x:%x:%x:...[::]/plen".
+    ///
+    /// If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be truncated
+    /// but the outputted string is always null-terminated.
+    ///
+    /// @param[in]  aPrefix   A pointer to an IPv6 prefix (MUST NOT be NULL).
+    /// @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be NULL).
+    /// @param[in]  aSize     The size of @p aBuffer (in bytes). Recommended to use `OT_IP6_PREFIX_STRING_SIZE`.
+    pub fn otIp6PrefixToString(
+        aPrefix: *const otIp6Prefix,
+        aBuffer: *mut ::core::ffi::c_char,
+        aSize: u16,
+    );
+}
+unsafe extern "C" {
+    /// Returns the prefix match length (bits) for two IPv6 addresses.
+    ///
+    /// @param[in]  aFirst   A pointer to the first IPv6 address.
+    /// @param[in]  aSecond  A pointer to the second IPv6 address.
+    ///
+    /// @returns  The prefix match length in bits.
+    pub fn otIp6PrefixMatch(aFirst: *const otIp6Address, aSecond: *const otIp6Address) -> u8;
+}
+unsafe extern "C" {
+    /// Gets a prefix with @p aLength from @p aAddress.
+    ///
+    /// @param[in]  aAddress   A pointer to an IPv6 address.
+    /// @param[in]  aLength    The length of prefix in bits.
+    /// @param[out] aPrefix    A pointer to output the IPv6 prefix.
+    pub fn otIp6GetPrefix(aAddress: *const otIp6Address, aLength: u8, aPrefix: *mut otIp6Prefix);
+}
+unsafe extern "C" {
+    /// Indicates whether or not a given IPv6 address is the Unspecified Address.
+    ///
+    /// @param[in]  aAddress   A pointer to an IPv6 address.
+    ///
+    /// @retval TRUE   If the IPv6 address is the Unspecified Address.
+    /// @retval FALSE  If the IPv6 address is not the Unspecified Address.
+    pub fn otIp6IsAddressUnspecified(aAddress: *const otIp6Address) -> bool;
+}
+unsafe extern "C" {
+    /// Perform OpenThread source address selection.
+    ///
+    /// @param[in]      aInstance     A pointer to an OpenThread instance.
+    /// @param[in,out]  aMessageInfo  A pointer to the message information.
+    ///
+    /// @retval  OT_ERROR_NONE       Found a source address and is filled into mSockAddr of @p aMessageInfo.
+    /// @retval  OT_ERROR_NOT_FOUND  No source address was found and @p aMessageInfo is unchanged.
+    pub fn otIp6SelectSourceAddress(
+        aInstance: *mut otInstance,
+        aMessageInfo: *mut otMessageInfo,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Indicates whether the SLAAC module is enabled or not.
+    ///
+    /// `OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE` build-time feature must be enabled.
+    ///
+    /// @retval TRUE    SLAAC module is enabled.
+    /// @retval FALSE   SLAAC module is disabled.
+    pub fn otIp6IsSlaacEnabled(aInstance: *mut otInstance) -> bool;
+}
+unsafe extern "C" {
+    /// Enables/disables the SLAAC module.
+    ///
+    /// `OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE` build-time feature must be enabled.
+    ///
+    /// When SLAAC module is enabled, SLAAC addresses (based on on-mesh prefixes in Network Data) are added to the interface.
+    /// When SLAAC module is disabled any previously added SLAAC address is removed.
+    ///
+    /// @param[in] aInstance A pointer to an OpenThread instance.
+    /// @param[in] aEnabled  TRUE to enable, FALSE to disable.
+    pub fn otIp6SetSlaacEnabled(aInstance: *mut otInstance, aEnabled: bool);
+}
+/// Pointer allows user to filter prefixes and not allow an SLAAC address based on a prefix to be added.
+///
+/// `otIp6SetSlaacPrefixFilter()` can be used to set the filter handler. The filter handler is invoked by SLAAC module
+/// when it is about to add a SLAAC address based on a prefix. Its boolean return value determines whether the address
+/// is filtered (not added) or not.
+///
+/// @param[in] aInstance   A pointer to an OpenThread instance.
+/// @param[in] aPrefix     A pointer to prefix for which SLAAC address is about to be added.
+///
+/// @retval TRUE    Indicates that the SLAAC address based on the prefix should be filtered and NOT added.
+/// @retval FALSE   Indicates that the SLAAC address based on the prefix should be added.
+pub type otIp6SlaacPrefixFilter = ::core::option::Option<
+    unsafe extern "C" fn(aInstance: *mut otInstance, aPrefix: *const otIp6Prefix) -> bool,
+>;
+unsafe extern "C" {
+    /// Sets the SLAAC module filter handler.
+    ///
+    /// `OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE` build-time feature must be enabled.
+    ///
+    /// The filter handler is called by SLAAC module when it is about to add a SLAAC address based on a prefix to decide
+    /// whether the address should be added or not.
+    ///
+    /// A NULL filter handler disables filtering and allows all SLAAC addresses to be added.
+    ///
+    /// If this function is not called, the default filter used by SLAAC module will be NULL (filtering is disabled).
+    ///
+    /// @param[in] aInstance    A pointer to an OpenThread instance.
+    /// @param[in] aFilter      A pointer to SLAAC prefix filter handler, or NULL to disable filtering.
+    pub fn otIp6SetSlaacPrefixFilter(aInstance: *mut otInstance, aFilter: otIp6SlaacPrefixFilter);
+}
+/// Pointer is called with results of `otIp6RegisterMulticastListeners`.
+///
+/// @param[in]  aContext  A pointer to the user context.
+/// @param[in]  aError    OT_ERROR_NONE when successfully sent MLR.req and received MLR.rsp,
+///                       OT_ERROR_RESPONSE_TIMEOUT when failed to receive MLR.rsp,
+///                       OT_ERROR_PARSE when failed to parse MLR.rsp.
+/// @param[in]  aMlrStatus         The Multicast Listener Registration status when @p aError is OT_ERROR_NONE.
+/// @param[in]  aFailedAddresses   A pointer to the failed IPv6 addresses when @p aError is OT_ERROR_NONE.
+/// @param[in]  aFailedAddressNum  The number of failed IPv6 addresses when @p aError is OT_ERROR_NONE.
+///
+/// @sa otIp6RegisterMulticastListeners
+pub type otIp6RegisterMulticastListenersCallback = ::core::option::Option<
+    unsafe extern "C" fn(
+        aContext: *mut ::core::ffi::c_void,
+        aError: otError,
+        aMlrStatus: u8,
+        aFailedAddresses: *const otIp6Address,
+        aFailedAddressNum: u8,
+    ),
+>;
+unsafe extern "C" {
+    /// Registers Multicast Listeners to Primary Backbone Router.
+    ///
+    /// `OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE` and `OPENTHREAD_CONFIG_COMMISSIONER_ENABLE`
+    /// must be enabled.
+    ///
+    /// @param[in]  aInstance    A pointer to an OpenThread instance.
+    /// @param[in]  aAddresses   A Multicast Address Array to register.
+    /// @param[in]  aAddressNum  The number of Multicast Address to register (0 if @p aAddresses is NULL).
+    /// @param[in]  aTimeout     A pointer to the timeout value (in seconds) to be included in MLR.req. A timeout value of 0
+    ///                          removes the corresponding Multicast Listener. If NULL, MLR.req would have no Timeout Tlv by
+    ///                          default.
+    /// @param[in]  aCallback    A pointer to the callback function.
+    /// @param[in]  aContext     A pointer to the user context.
+    ///
+    /// @retval OT_ERROR_NONE           Successfully sent MLR.req. The @p aCallback will be called iff this method
+    ///                                 returns OT_ERROR_NONE.
+    /// @retval OT_ERROR_BUSY           If a previous registration was ongoing.
+    /// @retval OT_ERROR_INVALID_ARGS   If one or more arguments are invalid.
+    /// @retval OT_ERROR_INVALID_STATE  If the device was not in a valid state to send MLR.req (e.g. Commissioner not
+    ///                                 started, Primary Backbone Router not found).
+    /// @retval OT_ERROR_NO_BUFS        If insufficient message buffers available.
+    ///
+    /// @sa otIp6RegisterMulticastListenersCallback
+    pub fn otIp6RegisterMulticastListeners(
+        aInstance: *mut otInstance,
+        aAddresses: *const otIp6Address,
+        aAddressNum: u8,
+        aTimeout: *const u32,
+        aCallback: otIp6RegisterMulticastListenersCallback,
+        aContext: *mut ::core::ffi::c_void,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Sets the Mesh Local IID (for test purpose).
+    ///
+    /// Requires `OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE`.
+    ///
+    /// @param[in]   aInstance   A pointer to an OpenThread instance.
+    /// @param[in]   aIid        A pointer to the Mesh Local IID to set.
+    ///
+    /// @retval  OT_ERROR_NONE           Successfully set the Mesh Local IID.
+    /// @retval  OT_ERROR_INVALID_STATE  Thread protocols are enabled.
+    pub fn otIp6SetMeshLocalIid(
+        aInstance: *mut otInstance,
+        aIid: *const otIp6InterfaceIdentifier,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Converts a given IP protocol number to a human-readable string.
+    ///
+    /// @param[in] aIpProto   An IP protocol number (`OT_IP6_PROTO_*` enumeration).
+    ///
+    /// @returns A string representing @p aIpProto.
+    pub fn otIp6ProtoToString(aIpProto: u8) -> *const ::core::ffi::c_char;
+}
+/// Represents the counters for packets and bytes.
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct otPacketsAndBytes {
+    ///< The number of packets.
+    pub mPackets: u64,
+    ///< The number of bytes.
+    pub mBytes: u64,
+}
+/// Represents the counters of packets forwarded via Border Routing.
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct otBorderRoutingCounters {
+    ///< The counters for inbound unicast.
+    pub mInboundUnicast: otPacketsAndBytes,
+    ///< The counters for inbound multicast.
+    pub mInboundMulticast: otPacketsAndBytes,
+    ///< The counters for outbound unicast.
+    pub mOutboundUnicast: otPacketsAndBytes,
+    ///< The counters for outbound multicast.
+    pub mOutboundMulticast: otPacketsAndBytes,
+    ///< The counters for inbound Internet when DHCPv6 PD enabled.
+    pub mInboundInternet: otPacketsAndBytes,
+    ///< The counters for outbound Internet when DHCPv6 PD enabled.
+    pub mOutboundInternet: otPacketsAndBytes,
+    ///< The number of received RA packets.
+    pub mRaRx: u32,
+    ///< The number of RA packets successfully transmitted.
+    pub mRaTxSuccess: u32,
+    ///< The number of RA packets failed to transmit.
+    pub mRaTxFailure: u32,
+    ///< The number of received RS packets.
+    pub mRsRx: u32,
+    ///< The number of RS packets successfully transmitted.
+    pub mRsTxSuccess: u32,
+    ///< The number of RS packets failed to transmit.
+    pub mRsTxFailure: u32,
+}
+unsafe extern "C" {
+    /// Gets the Border Routing counters.
+    ///
+    /// `OPENTHREAD_CONFIG_IP6_BR_COUNTERS_ENABLE` build-time feature must be enabled.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    ///
+    /// @returns A pointer to the Border Routing counters.
+    pub fn otIp6GetBorderRoutingCounters(
+        aInstance: *mut otInstance,
+    ) -> *const otBorderRoutingCounters;
+}
+unsafe extern "C" {
+    /// Resets the Border Routing counters.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    pub fn otIp6ResetBorderRoutingCounters(aInstance: *mut otInstance);
+}
+/// This callback allows OpenThread to provide specific handlers for certain UDP messages.
+///
+/// @retval  true    The message is handled by this receiver and should not be further processed.
+/// @retval  false   The message is not handled by this receiver.
+pub type otUdpHandler = ::core::option::Option<
+    unsafe extern "C" fn(
+        aContext: *mut ::core::ffi::c_void,
+        aMessage: *const otMessage,
+        aMessageInfo: *const otMessageInfo,
+    ) -> bool,
+>;
+/// Represents a UDP receiver.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otUdpReceiver {
+    ///< A pointer to the next UDP receiver (internal use only).
+    pub mNext: *mut otUdpReceiver,
+    ///< A function pointer to the receiver callback.
+    pub mHandler: otUdpHandler,
+    ///< A pointer to application-specific context.
+    pub mContext: *mut ::core::ffi::c_void,
+}
+impl Default for otUdpReceiver {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+unsafe extern "C" {
+    /// Adds a UDP receiver.
+    ///
+    /// @param[in]   aInstance       A pointer to an OpenThread instance.
+    /// @param[in]   aUdpReceiver    A pointer to the UDP receiver.
+    ///
+    /// @retval  OT_ERROR_NONE       The receiver is successfully added.
+    /// @retval  OT_ERROR_ALREADY    The UDP receiver was already added.
+    pub fn otUdpAddReceiver(
+        aInstance: *mut otInstance,
+        aUdpReceiver: *mut otUdpReceiver,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Removes a UDP receiver.
+    ///
+    /// @param[in]   aInstance       A pointer to an OpenThread instance.
+    /// @param[in]   aUdpReceiver    A pointer to the UDP receiver.
+    ///
+    /// @retval  OT_ERROR_NONE       The receiver is successfully removed.
+    /// @retval  OT_ERROR_NOT_FOUND  The UDP receiver was not added.
+    pub fn otUdpRemoveReceiver(
+        aInstance: *mut otInstance,
+        aUdpReceiver: *mut otUdpReceiver,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Sends a UDP message without socket.
+    ///
+    /// @param[in]  aInstance     A pointer to an OpenThread instance.
+    /// @param[in]  aMessage      A pointer to a message without UDP header.
+    /// @param[in]  aMessageInfo  A pointer to a message info associated with @p aMessage.
+    ///
+    /// @retval OT_ERROR_NONE          Successfully enqueued the message into an output interface.
+    /// @retval OT_ERROR_NO_BUFS       Insufficient available buffer to add the IPv6 headers.
+    /// @retval OT_ERROR_INVALID_ARGS  Invalid arguments are given.
+    pub fn otUdpSendDatagram(
+        aInstance: *mut otInstance,
+        aMessage: *mut otMessage,
+        aMessageInfo: *mut otMessageInfo,
+    ) -> otError;
+}
+/// This callback allows OpenThread to inform the application of a received UDP message.
+pub type otUdpReceive = ::core::option::Option<
+    unsafe extern "C" fn(
+        aContext: *mut ::core::ffi::c_void,
+        aMessage: *mut otMessage,
+        aMessageInfo: *const otMessageInfo,
+    ),
+>;
+///< Unspecified network interface.
+pub const otNetifIdentifier_OT_NETIF_UNSPECIFIED: otNetifIdentifier = 0;
+///< The host Thread interface - allow use of platform UDP.
+pub const otNetifIdentifier_OT_NETIF_THREAD_HOST: otNetifIdentifier = 1;
+///< The internal Thread interface (within OpenThread) - do not use platform UDP.
+pub const otNetifIdentifier_OT_NETIF_THREAD_INTERNAL: otNetifIdentifier = 2;
+///< The Backbone interface.
+pub const otNetifIdentifier_OT_NETIF_BACKBONE: otNetifIdentifier = 3;
+/// Defines the OpenThread network interface identifiers.
+pub type otNetifIdentifier = ::core::ffi::c_uint;
+/// Represents a UDP socket.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otUdpSocket {
+    ///< The local IPv6 socket address.
+    pub mSockName: otSockAddr,
+    ///< The peer IPv6 socket address.
+    pub mPeerName: otSockAddr,
+    ///< A function pointer to the application callback.
+    pub mHandler: otUdpReceive,
+    ///< A pointer to application-specific context.
+    pub mContext: *mut ::core::ffi::c_void,
+    ///< A handle to platform's UDP.
+    pub mHandle: *mut ::core::ffi::c_void,
+    ///< A pointer to the next UDP socket (internal use only).
+    pub mNext: *mut otUdpSocket,
+    ///< The network interface identifier.
+    pub mNetifId: otNetifIdentifier,
+}
+impl Default for otUdpSocket {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+unsafe extern "C" {
+    /// Allocate a new message buffer for sending a UDP message.
+    ///
+    /// @note If @p aSettings is 'NULL', the link layer security is enabled and the message priority is set to
+    /// OT_MESSAGE_PRIORITY_NORMAL by default.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aSettings  A pointer to the message settings or NULL to use default settings.
+    ///
+    /// @returns A pointer to the message buffer or NULL if no message buffers are available or parameters are invalid.
+    ///
+    /// @sa otMessageFree
+    pub fn otUdpNewMessage(
+        aInstance: *mut otInstance,
+        aSettings: *const otMessageSettings,
+    ) -> *mut otMessage;
+}
+unsafe extern "C" {
+    /// Open a UDP/IPv6 socket.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aSocket    A pointer to a UDP socket structure.
+    /// @param[in]  aCallback  A pointer to the application callback function.
+    /// @param[in]  aContext   A pointer to application-specific context.
+    ///
+    /// @retval OT_ERROR_NONE    Successfully opened the socket.
+    /// @retval OT_ERROR_FAILED  Failed to open the socket.
+    pub fn otUdpOpen(
+        aInstance: *mut otInstance,
+        aSocket: *mut otUdpSocket,
+        aCallback: otUdpReceive,
+        aContext: *mut ::core::ffi::c_void,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Check if a UDP socket is open.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aSocket    A pointer to a UDP socket structure.
+    ///
+    /// @returns Whether the UDP socket is open.
+    pub fn otUdpIsOpen(aInstance: *mut otInstance, aSocket: *const otUdpSocket) -> bool;
+}
+unsafe extern "C" {
+    /// Close a UDP/IPv6 socket.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aSocket    A pointer to a UDP socket structure.
+    ///
+    /// @retval OT_ERROR_NONE   Successfully closed the socket.
+    /// @retval OT_ERROR_FAILED Failed to close UDP Socket.
+    pub fn otUdpClose(aInstance: *mut otInstance, aSocket: *mut otUdpSocket) -> otError;
+}
+unsafe extern "C" {
+    /// Bind a UDP/IPv6 socket.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aSocket    A pointer to a UDP socket structure.
+    /// @param[in]  aSockName  A pointer to an IPv6 socket address structure.
+    /// @param[in]  aNetif     The network interface to bind.
+    ///
+    /// @retval OT_ERROR_NONE   Bind operation was successful.
+    /// @retval OT_ERROR_FAILED Failed to bind UDP socket.
+    pub fn otUdpBind(
+        aInstance: *mut otInstance,
+        aSocket: *mut otUdpSocket,
+        aSockName: *const otSockAddr,
+        aNetif: otNetifIdentifier,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Connect a UDP/IPv6 socket.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aSocket    A pointer to a UDP socket structure.
+    /// @param[in]  aSockName  A pointer to an IPv6 socket address structure.
+    ///
+    /// @retval OT_ERROR_NONE   Connect operation was successful.
+    /// @retval OT_ERROR_FAILED Failed to connect UDP socket.
+    pub fn otUdpConnect(
+        aInstance: *mut otInstance,
+        aSocket: *mut otUdpSocket,
+        aSockName: *const otSockAddr,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Send a UDP/IPv6 message.
+    ///
+    /// @param[in]  aInstance     A pointer to an OpenThread instance.
+    /// @param[in]  aSocket       A pointer to a UDP socket structure.
+    /// @param[in]  aMessage      A pointer to a message buffer.
+    /// @param[in]  aMessageInfo  A pointer to a message info structure.
+    ///
+    /// If the return value is OT_ERROR_NONE, OpenThread takes ownership of @p aMessage, and the caller should no longer
+    /// reference @p aMessage. If the return value is not OT_ERROR_NONE, the caller retains ownership of @p aMessage,
+    /// including freeing @p aMessage if the message buffer is no longer needed.
+    ///
+    /// @retval OT_ERROR_NONE           The message is successfully scheduled for sending.
+    /// @retval OT_ERROR_INVALID_ARGS   Invalid arguments are given.
+    /// @retval OT_ERROR_NO_BUFS        Insufficient available buffer to add the UDP and IPv6 headers.
+    pub fn otUdpSend(
+        aInstance: *mut otInstance,
+        aSocket: *mut otUdpSocket,
+        aMessage: *mut otMessage,
+        aMessageInfo: *const otMessageInfo,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Gets the head of linked list of UDP Sockets.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    ///
+    /// @returns A pointer to the head of UDP Socket linked list.
+    pub fn otUdpGetSockets(aInstance: *mut otInstance) -> *mut otUdpSocket;
+}
+/// Pointer delivers the UDP packet to host and host should send the packet through its own network stack.
+///
+/// @param[in]  aMessage   A pointer to the UDP Message.
+/// @param[in]  aPeerPort  The destination UDP port.
+/// @param[in]  aPeerAddr  A pointer to the destination IPv6 address.
+/// @param[in]  aSockPort  The source UDP port.
+/// @param[in]  aContext   A pointer to application-specific context.
+pub type otUdpForwarder = ::core::option::Option<
+    unsafe extern "C" fn(
+        aMessage: *mut otMessage,
+        aPeerPort: u16,
+        aPeerAddr: *mut otIp6Address,
+        aSockPort: u16,
+        aContext: *mut ::core::ffi::c_void,
+    ),
+>;
+unsafe extern "C" {
+    /// Set UDP forward callback to deliver UDP packets to host.
+    ///
+    /// @param[in]  aInstance            A pointer to an OpenThread instance.
+    /// @param[in]  aForwarder           A pointer to a function called to forward UDP packet to host.
+    /// @param[in]  aContext             A pointer to application-specific context.
+    pub fn otUdpForwardSetForwarder(
+        aInstance: *mut otInstance,
+        aForwarder: otUdpForwarder,
+        aContext: *mut ::core::ffi::c_void,
+    );
+}
+unsafe extern "C" {
+    /// Handle a UDP packet received from host.
+    ///
+    /// @param[in]  aInstance            A pointer to an OpenThread instance.
+    /// @param[in]  aMessage             A pointer to the UDP Message.
+    /// @param[in]  aPeerPort            The source UDP port.
+    /// @param[in]  aPeerAddr            A pointer to the source address.
+    /// @param[in]  aSockPort            The destination UDP port.
+    ///
+    /// @warning No matter the call success or fail, the message is freed.
+    pub fn otUdpForwardReceive(
+        aInstance: *mut otInstance,
+        aMessage: *mut otMessage,
+        aPeerPort: u16,
+        aPeerAddr: *const otIp6Address,
+        aSockPort: u16,
+    );
+}
+unsafe extern "C" {
+    /// Determines if the given UDP port is exclusively opened by OpenThread API.
+    ///
+    /// @param[in]  aInstance            A pointer to an OpenThread instance.
+    /// @param[in]  port                 UDP port number to verify.
+    ///
+    /// @retval true    The port is being used exclusively by OpenThread.
+    /// @retval false   The port is not used by any of the OpenThread API or is shared (e.g. is Backbone socket).
+    pub fn otUdpIsPortInUse(aInstance: *mut otInstance, port: u16) -> bool;
+}
 ///< Key Type: Raw Data.
 pub const otCryptoKeyType_OT_CRYPTO_KEY_TYPE_RAW: otCryptoKeyType = 0;
 ///< Key Type: AES.
@@ -2235,19 +2823,19 @@ pub const otCryptoKeyAlgorithm_OT_CRYPTO_KEY_ALG_ECDSA: otCryptoKeyAlgorithm = 3
 /// Defines the key algorithms.
 pub type otCryptoKeyAlgorithm = ::core::ffi::c_uint;
 ///< Key Usage: Key Usage is empty.
-pub const OT_CRYPTO_KEY_USAGE_NONE: _bindgen_ty_1 = 0;
+pub const OT_CRYPTO_KEY_USAGE_NONE: _bindgen_ty_4 = 0;
 ///< Key Usage: Key can be exported.
-pub const OT_CRYPTO_KEY_USAGE_EXPORT: _bindgen_ty_1 = 1;
+pub const OT_CRYPTO_KEY_USAGE_EXPORT: _bindgen_ty_4 = 1;
 ///< Key Usage: Encryption (vendor defined).
-pub const OT_CRYPTO_KEY_USAGE_ENCRYPT: _bindgen_ty_1 = 2;
+pub const OT_CRYPTO_KEY_USAGE_ENCRYPT: _bindgen_ty_4 = 2;
 ///< Key Usage: AES ECB.
-pub const OT_CRYPTO_KEY_USAGE_DECRYPT: _bindgen_ty_1 = 4;
+pub const OT_CRYPTO_KEY_USAGE_DECRYPT: _bindgen_ty_4 = 4;
 ///< Key Usage: Sign Hash.
-pub const OT_CRYPTO_KEY_USAGE_SIGN_HASH: _bindgen_ty_1 = 8;
+pub const OT_CRYPTO_KEY_USAGE_SIGN_HASH: _bindgen_ty_4 = 8;
 ///< Key Usage: Verify Hash.
-pub const OT_CRYPTO_KEY_USAGE_VERIFY_HASH: _bindgen_ty_1 = 16;
+pub const OT_CRYPTO_KEY_USAGE_VERIFY_HASH: _bindgen_ty_4 = 16;
 /// Defines the key usage flags.
-pub type _bindgen_ty_1 = ::core::ffi::c_uint;
+pub type _bindgen_ty_4 = ::core::ffi::c_uint;
 ///< Key Persistence: Key is volatile.
 pub const otCryptoKeyStorage_OT_CRYPTO_KEY_STORAGE_VOLATILE: otCryptoKeyStorage = 0;
 ///< Key Persistence: Key is persistent.
@@ -2269,6 +2857,15 @@ pub struct otCryptoKey {
     ///< The PSA key ref (requires `mKey` to be NULL).
     pub mKeyRef: u32,
 }
+impl Default for otCryptoKey {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 /// @struct otCryptoContext
 ///
 /// Stores the context object for platform APIs.
@@ -2280,11 +2877,20 @@ pub struct otCryptoContext {
     ///< The length of the context in bytes.
     pub mContextSize: u16,
 }
+impl Default for otCryptoContext {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 /// @struct otPlatCryptoSha256Hash
 ///
 /// Represents a SHA-256 hash.
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otPlatCryptoSha256Hash {
     ///< Hash bytes.
     pub m8: [u8; 32usize],
@@ -2300,6 +2906,15 @@ pub struct otPlatCryptoEcdsaKeyPair {
     pub mDerBytes: [u8; 125usize],
     pub mDerLength: u8,
 }
+impl Default for otPlatCryptoEcdsaKeyPair {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 /// @struct otPlatCryptoEcdsaPublicKey
 ///
 /// Represents a ECDSA public key.
@@ -2309,6 +2924,15 @@ pub struct otPlatCryptoEcdsaKeyPair {
 #[derive(Copy, Clone)]
 pub struct otPlatCryptoEcdsaPublicKey {
     pub m8: [u8; 64usize],
+}
+impl Default for otPlatCryptoEcdsaPublicKey {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 /// @struct otPlatCryptoEcdsaSignature
 ///
@@ -2320,6 +2944,15 @@ pub struct otPlatCryptoEcdsaPublicKey {
 #[derive(Copy, Clone)]
 pub struct otPlatCryptoEcdsaSignature {
     pub m8: [u8; 64usize],
+}
+impl Default for otPlatCryptoEcdsaSignature {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 unsafe extern "C" {
     /// Initialize the Crypto module.
@@ -2835,105 +3468,111 @@ unsafe extern "C" {
     ) -> otError;
 }
 ///< aMaxPHYPacketSize (IEEE 802.15.4-2006)
-pub const OT_RADIO_FRAME_MAX_SIZE: _bindgen_ty_2 = 127;
+pub const OT_RADIO_FRAME_MAX_SIZE: _bindgen_ty_5 = 127;
 ///< Minimal size of frame FCS + CONTROL
-pub const OT_RADIO_FRAME_MIN_SIZE: _bindgen_ty_2 = 3;
+pub const OT_RADIO_FRAME_MIN_SIZE: _bindgen_ty_5 = 3;
 ///< 2.4 GHz IEEE 802.15.4-2006
-pub const OT_RADIO_SYMBOLS_PER_OCTET: _bindgen_ty_2 = 2;
+pub const OT_RADIO_SYMBOLS_PER_OCTET: _bindgen_ty_5 = 2;
 ///< 2.4 GHz IEEE 802.15.4 (bits per second)
-pub const OT_RADIO_BIT_RATE: _bindgen_ty_2 = 250000;
+pub const OT_RADIO_BIT_RATE: _bindgen_ty_5 = 250000;
 ///< Number of bits per octet
-pub const OT_RADIO_BITS_PER_OCTET: _bindgen_ty_2 = 8;
+pub const OT_RADIO_BITS_PER_OCTET: _bindgen_ty_5 = 8;
 ///< The O-QPSK PHY symbol rate when operating in the 780MHz, 915MHz, 2380MHz, 2450MHz
-pub const OT_RADIO_SYMBOL_RATE: _bindgen_ty_2 = 62500;
+pub const OT_RADIO_SYMBOL_RATE: _bindgen_ty_5 = 62500;
 ///< Symbol duration time in unit of microseconds
-pub const OT_RADIO_SYMBOL_TIME: _bindgen_ty_2 = 16;
+pub const OT_RADIO_SYMBOL_TIME: _bindgen_ty_5 = 16;
 ///< Time for 10 symbols in unit of microseconds
-pub const OT_RADIO_TEN_SYMBOLS_TIME: _bindgen_ty_2 = 160;
+pub const OT_RADIO_TEN_SYMBOLS_TIME: _bindgen_ty_5 = 160;
 ///< LQI measurement not supported
-pub const OT_RADIO_LQI_NONE: _bindgen_ty_2 = 0;
+pub const OT_RADIO_LQI_NONE: _bindgen_ty_5 = 0;
 ///< Invalid or unknown RSSI value
-pub const OT_RADIO_RSSI_INVALID: _bindgen_ty_2 = 127;
+pub const OT_RADIO_RSSI_INVALID: _bindgen_ty_5 = 127;
 ///< Invalid or unknown power value
-pub const OT_RADIO_POWER_INVALID: _bindgen_ty_2 = 127;
+pub const OT_RADIO_POWER_INVALID: _bindgen_ty_5 = 127;
+///< Invalid short address.
+pub const OT_RADIO_INVALID_SHORT_ADDR: _bindgen_ty_5 = 65534;
+///< Broadcast short address.
+pub const OT_RADIO_BROADCAST_SHORT_ADDR: _bindgen_ty_5 = 65535;
 /// @defgroup radio-types Radio Types
 ///
 /// @brief
 ///   This module includes the platform abstraction for a radio frame.
 ///
 /// @{
-pub type _bindgen_ty_2 = ::core::ffi::c_uint;
+pub type _bindgen_ty_5 = ::core::ffi::c_uint;
 ///< 2.4 GHz IEEE 802.15.4-2006
-pub const OT_RADIO_CHANNEL_PAGE_0: _bindgen_ty_3 = 0;
+pub const OT_RADIO_CHANNEL_PAGE_0: _bindgen_ty_6 = 0;
 ///< 2.4 GHz IEEE 802.15.4-2006
-pub const OT_RADIO_CHANNEL_PAGE_0_MASK: _bindgen_ty_3 = 1;
+pub const OT_RADIO_CHANNEL_PAGE_0_MASK: _bindgen_ty_6 = 1;
 ///< 915 MHz IEEE 802.15.4-2006
-pub const OT_RADIO_CHANNEL_PAGE_2: _bindgen_ty_3 = 2;
+pub const OT_RADIO_CHANNEL_PAGE_2: _bindgen_ty_6 = 2;
 ///< 915 MHz IEEE 802.15.4-2006
-pub const OT_RADIO_CHANNEL_PAGE_2_MASK: _bindgen_ty_3 = 4;
+pub const OT_RADIO_CHANNEL_PAGE_2_MASK: _bindgen_ty_6 = 4;
 /// Defines the channel page.
-pub type _bindgen_ty_3 = ::core::ffi::c_uint;
+pub type _bindgen_ty_6 = ::core::ffi::c_uint;
 ///< 915 MHz IEEE 802.15.4-2006
-pub const OT_RADIO_915MHZ_OQPSK_CHANNEL_MIN: _bindgen_ty_4 = 1;
+pub const OT_RADIO_915MHZ_OQPSK_CHANNEL_MIN: _bindgen_ty_7 = 1;
 ///< 915 MHz IEEE 802.15.4-2006
-pub const OT_RADIO_915MHZ_OQPSK_CHANNEL_MAX: _bindgen_ty_4 = 10;
+pub const OT_RADIO_915MHZ_OQPSK_CHANNEL_MAX: _bindgen_ty_7 = 10;
 ///< 915 MHz IEEE 802.15.4-2006
-pub const OT_RADIO_915MHZ_OQPSK_CHANNEL_MASK: _bindgen_ty_4 = 2046;
+pub const OT_RADIO_915MHZ_OQPSK_CHANNEL_MASK: _bindgen_ty_7 = 2046;
 ///< 2.4 GHz IEEE 802.15.4-2006
-pub const OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MIN: _bindgen_ty_4 = 11;
+pub const OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MIN: _bindgen_ty_7 = 11;
 ///< 2.4 GHz IEEE 802.15.4-2006
-pub const OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MAX: _bindgen_ty_4 = 26;
+pub const OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MAX: _bindgen_ty_7 = 26;
 ///< 2.4 GHz IEEE 802.15.4-2006
-pub const OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MASK: _bindgen_ty_4 = 134215680;
+pub const OT_RADIO_2P4GHZ_OQPSK_CHANNEL_MASK: _bindgen_ty_7 = 134215680;
 /// Defines the frequency band channel range.
-pub type _bindgen_ty_4 = ::core::ffi::c_uint;
+pub type _bindgen_ty_7 = ::core::ffi::c_uint;
 /// Represents radio capabilities.
 ///
 /// The value is a bit-field indicating the capabilities supported by the radio. See `OT_RADIO_CAPS_*` definitions.
 pub type otRadioCaps = u16;
 ///< Radio supports no capability.
-pub const OT_RADIO_CAPS_NONE: _bindgen_ty_5 = 0;
+pub const OT_RADIO_CAPS_NONE: _bindgen_ty_8 = 0;
 ///< Radio supports AckTime event.
-pub const OT_RADIO_CAPS_ACK_TIMEOUT: _bindgen_ty_5 = 1;
+pub const OT_RADIO_CAPS_ACK_TIMEOUT: _bindgen_ty_8 = 1;
 ///< Radio supports Energy Scans.
-pub const OT_RADIO_CAPS_ENERGY_SCAN: _bindgen_ty_5 = 2;
+pub const OT_RADIO_CAPS_ENERGY_SCAN: _bindgen_ty_8 = 2;
 ///< Radio supports tx retry logic with collision avoidance (CSMA).
-pub const OT_RADIO_CAPS_TRANSMIT_RETRIES: _bindgen_ty_5 = 4;
-///< Radio supports CSMA backoff for frame transmission (but no retry).
-pub const OT_RADIO_CAPS_CSMA_BACKOFF: _bindgen_ty_5 = 8;
+pub const OT_RADIO_CAPS_TRANSMIT_RETRIES: _bindgen_ty_8 = 4;
+///< Radio supports CSMA backoff for frame tx (but no retry).
+pub const OT_RADIO_CAPS_CSMA_BACKOFF: _bindgen_ty_8 = 8;
 ///< Radio supports direct transition from sleep to TX with CSMA.
-pub const OT_RADIO_CAPS_SLEEP_TO_TX: _bindgen_ty_5 = 16;
+pub const OT_RADIO_CAPS_SLEEP_TO_TX: _bindgen_ty_8 = 16;
 ///< Radio supports tx security.
-pub const OT_RADIO_CAPS_TRANSMIT_SEC: _bindgen_ty_5 = 32;
+pub const OT_RADIO_CAPS_TRANSMIT_SEC: _bindgen_ty_8 = 32;
 ///< Radio supports tx at specific time.
-pub const OT_RADIO_CAPS_TRANSMIT_TIMING: _bindgen_ty_5 = 64;
+pub const OT_RADIO_CAPS_TRANSMIT_TIMING: _bindgen_ty_8 = 64;
 ///< Radio supports rx at specific time.
-pub const OT_RADIO_CAPS_RECEIVE_TIMING: _bindgen_ty_5 = 128;
+pub const OT_RADIO_CAPS_RECEIVE_TIMING: _bindgen_ty_8 = 128;
 ///< Radio supports RxOnWhenIdle handling.
-pub const OT_RADIO_CAPS_RX_ON_WHEN_IDLE: _bindgen_ty_5 = 256;
+pub const OT_RADIO_CAPS_RX_ON_WHEN_IDLE: _bindgen_ty_8 = 256;
 ///< Radio supports setting per-frame transmit power.
-pub const OT_RADIO_CAPS_TRANSMIT_FRAME_POWER: _bindgen_ty_5 = 512;
+pub const OT_RADIO_CAPS_TRANSMIT_FRAME_POWER: _bindgen_ty_8 = 512;
+///< Radio supports setting alternate short address.
+pub const OT_RADIO_CAPS_ALT_SHORT_ADDR: _bindgen_ty_8 = 1024;
 /// Defines constants that are used to indicate different radio capabilities. See `otRadioCaps`.
-pub type _bindgen_ty_5 = ::core::ffi::c_uint;
+pub type _bindgen_ty_8 = ::core::ffi::c_uint;
 /// Represents the IEEE 802.15.4 PAN ID.
 pub type otPanId = u16;
 /// Represents the IEEE 802.15.4 Short Address.
 pub type otShortAddress = u16;
 ///< Size of IE header in bytes.
-pub const OT_IE_HEADER_SIZE: _bindgen_ty_6 = 2;
+pub const OT_IE_HEADER_SIZE: _bindgen_ty_9 = 2;
 ///< Size of CSL IE content in bytes.
-pub const OT_CSL_IE_SIZE: _bindgen_ty_6 = 4;
+pub const OT_CSL_IE_SIZE: _bindgen_ty_9 = 4;
 ///< Max length for header IE in ACK.
-pub const OT_ACK_IE_MAX_SIZE: _bindgen_ty_6 = 16;
+pub const OT_ACK_IE_MAX_SIZE: _bindgen_ty_9 = 16;
 ///< Max length of Link Metrics data in Vendor-Specific IE.
-pub const OT_ENH_PROBING_IE_DATA_MAX_SIZE: _bindgen_ty_6 = 2;
+pub const OT_ENH_PROBING_IE_DATA_MAX_SIZE: _bindgen_ty_9 = 2;
 /// Defines constants about size of header IE in ACK.
-pub type _bindgen_ty_6 = ::core::ffi::c_uint;
+pub type _bindgen_ty_9 = ::core::ffi::c_uint;
 /// @struct otExtAddress
 ///
 /// Represents the IEEE 802.15.4 Extended Address.
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otExtAddress {
     ///< IEEE 802.15.4 Extended Address bytes
     pub m8: [u8; 8usize],
@@ -2942,7 +3581,7 @@ pub struct otExtAddress {
 ///
 /// Represents a MAC Key.
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otMacKey {
     ///< MAC Key bytes.
     pub m8: [u8; 16usize],
@@ -2965,6 +3604,24 @@ pub union otMacKeyMaterial__bindgen_ty_1 {
     ///< Key stored as literal.
     pub mKey: otMacKey,
 }
+impl Default for otMacKeyMaterial__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for otMacKeyMaterial {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 ///< Use Literal Keys.
 pub const otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY: otRadioKeyType = 0;
 ///< Use Reference to Key.
@@ -2973,7 +3630,7 @@ pub const otRadioKeyType_OT_KEY_TYPE_KEY_REF: otRadioKeyType = 1;
 pub type otRadioKeyType = ::core::ffi::c_uint;
 /// Represents the IEEE 802.15.4 Header IE (Information Element) related information of a radio frame.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otRadioIeInfo {
     ///< The time offset to the Thread network time.
     pub mNetworkTimeOffset: i64,
@@ -3014,6 +3671,10 @@ pub struct otRadioFrame__bindgen_ty_1__bindgen_ty_1 {
     /// The base time in microseconds for scheduled transmissions
     /// relative to the local radio clock, see `otPlatRadioGetNow` and
     /// `mTxDelay`.
+    ///
+    /// If this field is non-zero, `mMaxCsmaBackoffs` should be ignored.
+    ///
+    /// This field does not affect CCA behavior which is controlled by `mCsmaCaEnabled`.
     pub mTxDelayBaseTime: u32,
     /// The delay time in microseconds for this transmission referenced
     /// to `mTxDelayBaseTime`.
@@ -3021,8 +3682,21 @@ pub struct otRadioFrame__bindgen_ty_1__bindgen_ty_1 {
     /// Note: `mTxDelayBaseTime` + `mTxDelay` SHALL point to the point in
     /// time when the end of the SFD will be present at the local
     /// antenna, relative to the local radio clock.
+    ///
+    /// If this field is non-zero, `mMaxCsmaBackoffs` should be ignored.
+    ///
+    /// This field does not affect CCA behavior which is controlled by `mCsmaCaEnabled`.
     pub mTxDelay: u32,
-    ///< Maximum number of backoffs attempts before declaring CCA failure.
+    /// Maximum number of CSMA backoff attempts before declaring channel access failure.
+    ///
+    /// This is applicable and MUST be used when radio platform provides the `OT_RADIO_CAPS_CSMA_BACKOFF` and/or
+    /// `OT_RADIO_CAPS_TRANSMIT_RETRIES`.
+    ///
+    /// This field MUST be ignored if `mCsmaCaEnabled` is set to `false` (CCA is disabled) or
+    /// either `mTxDelayBaseTime` or `mTxDelay` is non-zero (frame transmission is expected at a specific time).
+    ///
+    /// It can be set to `0` to skip backoff mechanism (note that CCA MUST still be performed assuming
+    /// `mCsmaCaEnabled` is `true`).
     pub mMaxCsmaBackoffs: u8,
     ///< Maximum number of retries allowed after a transmission failure.
     pub mMaxFrameRetries: u8,
@@ -3065,6 +3739,15 @@ pub struct otRadioFrame__bindgen_ty_1__bindgen_ty_1 {
     ///
     /// The platform should update this field before otPlatRadioTxStarted() is fired for each transmit attempt.
     pub mTimestamp: u64,
+}
+impl Default for otRadioFrame__bindgen_ty_1__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 impl otRadioFrame__bindgen_ty_1__bindgen_ty_1 {
     #[inline]
@@ -3266,7 +3949,7 @@ impl otRadioFrame__bindgen_ty_1__bindgen_ty_1 {
 }
 /// Structure representing radio frame receive information.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otRadioFrame__bindgen_ty_1__bindgen_ty_2 {
     /// The time of the local radio clock in microseconds when the end of
     /// the SFD was present at the local antenna.
@@ -3367,6 +4050,24 @@ impl otRadioFrame__bindgen_ty_1__bindgen_ty_2 {
         __bindgen_bitfield_unit
     }
 }
+impl Default for otRadioFrame__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for otRadioFrame {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 pub const otRadioState_OT_RADIO_STATE_DISABLED: otRadioState = 0;
 pub const otRadioState_OT_RADIO_STATE_SLEEP: otRadioState = 1;
 pub const otRadioState_OT_RADIO_STATE_RECEIVE: otRadioState = 2;
@@ -3377,7 +4078,7 @@ pub const otRadioState_OT_RADIO_STATE_INVALID: otRadioState = 255;
 pub type otRadioState = ::core::ffi::c_uint;
 /// Represents radio coexistence metrics.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otRadioCoexMetrics {
     ///< Number of grant glitches.
     pub mNumGrantGlitch: u32,
@@ -3420,7 +4121,7 @@ pub struct otRadioCoexMetrics {
 }
 /// Represents what metrics are specified to query.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otLinkMetrics {
     pub _bitfield_align_1: [u8; 0],
     pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
@@ -3682,6 +4383,28 @@ unsafe extern "C" {
     pub fn otPlatRadioSetShortAddress(aInstance: *mut otInstance, aShortAddress: otShortAddress);
 }
 unsafe extern "C" {
+    /// Set the alternate short address.
+    ///
+    /// This is an optional radio platform API. The radio platform MUST indicate support for this API by including the
+    /// capability `OT_RADIO_CAPS_ALT_SHORT_ADDR` in `otPlatRadioGetCaps()`.
+    ///
+    /// When supported, the radio should accept received frames destined to the specified alternate short address in
+    /// addition to the short address provided in `otPlatRadioSetShortAddress()`.
+    ///
+    /// The @p aShortAddress can be set to `OT_RADIO_INVALID_SHORT_ADDR` (0xfffe) to clear any previously set alternate
+    /// short address.
+    ///
+    /// This function is used by OpenThread stack during child-to-router role transitions, allowing the device to continue
+    /// receiving frames addressed to its previous short address for a short period.
+    ///
+    /// @param[in] aInstance      The OpenThread instance structure.
+    /// @param[in] aShortAddress  The alternate IEEE 802.15.4 short address. `OT_RADIO_INVALID_SHORT_ADDR` to clear.
+    pub fn otPlatRadioSetAlternateShortAddress(
+        aInstance: *mut otInstance,
+        aShortAddress: otShortAddress,
+    );
+}
+unsafe extern "C" {
     /// Get the radio's transmit power in dBm.
     ///
     /// @note The transmit power returned will be no larger than the power specified in the max power table for
@@ -3696,10 +4419,10 @@ unsafe extern "C" {
     pub fn otPlatRadioGetTransmitPower(aInstance: *mut otInstance, aPower: *mut i8) -> otError;
 }
 unsafe extern "C" {
-    /// Set the radio's transmit power in dBm.
+    /// Set the radio's transmit power in dBm for all channels.
     ///
     /// @note The real transmit power will be no larger than the power specified in the max power table for
-    /// the current channel.
+    /// the current channel that was configured by `otPlatRadioSetChannelMaxTransmitPower()`.
     ///
     /// @param[in] aInstance  The OpenThread instance structure.
     /// @param[in] aPower     The transmit power in dBm.
@@ -3811,6 +4534,10 @@ unsafe extern "C" {
     /// Update MAC keys and key index
     ///
     /// Is used when radio provides OT_RADIO_CAPS_TRANSMIT_SEC capability.
+    ///
+    /// The radio platform should reset the current security MAC frame counter tracked by the radio on this call. While this
+    /// is highly recommended, the OpenThread stack, as a safeguard, will also reset the frame counter using the
+    /// `otPlatRadioSetMacFrameCounter()` before calling this API.
     ///
     /// @param[in]   aInstance    A pointer to an OpenThread instance.
     /// @param[in]   aKeyIdMode   The key ID mode.
@@ -3948,6 +4675,17 @@ unsafe extern "C" {
 unsafe extern "C" {
     /// Schedule a radio reception window at a specific time and duration.
     ///
+    /// After a radio reception is successfully scheduled for a future time and duration, a subsequent call to this
+    /// function MUST be handled as follows:
+    ///
+    /// - If the start time of the previously scheduled reception window has not yet been reached, the new call to
+    ///   `otPlatRadioReceiveAt()` MUST cancel the previous schedule, effectively replacing it.
+    ///
+    /// - If the start of the previous window has already passed, the previous receive schedule is already being executed
+    ///   by the radio and MUST NOT be replaced or impacted. The new call to `otPlatRadioReceiveAt()` would then schedule
+    ///   a new future receive window. In particular, if the new `otPlatRadioReceiveAt()` call occurs after the start
+    ///   but while still within the previous reception window, the ongoing reception window MUST NOT be impacted.
+    ///
     /// @param[in]  aChannel   The radio channel on which to receive.
     /// @param[in]  aStart     The receive window start time relative to the local
     ///                        radio clock, see `otPlatRadioGetNow`. The radio
@@ -3962,7 +4700,7 @@ unsafe extern "C" {
     ///                        reception has either succeeded or failed.
     ///
     /// @retval OT_ERROR_NONE    Successfully scheduled receive window.
-    /// @retval OT_ERROR_FAILED  The receive window could not be scheduled.
+    /// @retval OT_ERROR_FAILED  The receive window could not be scheduled. For example, if @p aStart is in the past.
     pub fn otPlatRadioReceiveAt(
         aInstance: *mut otInstance,
         aChannel: u8,
@@ -3971,7 +4709,7 @@ unsafe extern "C" {
     ) -> otError;
 }
 unsafe extern "C" {
-    /// The radio driver calls this method to notify OpenThread of a received frame.
+    /// The radio driver calls this function to notify OpenThread of a received frame.
     ///
     /// @param[in]  aInstance The OpenThread instance structure.
     /// @param[in]  aFrame    A pointer to the received frame or NULL if the receive operation failed.
@@ -3985,7 +4723,7 @@ unsafe extern "C" {
     );
 }
 unsafe extern "C" {
-    /// The radio driver calls this method to notify OpenThread diagnostics module of a received frame.
+    /// The radio driver calls this function to notify OpenThread diagnostics module of a received frame.
     ///
     /// Is used when diagnostics is enabled.
     ///
@@ -4030,7 +4768,7 @@ unsafe extern "C" {
     pub fn otPlatRadioTransmit(aInstance: *mut otInstance, aFrame: *mut otRadioFrame) -> otError;
 }
 unsafe extern "C" {
-    /// The radio driver calls this method to notify OpenThread that the transmission has started.
+    /// The radio driver calls this function to notify OpenThread that the transmission has started.
     ///
     /// @note  This function should be called by the same thread that executes all of the other OpenThread code. It should
     ///        not be called by ISR or any other task.
@@ -4061,7 +4799,7 @@ unsafe extern "C" {
     );
 }
 unsafe extern "C" {
-    /// The radio driver calls this method to notify OpenThread diagnostics module that the transmission has completed.
+    /// The radio driver calls this function to notify OpenThread diagnostics module that the transmission has completed.
     ///
     /// Is used when diagnostics is enabled.
     ///
@@ -4077,11 +4815,14 @@ unsafe extern "C" {
     );
 }
 unsafe extern "C" {
-    /// Get the most recent RSSI measurement.
+    /// Return a recent RSSI measurement when the radio is in receive state.
     ///
-    /// @param[in] aInstance  The OpenThread instance structure.
+    /// If the radio is not in receive state, then `OT_RADIO_RSSI_INVALID` MUST be returned. If the radio is in receive
+    /// state, then a single RSSI measurement is taken on the current receive channel and returned.
     ///
-    /// @returns The RSSI in dBm when it is valid.  127 when RSSI is invalid.
+    /// @param[in] aInstance The OpenThread instance structure.
+    ///
+    /// @returns The RSSI in dBm when it is valid. `OT_RADIO_RSSI_INVALID` when RSSI is invalid.
     pub fn otPlatRadioGetRssi(aInstance: *mut otInstance) -> i8;
 }
 unsafe extern "C" {
@@ -4103,7 +4844,7 @@ unsafe extern "C" {
     ) -> otError;
 }
 unsafe extern "C" {
-    /// The radio driver calls this method to notify OpenThread that the energy scan is complete.
+    /// The radio driver calls this function to notify OpenThread that the energy scan is complete.
     ///
     /// Is used when radio provides OT_RADIO_CAPS_ENERGY_SCAN capability.
     ///
@@ -4112,7 +4853,7 @@ unsafe extern "C" {
     pub fn otPlatRadioEnergyScanDone(aInstance: *mut otInstance, aEnergyScanMaxRssi: i8);
 }
 unsafe extern "C" {
-    /// The radio driver calls this method to notify OpenThread that the spinel bus latency has been changed.
+    /// The radio driver calls this function to notify OpenThread that the spinel bus latency has been changed.
     ///
     /// @param[in]  aInstance  The OpenThread instance structure.
     pub fn otPlatRadioBusLatencyChanged(aInstance: *mut otInstance);
@@ -4255,10 +4996,15 @@ unsafe extern "C" {
 unsafe extern "C" {
     /// Enable or disable CSL receiver.
     ///
+    /// Regarding @p aExtAddr, this function assumes big-endian byte order. Note that this differs from
+    /// `otPlatRadioSetExtendedAddress()`, `otPlatRadioAddSrcMatchExtEntry()`, and `otPlatRadioClearSrcMatchExtEntry()`,
+    /// which use little-endian byte order for the Extended MAC address.
+    ///
     /// @param[in]  aInstance     The OpenThread instance structure.
     /// @param[in]  aCslPeriod    CSL period, 0 for disabling CSL. CSL period is in unit of 10 symbols.
     /// @param[in]  aShortAddr    The short source address of CSL receiver's peer.
-    /// @param[in]  aExtAddr      The extended source address of CSL receiver's peer.
+    /// @param[in]  aExtAddr      The extended source address of CSL receiver's peer. The @p aExtAddr assumes big-endian
+    ///                           byte order.
     ///
     /// @note Platforms should use CSL peer addresses to include CSL IE when generating enhanced acks.
     ///
@@ -4275,7 +5021,7 @@ unsafe extern "C" {
 unsafe extern "C" {
     /// Reset CSL receiver in the platform.
     ///
-    /// @note Defaults to `otPlatRadioEnableCsl(aInstance,0, Mac::kShortAddrInvalid, nullptr);`
+    /// @note Defaults to `otPlatRadioEnableCsl(aInstance,0, Mac::kShortAddrInvalid, NULL);`
     ///
     /// @param[in]  aInstance     The OpenThread instance structure.
     ///
@@ -4337,6 +5083,9 @@ unsafe extern "C" {
 unsafe extern "C" {
     /// Set the max transmit power for a specific channel.
     ///
+    /// @note This function will be deprecated in October 2027. It is recommended to use the function
+    ///       `otPlatRadioSetChannelTargetPower()`.
+    ///
     /// @param[in]  aInstance    The OpenThread instance structure.
     /// @param[in]  aChannel     The radio channel.
     /// @param[in]  aMaxPower    The max power in dBm, passing OT_RADIO_RSSI_INVALID will disable this channel.
@@ -4375,7 +5124,7 @@ unsafe extern "C" {
     /// @param[in]  aInstance    The OpenThread instance structure.
     /// @param[out] aRegionCode  The radio region.
     ///
-    /// @retval  OT_ERROR_INVALID_ARGS     @p aRegionCode is nullptr.
+    /// @retval  OT_ERROR_INVALID_ARGS     @p aRegionCode is NULL.
     /// @retval  OT_ERROR_FAILED           Other platform specific errors.
     /// @retval  OT_ERROR_NONE             Successfully got region code.
     /// @retval  OT_ERROR_NOT_IMPLEMENTED  The feature is not implemented.
@@ -4385,15 +5134,20 @@ unsafe extern "C" {
     /// Enable/disable or update Enhanced-ACK Based Probing in radio for a specific Initiator.
     ///
     /// After Enhanced-ACK Based Probing is configured by a specific Probing Initiator, the Enhanced-ACK sent to that
-    /// node should include Vendor-Specific IE containing Link Metrics data. This method informs the radio to start/stop to
+    /// node should include Vendor-Specific IE containing Link Metrics data. This function informs the radio to start/stop to
     /// collect Link Metrics data and include Vendor-Specific IE that containing the data in Enhanced-ACK sent to that
     /// Probing Initiator.
+    ///
+    /// Regarding @p aExtAddress, this function assumes big-endian byte order. Note that this differs from
+    /// `otPlatRadioSetExtendedAddress()`, `otPlatRadioAddSrcMatchExtEntry()`, and `otPlatRadioClearSrcMatchExtEntry()`,
+    /// which use little-endian byte order for the Extended MAC address.
     ///
     /// @param[in]  aInstance     The OpenThread instance structure.
     /// @param[in]  aLinkMetrics  This parameter specifies what metrics to query. Per spec 4.11.3.4.4.6, at most 2 metrics
     ///                           can be specified. The probing would be disabled if @p `aLinkMetrics` is bitwise 0.
     /// @param[in]  aShortAddress The short address of the Probing Initiator.
-    /// @param[in]  aExtAddress   The extended source address of the Probing Initiator. @p aExtAddr MUST NOT be `NULL`.
+    /// @param[in]  aExtAddress   The extended source address of the Probing Initiator. @p aExtAddress MUST NOT be `NULL`.
+    ///                           The @p aExtAddress assumes big-endian byte order.
     ///
     /// @retval  OT_ERROR_NONE            Successfully configured the Enhanced-ACK Based Probing.
     /// @retval  OT_ERROR_INVALID_ARGS    @p aExtAddress is `NULL`.
@@ -4454,7 +5208,9 @@ unsafe extern "C" {
     /// Set the target power for the given channel.
     ///
     /// @note This API is an optional radio platform API. It's up to the platform layer to implement it.
-    ///       If this API is implemented, the function `otPlatRadioSetTransmitPower()` should be disabled.
+    ///       If this function and `otPlatRadioSetTransmitPower()` are implemented at the same time:
+    ///       - If neither of these two functions is called, the radio outputs the platform-defined default power.
+    ///       - If both functions are called, the last one to be called takes effect.
     ///
     /// The radio driver should set the actual output power to be less than or equal to the @p aTargetPower and as close
     /// as possible to the @p aTargetPower. If the @p aTargetPower is lower than the minimum output power supported
@@ -4504,1629 +5260,11 @@ unsafe extern "C" {
         aRawPowerSettingLength: *mut u16,
     ) -> otError;
 }
-/// @struct otIp6InterfaceIdentifier
-///
-/// Represents the Interface Identifier of an IPv6 address.
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct otIp6InterfaceIdentifier {
-    ///< The Interface Identifier accessor fields
-    pub mFields: otIp6InterfaceIdentifier__bindgen_ty_1,
-}
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub union otIp6InterfaceIdentifier__bindgen_ty_1 {
-    ///< 8-bit fields
-    pub m8: [u8; 8usize],
-    ///< 16-bit fields
-    pub m16: [u16; 4usize],
-    ///< 32-bit fields
-    pub m32: [u32; 2usize],
-}
-/// @struct otIp6NetworkPrefix
-///
-/// Represents the Network Prefix of an IPv6 address (most significant 64 bits of the address).
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct otIp6NetworkPrefix {
-    ///< The Network Prefix.
-    pub m8: [u8; 8usize],
-}
-/// @struct otIp6AddressComponents
-///
-/// Represents the components of an IPv6 address.
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct otIp6AddressComponents {
-    ///< The Network Prefix (most significant 64 bits of the address)
-    pub mNetworkPrefix: otIp6NetworkPrefix,
-    ///< The Interface Identifier (least significant 64 bits of the address)
-    pub mIid: otIp6InterfaceIdentifier,
-}
-/// @struct otIp6Address
-///
-/// Represents an IPv6 address.
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct otIp6Address {
-    ///< IPv6 accessor fields
-    pub mFields: otIp6Address__bindgen_ty_1,
-}
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub union otIp6Address__bindgen_ty_1 {
-    ///< 8-bit fields
-    pub m8: [u8; 16usize],
-    ///< 16-bit fields
-    pub m16: [u16; 8usize],
-    ///< 32-bit fields
-    pub m32: [u32; 4usize],
-    ///< IPv6 address components
-    pub mComponents: otIp6AddressComponents,
-}
-/// @struct otIp6Prefix
-///
-/// Represents an IPv6 prefix.
-#[repr(C, packed)]
-#[derive(Copy, Clone)]
-pub struct otIp6Prefix {
-    ///< The IPv6 prefix.
-    pub mPrefix: otIp6Address,
-    ///< The IPv6 prefix length (in bits).
-    pub mLength: u8,
-}
-///< Thread assigned address (ALOC, RLOC, MLEID, etc)
-pub const OT_ADDRESS_ORIGIN_THREAD: _bindgen_ty_7 = 0;
-///< SLAAC assigned address
-pub const OT_ADDRESS_ORIGIN_SLAAC: _bindgen_ty_7 = 1;
-///< DHCPv6 assigned address
-pub const OT_ADDRESS_ORIGIN_DHCPV6: _bindgen_ty_7 = 2;
-///< Manually assigned address
-pub const OT_ADDRESS_ORIGIN_MANUAL: _bindgen_ty_7 = 3;
-/// IPv6 Address origins
-pub type _bindgen_ty_7 = ::core::ffi::c_uint;
-/// Represents an IPv6 network interface unicast address.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otNetifAddress {
-    ///< The IPv6 unicast address.
-    pub mAddress: otIp6Address,
-    ///< The Prefix length (in bits).
-    pub mPrefixLength: u8,
-    ///< The IPv6 address origin.
-    pub mAddressOrigin: u8,
-    pub _bitfield_align_1: [u8; 0],
-    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
-    ///< A pointer to the next network interface address.
-    pub mNext: *const otNetifAddress,
-}
-impl otNetifAddress {
-    #[inline]
-    pub fn mPreferred(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mPreferred(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(0usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mPreferred_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                0usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mPreferred_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                0usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mValid(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mValid(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(1usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mValid_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                1usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mValid_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                1usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mScopeOverrideValid(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mScopeOverrideValid(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(2usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mScopeOverrideValid_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                2usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mScopeOverrideValid_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                2usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mScopeOverride(&self) -> ::core::ffi::c_uint {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(3usize, 4u8) as u32) }
-    }
-    #[inline]
-    pub fn set_mScopeOverride(&mut self, val: ::core::ffi::c_uint) {
-        unsafe {
-            let val: u32 = ::core::mem::transmute(val);
-            self._bitfield_1.set(3usize, 4u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mScopeOverride_raw(this: *const Self) -> ::core::ffi::c_uint {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                3usize,
-                4u8,
-            ) as u32)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mScopeOverride_raw(this: *mut Self, val: ::core::ffi::c_uint) {
-        unsafe {
-            let val: u32 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                3usize,
-                4u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mRloc(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mRloc(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(7usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mRloc_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                7usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mRloc_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                7usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mMeshLocal(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mMeshLocal(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(8usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mMeshLocal_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                8usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mMeshLocal_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                8usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mSrpRegistered(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mSrpRegistered(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(9usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mSrpRegistered_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                9usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mSrpRegistered_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                9usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn new_bitfield_1(
-        mPreferred: bool,
-        mValid: bool,
-        mScopeOverrideValid: bool,
-        mScopeOverride: ::core::ffi::c_uint,
-        mRloc: bool,
-        mMeshLocal: bool,
-        mSrpRegistered: bool,
-    ) -> __BindgenBitfieldUnit<[u8; 2usize]> {
-        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
-        __bindgen_bitfield_unit.set(0usize, 1u8, {
-            let mPreferred: u8 = unsafe { ::core::mem::transmute(mPreferred) };
-            mPreferred as u64
-        });
-        __bindgen_bitfield_unit.set(1usize, 1u8, {
-            let mValid: u8 = unsafe { ::core::mem::transmute(mValid) };
-            mValid as u64
-        });
-        __bindgen_bitfield_unit.set(2usize, 1u8, {
-            let mScopeOverrideValid: u8 = unsafe { ::core::mem::transmute(mScopeOverrideValid) };
-            mScopeOverrideValid as u64
-        });
-        __bindgen_bitfield_unit.set(3usize, 4u8, {
-            let mScopeOverride: u32 = unsafe { ::core::mem::transmute(mScopeOverride) };
-            mScopeOverride as u64
-        });
-        __bindgen_bitfield_unit.set(7usize, 1u8, {
-            let mRloc: u8 = unsafe { ::core::mem::transmute(mRloc) };
-            mRloc as u64
-        });
-        __bindgen_bitfield_unit.set(8usize, 1u8, {
-            let mMeshLocal: u8 = unsafe { ::core::mem::transmute(mMeshLocal) };
-            mMeshLocal as u64
-        });
-        __bindgen_bitfield_unit.set(9usize, 1u8, {
-            let mSrpRegistered: u8 = unsafe { ::core::mem::transmute(mSrpRegistered) };
-            mSrpRegistered as u64
-        });
-        __bindgen_bitfield_unit
-    }
-}
-/// Represents an IPv6 network interface multicast address.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otNetifMulticastAddress {
-    ///< The IPv6 multicast address.
-    pub mAddress: otIp6Address,
-    ///< A pointer to the next network interface multicast address.
-    pub mNext: *const otNetifMulticastAddress,
-}
-/// Represents an IPv6 socket address.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otSockAddr {
-    ///< An IPv6 address.
-    pub mAddress: otIp6Address,
-    ///< A transport-layer port.
-    pub mPort: u16,
-}
-///< Non-ECT
-pub const OT_ECN_NOT_CAPABLE: _bindgen_ty_8 = 0;
-///< ECT(0)
-pub const OT_ECN_CAPABLE_0: _bindgen_ty_8 = 2;
-///< ECT(1)
-pub const OT_ECN_CAPABLE_1: _bindgen_ty_8 = 1;
-///< Congestion encountered (CE)
-pub const OT_ECN_MARKED: _bindgen_ty_8 = 3;
-/// ECN statuses, represented as in the IP header.
-pub type _bindgen_ty_8 = ::core::ffi::c_uint;
-/// Represents the local and peer IPv6 socket addresses.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otMessageInfo {
-    ///< The local IPv6 address.
-    pub mSockAddr: otIp6Address,
-    ///< The peer IPv6 address.
-    pub mPeerAddr: otIp6Address,
-    ///< The local transport-layer port.
-    pub mSockPort: u16,
-    ///< The peer transport-layer port.
-    pub mPeerPort: u16,
-    ///< The IPv6 Hop Limit value. Only applies if `mAllowZeroHopLimit` is FALSE.
-    ///< If `0`, IPv6 Hop Limit is default value `OPENTHREAD_CONFIG_IP6_HOP_LIMIT_DEFAULT`.
-    ///< Otherwise, specifies the IPv6 Hop Limit.
-    pub mHopLimit: u8,
-    pub _bitfield_align_1: [u8; 0],
-    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
-}
-impl otMessageInfo {
-    #[inline]
-    pub fn mEcn(&self) -> u8 {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mEcn(&mut self, val: u8) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(0usize, 2u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mEcn_raw(this: *const Self) -> u8 {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                0usize,
-                2u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mEcn_raw(this: *mut Self, val: u8) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                0usize,
-                2u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mIsHostInterface(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mIsHostInterface(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(2usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mIsHostInterface_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                2usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mIsHostInterface_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                2usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mAllowZeroHopLimit(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mAllowZeroHopLimit(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(3usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mAllowZeroHopLimit_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                3usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mAllowZeroHopLimit_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                3usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mMulticastLoop(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mMulticastLoop(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(4usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mMulticastLoop_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                4usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mMulticastLoop_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                4usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn new_bitfield_1(
-        mEcn: u8,
-        mIsHostInterface: bool,
-        mAllowZeroHopLimit: bool,
-        mMulticastLoop: bool,
-    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
-        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
-        __bindgen_bitfield_unit.set(0usize, 2u8, {
-            let mEcn: u8 = unsafe { ::core::mem::transmute(mEcn) };
-            mEcn as u64
-        });
-        __bindgen_bitfield_unit.set(2usize, 1u8, {
-            let mIsHostInterface: u8 = unsafe { ::core::mem::transmute(mIsHostInterface) };
-            mIsHostInterface as u64
-        });
-        __bindgen_bitfield_unit.set(3usize, 1u8, {
-            let mAllowZeroHopLimit: u8 = unsafe { ::core::mem::transmute(mAllowZeroHopLimit) };
-            mAllowZeroHopLimit as u64
-        });
-        __bindgen_bitfield_unit.set(4usize, 1u8, {
-            let mMulticastLoop: u8 = unsafe { ::core::mem::transmute(mMulticastLoop) };
-            mMulticastLoop as u64
-        });
-        __bindgen_bitfield_unit
-    }
-}
-///< IPv6 Hop-by-Hop Option
-pub const OT_IP6_PROTO_HOP_OPTS: _bindgen_ty_9 = 0;
-///< Transmission Control Protocol
-pub const OT_IP6_PROTO_TCP: _bindgen_ty_9 = 6;
-///< User Datagram
-pub const OT_IP6_PROTO_UDP: _bindgen_ty_9 = 17;
-///< IPv6 encapsulation
-pub const OT_IP6_PROTO_IP6: _bindgen_ty_9 = 41;
-///< Routing Header for IPv6
-pub const OT_IP6_PROTO_ROUTING: _bindgen_ty_9 = 43;
-///< Fragment Header for IPv6
-pub const OT_IP6_PROTO_FRAGMENT: _bindgen_ty_9 = 44;
-///< ICMP for IPv6
-pub const OT_IP6_PROTO_ICMP6: _bindgen_ty_9 = 58;
-///< No Next Header for IPv6
-pub const OT_IP6_PROTO_NONE: _bindgen_ty_9 = 59;
-///< Destination Options for IPv6
-pub const OT_IP6_PROTO_DST_OPTS: _bindgen_ty_9 = 60;
-/// Internet Protocol Numbers.
-pub type _bindgen_ty_9 = ::core::ffi::c_uint;
-unsafe extern "C" {
-    /// Brings the IPv6 interface up or down.
-    ///
-    /// Call this to enable or disable IPv6 communication.
-    ///
-    /// @param[in] aInstance A pointer to an OpenThread instance.
-    /// @param[in] aEnabled  TRUE to enable IPv6, FALSE otherwise.
-    ///
-    /// @retval OT_ERROR_NONE            Successfully brought the IPv6 interface up/down.
-    /// @retval OT_ERROR_INVALID_STATE   IPv6 interface is not available since device is operating in raw-link mode
-    ///                                  (applicable only when `OPENTHREAD_CONFIG_LINK_RAW_ENABLE` feature is enabled).
-    pub fn otIp6SetEnabled(aInstance: *mut otInstance, aEnabled: bool) -> otError;
-}
-unsafe extern "C" {
-    /// Indicates whether or not the IPv6 interface is up.
-    ///
-    /// @param[in] aInstance A pointer to an OpenThread instance.
-    ///
-    /// @retval TRUE   The IPv6 interface is enabled.
-    /// @retval FALSE  The IPv6 interface is disabled.
-    pub fn otIp6IsEnabled(aInstance: *mut otInstance) -> bool;
-}
-unsafe extern "C" {
-    /// Adds a Network Interface Address to the Thread interface.
-    ///
-    /// The passed-in instance @p aAddress is copied by the Thread interface. The Thread interface only
-    /// supports a fixed number of externally added unicast addresses. See `OPENTHREAD_CONFIG_IP6_MAX_EXT_UCAST_ADDRS`.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aAddress  A pointer to a Network Interface Address.
-    ///
-    /// @retval OT_ERROR_NONE          Successfully added (or updated) the Network Interface Address.
-    /// @retval OT_ERROR_INVALID_ARGS  The IP Address indicated by @p aAddress is an internal address.
-    /// @retval OT_ERROR_NO_BUFS       The Network Interface is already storing the maximum allowed external addresses.
-    pub fn otIp6AddUnicastAddress(
-        aInstance: *mut otInstance,
-        aAddress: *const otNetifAddress,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Removes a Network Interface Address from the Thread interface.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aAddress  A pointer to an IP Address.
-    ///
-    /// @retval OT_ERROR_NONE          Successfully removed the Network Interface Address.
-    /// @retval OT_ERROR_INVALID_ARGS  The IP Address indicated by @p aAddress is an internal address.
-    /// @retval OT_ERROR_NOT_FOUND     The IP Address indicated by @p aAddress was not found.
-    pub fn otIp6RemoveUnicastAddress(
-        aInstance: *mut otInstance,
-        aAddress: *const otIp6Address,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Gets the list of IPv6 addresses assigned to the Thread interface.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    ///
-    /// @returns A pointer to the first Network Interface Address.
-    pub fn otIp6GetUnicastAddresses(aInstance: *mut otInstance) -> *const otNetifAddress;
-}
-unsafe extern "C" {
-    /// Indicates whether or not a unicast IPv6 address is assigned to the Thread interface.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aAddress  A pointer to the unicast address.
-    ///
-    /// @retval TRUE   If @p aAddress is assigned to the Thread interface.
-    /// @retval FALSE  If @p aAddress is not assigned to the Thread interface.
-    pub fn otIp6HasUnicastAddress(
-        aInstance: *mut otInstance,
-        aAddress: *const otIp6Address,
-    ) -> bool;
-}
-unsafe extern "C" {
-    /// Subscribes the Thread interface to a Network Interface Multicast Address.
-    ///
-    /// The passed in instance @p aAddress will be copied by the Thread interface. The Thread interface only
-    /// supports a fixed number of externally added multicast addresses. See `OPENTHREAD_CONFIG_IP6_MAX_EXT_MCAST_ADDRS`.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aAddress  A pointer to an IP Address.
-    ///
-    /// @retval OT_ERROR_NONE           Successfully subscribed to the Network Interface Multicast Address.
-    /// @retval OT_ERROR_ALREADY        The multicast address is already subscribed.
-    /// @retval OT_ERROR_INVALID_ARGS   The IP Address indicated by @p aAddress is an invalid multicast address.
-    /// @retval OT_ERROR_REJECTED       The IP Address indicated by @p aAddress is an internal multicast address.
-    /// @retval OT_ERROR_NO_BUFS        The Network Interface is already storing the maximum allowed external multicast
-    ///                                 addresses.
-    pub fn otIp6SubscribeMulticastAddress(
-        aInstance: *mut otInstance,
-        aAddress: *const otIp6Address,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Unsubscribes the Thread interface to a Network Interface Multicast Address.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aAddress  A pointer to an IP Address.
-    ///
-    /// @retval OT_ERROR_NONE          Successfully unsubscribed to the Network Interface Multicast Address.
-    /// @retval OT_ERROR_REJECTED      The IP Address indicated by @p aAddress is an internal address.
-    /// @retval OT_ERROR_NOT_FOUND     The IP Address indicated by @p aAddress was not found.
-    pub fn otIp6UnsubscribeMulticastAddress(
-        aInstance: *mut otInstance,
-        aAddress: *const otIp6Address,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Gets the list of IPv6 multicast addresses subscribed to the Thread interface.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    ///
-    /// @returns A pointer to the first Network Interface Multicast Address.
-    pub fn otIp6GetMulticastAddresses(aInstance: *mut otInstance)
-        -> *const otNetifMulticastAddress;
-}
-unsafe extern "C" {
-    /// Allocate a new message buffer for sending an IPv6 message.
-    ///
-    /// @note If @p aSettings is 'NULL', the link layer security is enabled and the message priority is set to
-    /// OT_MESSAGE_PRIORITY_NORMAL by default.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    /// @param[in]  aSettings  A pointer to the message settings or NULL to set default settings.
-    ///
-    /// @returns A pointer to the message buffer or NULL if no message buffers are available or parameters are invalid.
-    ///
-    /// @sa otMessageFree
-    pub fn otIp6NewMessage(
-        aInstance: *mut otInstance,
-        aSettings: *const otMessageSettings,
-    ) -> *mut otMessage;
-}
-unsafe extern "C" {
-    /// Allocate a new message buffer and write the IPv6 datagram to the message buffer for sending an IPv6 message.
-    ///
-    /// @note If @p aSettings is NULL, the link layer security is enabled and the message priority is obtained from IPv6
-    ///       message itself.
-    ///       If @p aSettings is not NULL, the @p aSetting->mPriority is ignored and obtained from IPv6 message itself.
-    ///
-    /// @param[in]  aInstance    A pointer to an OpenThread instance.
-    /// @param[in]  aData        A pointer to the IPv6 datagram buffer.
-    /// @param[in]  aDataLength  The size of the IPv6 datagram buffer pointed by @p aData.
-    /// @param[in]  aSettings    A pointer to the message settings or NULL to set default settings.
-    ///
-    /// @returns A pointer to the message or NULL if malformed IPv6 header or insufficient message buffers are available.
-    ///
-    /// @sa otMessageFree
-    pub fn otIp6NewMessageFromBuffer(
-        aInstance: *mut otInstance,
-        aData: *const u8,
-        aDataLength: u16,
-        aSettings: *const otMessageSettings,
-    ) -> *mut otMessage;
-}
-/// Pointer is called when an IPv6 datagram is received.
-///
-/// @param[in]  aMessage  A pointer to the message buffer containing the received IPv6 datagram. This function transfers
-///                       the ownership of the @p aMessage to the receiver of the callback. The message should be
-///                       freed by the receiver of the callback after it is processed (see otMessageFree()).
-/// @param[in]  aContext  A pointer to application-specific context.
-pub type otIp6ReceiveCallback = ::core::option::Option<
-    unsafe extern "C" fn(aMessage: *mut otMessage, aContext: *mut ::core::ffi::c_void),
->;
-unsafe extern "C" {
-    /// Registers a callback to provide received IPv6 datagrams.
-    ///
-    /// By default, this callback does not pass Thread control traffic.  See otIp6SetReceiveFilterEnabled() to
-    /// change the Thread control traffic filter setting.
-    ///
-    /// @param[in]  aInstance         A pointer to an OpenThread instance.
-    /// @param[in]  aCallback         A pointer to a function that is called when an IPv6 datagram is received or
-    ///                               NULL to disable the callback.
-    /// @param[in]  aCallbackContext  A pointer to application-specific context.
-    ///
-    /// @sa otIp6IsReceiveFilterEnabled
-    /// @sa otIp6SetReceiveFilterEnabled
-    pub fn otIp6SetReceiveCallback(
-        aInstance: *mut otInstance,
-        aCallback: otIp6ReceiveCallback,
-        aCallbackContext: *mut ::core::ffi::c_void,
-    );
-}
-/// Represents IPv6 address information.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otIp6AddressInfo {
-    ///< A pointer to the IPv6 address.
-    pub mAddress: *const otIp6Address,
-    ///< The prefix length of mAddress if it is a unicast address.
-    pub mPrefixLength: u8,
-    pub _bitfield_align_1: [u8; 0],
-    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
-    pub __bindgen_padding_0: u16,
-}
-impl otIp6AddressInfo {
-    #[inline]
-    pub fn mScope(&self) -> u8 {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 4u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mScope(&mut self, val: u8) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(0usize, 4u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mScope_raw(this: *const Self) -> u8 {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                0usize,
-                4u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mScope_raw(this: *mut Self, val: u8) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                0usize,
-                4u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mPreferred(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mPreferred(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(4usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mPreferred_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                4usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mPreferred_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                4usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn mMeshLocal(&self) -> bool {
-        unsafe { ::core::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u8) }
-    }
-    #[inline]
-    pub fn set_mMeshLocal(&mut self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            self._bitfield_1.set(5usize, 1u8, val as u64)
-        }
-    }
-    #[inline]
-    pub unsafe fn mMeshLocal_raw(this: *const Self) -> bool {
-        unsafe {
-            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
-                ::core::ptr::addr_of!((*this)._bitfield_1),
-                5usize,
-                1u8,
-            ) as u8)
-        }
-    }
-    #[inline]
-    pub unsafe fn set_mMeshLocal_raw(this: *mut Self, val: bool) {
-        unsafe {
-            let val: u8 = ::core::mem::transmute(val);
-            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
-                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
-                5usize,
-                1u8,
-                val as u64,
-            )
-        }
-    }
-    #[inline]
-    pub fn new_bitfield_1(
-        mScope: u8,
-        mPreferred: bool,
-        mMeshLocal: bool,
-    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
-        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
-        __bindgen_bitfield_unit.set(0usize, 4u8, {
-            let mScope: u8 = unsafe { ::core::mem::transmute(mScope) };
-            mScope as u64
-        });
-        __bindgen_bitfield_unit.set(4usize, 1u8, {
-            let mPreferred: u8 = unsafe { ::core::mem::transmute(mPreferred) };
-            mPreferred as u64
-        });
-        __bindgen_bitfield_unit.set(5usize, 1u8, {
-            let mMeshLocal: u8 = unsafe { ::core::mem::transmute(mMeshLocal) };
-            mMeshLocal as u64
-        });
-        __bindgen_bitfield_unit
-    }
-}
-/// Pointer is called when an internal IPv6 address is added or removed.
-///
-/// @param[in]   aAddressInfo        A pointer to the IPv6 address information.
-/// @param[in]   aIsAdded            TRUE if the @p aAddress was added, FALSE if @p aAddress was removed.
-/// @param[in]   aContext            A pointer to application-specific context.
-pub type otIp6AddressCallback = ::core::option::Option<
-    unsafe extern "C" fn(
-        aAddressInfo: *const otIp6AddressInfo,
-        aIsAdded: bool,
-        aContext: *mut ::core::ffi::c_void,
-    ),
->;
-unsafe extern "C" {
-    /// Registers a callback to notify internal IPv6 address changes.
-    ///
-    /// @param[in]   aInstance           A pointer to an OpenThread instance.
-    /// @param[in]   aCallback           A pointer to a function that is called when an internal IPv6 address is added or
-    ///                                  removed. NULL to disable the callback.
-    /// @param[in]   aCallbackContext    A pointer to application-specific context.
-    pub fn otIp6SetAddressCallback(
-        aInstance: *mut otInstance,
-        aCallback: otIp6AddressCallback,
-        aCallbackContext: *mut ::core::ffi::c_void,
-    );
-}
-unsafe extern "C" {
-    /// Indicates whether or not Thread control traffic is filtered out when delivering IPv6 datagrams
-    /// via the callback specified in otIp6SetReceiveCallback().
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    ///
-    /// @returns  TRUE if Thread control traffic is filtered out, FALSE otherwise.
-    ///
-    /// @sa otIp6SetReceiveCallback
-    /// @sa otIp6SetReceiveFilterEnabled
-    pub fn otIp6IsReceiveFilterEnabled(aInstance: *mut otInstance) -> bool;
-}
-unsafe extern "C" {
-    /// Sets whether or not Thread control traffic is filtered out when delivering IPv6 datagrams
-    /// via the callback specified in otIp6SetReceiveCallback().
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aEnabled  TRUE if Thread control traffic is filtered out, FALSE otherwise.
-    ///
-    /// @sa otIp6SetReceiveCallback
-    /// @sa otIsReceiveIp6FilterEnabled
-    pub fn otIp6SetReceiveFilterEnabled(aInstance: *mut otInstance, aEnabled: bool);
-}
-unsafe extern "C" {
-    /// Sends an IPv6 datagram via the Thread interface.
-    ///
-    /// The caller transfers ownership of @p aMessage when making this call. OpenThread will free @p aMessage when
-    /// processing is complete, including when a value other than `OT_ERROR_NONE` is returned.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aMessage  A pointer to the message buffer containing the IPv6 datagram.
-    ///
-    /// @retval OT_ERROR_NONE                    Successfully processed the message.
-    /// @retval OT_ERROR_DROP                    Message was well-formed but not fully processed due to packet processing
-    /// rules.
-    /// @retval OT_ERROR_NO_BUFS                 Could not allocate necessary message buffers when processing the datagram.
-    /// @retval OT_ERROR_NO_ROUTE                No route to host.
-    /// @retval OT_ERROR_INVALID_SOURCE_ADDRESS  Source address is invalid, e.g. an anycast address or a multicast address.
-    /// @retval OT_ERROR_PARSE                   Encountered a malformed header when processing the message.
-    /// @retval OT_ERROR_INVALID_ARGS            The message's metadata is invalid, e.g. the message uses
-    ///                                          `OT_MESSAGE_ORIGIN_THREAD_NETIF` as the origin.
-    pub fn otIp6Send(aInstance: *mut otInstance, aMessage: *mut otMessage) -> otError;
-}
-unsafe extern "C" {
-    /// Adds a port to the allowed unsecured port list.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aPort     The port value.
-    ///
-    /// @retval OT_ERROR_NONE         The port was successfully added to the allowed unsecure port list.
-    /// @retval OT_ERROR_INVALID_ARGS The port is invalid (value 0 is reserved for internal use).
-    /// @retval OT_ERROR_NO_BUFS      The unsecure port list is full.
-    pub fn otIp6AddUnsecurePort(aInstance: *mut otInstance, aPort: u16) -> otError;
-}
-unsafe extern "C" {
-    /// Removes a port from the allowed unsecure port list.
-    ///
-    /// @note This function removes @p aPort by overwriting @p aPort with the element after @p aPort in the internal port
-    ///       list. Be careful when calling otIp6GetUnsecurePorts() followed by otIp6RemoveUnsecurePort() to remove unsecure
-    ///       ports.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    /// @param[in]  aPort     The port value.
-    ///
-    /// @retval OT_ERROR_NONE         The port was successfully removed from the allowed unsecure port list.
-    /// @retval OT_ERROR_INVALID_ARGS The port is invalid (value 0 is reserved for internal use).
-    /// @retval OT_ERROR_NOT_FOUND    The port was not found in the unsecure port list.
-    pub fn otIp6RemoveUnsecurePort(aInstance: *mut otInstance, aPort: u16) -> otError;
-}
-unsafe extern "C" {
-    /// Removes all ports from the allowed unsecure port list.
-    ///
-    /// @param[in]  aInstance A pointer to an OpenThread instance.
-    pub fn otIp6RemoveAllUnsecurePorts(aInstance: *mut otInstance);
-}
-unsafe extern "C" {
-    /// Returns a pointer to the unsecure port list.
-    ///
-    /// @note Port value 0 is used to indicate an invalid entry.
-    ///
-    /// @param[in]   aInstance    A pointer to an OpenThread instance.
-    /// @param[out]  aNumEntries  The number of entries in the list.
-    ///
-    /// @returns A pointer to the unsecure port list.
-    pub fn otIp6GetUnsecurePorts(aInstance: *mut otInstance, aNumEntries: *mut u8) -> *const u16;
-}
-unsafe extern "C" {
-    /// Test if two IPv6 addresses are the same.
-    ///
-    /// @param[in]  aFirst   A pointer to the first IPv6 address to compare.
-    /// @param[in]  aSecond  A pointer to the second IPv6 address to compare.
-    ///
-    /// @retval TRUE   The two IPv6 addresses are the same.
-    /// @retval FALSE  The two IPv6 addresses are not the same.
-    pub fn otIp6IsAddressEqual(aFirst: *const otIp6Address, aSecond: *const otIp6Address) -> bool;
-}
-unsafe extern "C" {
-    /// Test if two IPv6 prefixes are the same.
-    ///
-    /// @param[in]  aFirst   A pointer to the first IPv6 prefix to compare.
-    /// @param[in]  aSecond  A pointer to the second IPv6 prefix to compare.
-    ///
-    /// @retval TRUE   The two IPv6 prefixes are the same.
-    /// @retval FALSE  The two IPv6 prefixes are not the same.
-    pub fn otIp6ArePrefixesEqual(aFirst: *const otIp6Prefix, aSecond: *const otIp6Prefix) -> bool;
-}
-unsafe extern "C" {
-    /// Converts a human-readable IPv6 address string into a binary representation.
-    ///
-    /// @param[in]   aString   A pointer to a NULL-terminated string.
-    /// @param[out]  aAddress  A pointer to an IPv6 address.
-    ///
-    /// @retval OT_ERROR_NONE   Successfully parsed @p aString and updated @p aAddress.
-    /// @retval OT_ERROR_PARSE  Failed to parse @p aString as an IPv6 address.
-    pub fn otIp6AddressFromString(
-        aString: *const ::core::ffi::c_char,
-        aAddress: *mut otIp6Address,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Converts a human-readable IPv6 prefix string into a binary representation.
-    ///
-    /// The @p aString parameter should be a string in the format "<address>/<plen>", where `<address>` is an IPv6
-    /// address and `<plen>` is a prefix length.
-    ///
-    /// @param[in]   aString  A pointer to a NULL-terminated string.
-    /// @param[out]  aPrefix  A pointer to an IPv6 prefix.
-    ///
-    /// @retval OT_ERROR_NONE   Successfully parsed the string as an IPv6 prefix and updated @p aPrefix.
-    /// @retval OT_ERROR_PARSE  Failed to parse @p aString as an IPv6 prefix.
-    pub fn otIp6PrefixFromString(
-        aString: *const ::core::ffi::c_char,
-        aPrefix: *mut otIp6Prefix,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Converts a given IPv6 address to a human-readable string.
-    ///
-    /// The IPv6 address string is formatted as 16 hex values separated by ':' (i.e., "%x:%x:%x:...:%x").
-    ///
-    /// If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be truncated
-    /// but the outputted string is always null-terminated.
-    ///
-    /// @param[in]  aAddress  A pointer to an IPv6 address (MUST NOT be NULL).
-    /// @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be NULL).
-    /// @param[in]  aSize     The size of @p aBuffer (in bytes). Recommended to use `OT_IP6_ADDRESS_STRING_SIZE`.
-    pub fn otIp6AddressToString(
-        aAddress: *const otIp6Address,
-        aBuffer: *mut ::core::ffi::c_char,
-        aSize: u16,
-    );
-}
-unsafe extern "C" {
-    /// Converts a given IPv6 socket address to a human-readable string.
-    ///
-    /// The IPv6 socket address string is formatted as [`address`]:`port` where `address` is shown
-    /// as 16 hex values separated by `:` and `port` is the port number in decimal format,
-    /// for example "[%x:%x:...:%x]:%u".
-    ///
-    /// If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be truncated
-    /// but the outputted string is always null-terminated.
-    ///
-    /// @param[in]  aSockAddr A pointer to an IPv6 socket address (MUST NOT be NULL).
-    /// @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be NULL).
-    /// @param[in]  aSize     The size of @p aBuffer (in bytes). Recommended to use `OT_IP6_SOCK_ADDR_STRING_SIZE`.
-    pub fn otIp6SockAddrToString(
-        aSockAddr: *const otSockAddr,
-        aBuffer: *mut ::core::ffi::c_char,
-        aSize: u16,
-    );
-}
-unsafe extern "C" {
-    /// Converts a given IPv6 prefix to a human-readable string.
-    ///
-    /// The IPv6 address string is formatted as "%x:%x:%x:...[::]/plen".
-    ///
-    /// If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be truncated
-    /// but the outputted string is always null-terminated.
-    ///
-    /// @param[in]  aPrefix   A pointer to an IPv6 prefix (MUST NOT be NULL).
-    /// @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be NULL).
-    /// @param[in]  aSize     The size of @p aBuffer (in bytes). Recommended to use `OT_IP6_PREFIX_STRING_SIZE`.
-    pub fn otIp6PrefixToString(
-        aPrefix: *const otIp6Prefix,
-        aBuffer: *mut ::core::ffi::c_char,
-        aSize: u16,
-    );
-}
-unsafe extern "C" {
-    /// Returns the prefix match length (bits) for two IPv6 addresses.
-    ///
-    /// @param[in]  aFirst   A pointer to the first IPv6 address.
-    /// @param[in]  aSecond  A pointer to the second IPv6 address.
-    ///
-    /// @returns  The prefix match length in bits.
-    pub fn otIp6PrefixMatch(aFirst: *const otIp6Address, aSecond: *const otIp6Address) -> u8;
-}
-unsafe extern "C" {
-    /// Gets a prefix with @p aLength from @p aAddress.
-    ///
-    /// @param[in]  aAddress   A pointer to an IPv6 address.
-    /// @param[in]  aLength    The length of prefix in bits.
-    /// @param[out] aPrefix    A pointer to output the IPv6 prefix.
-    pub fn otIp6GetPrefix(aAddress: *const otIp6Address, aLength: u8, aPrefix: *mut otIp6Prefix);
-}
-unsafe extern "C" {
-    /// Indicates whether or not a given IPv6 address is the Unspecified Address.
-    ///
-    /// @param[in]  aAddress   A pointer to an IPv6 address.
-    ///
-    /// @retval TRUE   If the IPv6 address is the Unspecified Address.
-    /// @retval FALSE  If the IPv6 address is not the Unspecified Address.
-    pub fn otIp6IsAddressUnspecified(aAddress: *const otIp6Address) -> bool;
-}
-unsafe extern "C" {
-    /// Perform OpenThread source address selection.
-    ///
-    /// @param[in]      aInstance     A pointer to an OpenThread instance.
-    /// @param[in,out]  aMessageInfo  A pointer to the message information.
-    ///
-    /// @retval  OT_ERROR_NONE       Found a source address and is filled into mSockAddr of @p aMessageInfo.
-    /// @retval  OT_ERROR_NOT_FOUND  No source address was found and @p aMessageInfo is unchanged.
-    pub fn otIp6SelectSourceAddress(
-        aInstance: *mut otInstance,
-        aMessageInfo: *mut otMessageInfo,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Indicates whether the SLAAC module is enabled or not.
-    ///
-    /// `OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE` build-time feature must be enabled.
-    ///
-    /// @retval TRUE    SLAAC module is enabled.
-    /// @retval FALSE   SLAAC module is disabled.
-    pub fn otIp6IsSlaacEnabled(aInstance: *mut otInstance) -> bool;
-}
-unsafe extern "C" {
-    /// Enables/disables the SLAAC module.
-    ///
-    /// `OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE` build-time feature must be enabled.
-    ///
-    /// When SLAAC module is enabled, SLAAC addresses (based on on-mesh prefixes in Network Data) are added to the interface.
-    /// When SLAAC module is disabled any previously added SLAAC address is removed.
-    ///
-    /// @param[in] aInstance A pointer to an OpenThread instance.
-    /// @param[in] aEnabled  TRUE to enable, FALSE to disable.
-    pub fn otIp6SetSlaacEnabled(aInstance: *mut otInstance, aEnabled: bool);
-}
-/// Pointer allows user to filter prefixes and not allow an SLAAC address based on a prefix to be added.
-///
-/// `otIp6SetSlaacPrefixFilter()` can be used to set the filter handler. The filter handler is invoked by SLAAC module
-/// when it is about to add a SLAAC address based on a prefix. Its boolean return value determines whether the address
-/// is filtered (not added) or not.
-///
-/// @param[in] aInstance   A pointer to an OpenThread instance.
-/// @param[in] aPrefix     A pointer to prefix for which SLAAC address is about to be added.
-///
-/// @retval TRUE    Indicates that the SLAAC address based on the prefix should be filtered and NOT added.
-/// @retval FALSE   Indicates that the SLAAC address based on the prefix should be added.
-pub type otIp6SlaacPrefixFilter = ::core::option::Option<
-    unsafe extern "C" fn(aInstance: *mut otInstance, aPrefix: *const otIp6Prefix) -> bool,
->;
-unsafe extern "C" {
-    /// Sets the SLAAC module filter handler.
-    ///
-    /// `OPENTHREAD_CONFIG_IP6_SLAAC_ENABLE` build-time feature must be enabled.
-    ///
-    /// The filter handler is called by SLAAC module when it is about to add a SLAAC address based on a prefix to decide
-    /// whether the address should be added or not.
-    ///
-    /// A NULL filter handler disables filtering and allows all SLAAC addresses to be added.
-    ///
-    /// If this function is not called, the default filter used by SLAAC module will be NULL (filtering is disabled).
-    ///
-    /// @param[in] aInstance    A pointer to an OpenThread instance.
-    /// @param[in] aFilter      A pointer to SLAAC prefix filter handler, or NULL to disable filtering.
-    pub fn otIp6SetSlaacPrefixFilter(aInstance: *mut otInstance, aFilter: otIp6SlaacPrefixFilter);
-}
-/// Pointer is called with results of `otIp6RegisterMulticastListeners`.
-///
-/// @param[in]  aContext  A pointer to the user context.
-/// @param[in]  aError    OT_ERROR_NONE when successfully sent MLR.req and received MLR.rsp,
-///                       OT_ERROR_RESPONSE_TIMEOUT when failed to receive MLR.rsp,
-///                       OT_ERROR_PARSE when failed to parse MLR.rsp.
-/// @param[in]  aMlrStatus         The Multicast Listener Registration status when @p aError is OT_ERROR_NONE.
-/// @param[in]  aFailedAddresses   A pointer to the failed IPv6 addresses when @p aError is OT_ERROR_NONE.
-/// @param[in]  aFailedAddressNum  The number of failed IPv6 addresses when @p aError is OT_ERROR_NONE.
-///
-/// @sa otIp6RegisterMulticastListeners
-pub type otIp6RegisterMulticastListenersCallback = ::core::option::Option<
-    unsafe extern "C" fn(
-        aContext: *mut ::core::ffi::c_void,
-        aError: otError,
-        aMlrStatus: u8,
-        aFailedAddresses: *const otIp6Address,
-        aFailedAddressNum: u8,
-    ),
->;
-unsafe extern "C" {
-    /// Registers Multicast Listeners to Primary Backbone Router.
-    ///
-    /// `OPENTHREAD_CONFIG_TMF_PROXY_MLR_ENABLE` and `OPENTHREAD_CONFIG_COMMISSIONER_ENABLE`
-    /// must be enabled.
-    ///
-    /// @param[in]  aInstance    A pointer to an OpenThread instance.
-    /// @param[in]  aAddresses   A Multicast Address Array to register.
-    /// @param[in]  aAddressNum  The number of Multicast Address to register (0 if @p aAddresses is NULL).
-    /// @param[in]  aTimeout     A pointer to the timeout value (in seconds) to be included in MLR.req. A timeout value of 0
-    ///                          removes the corresponding Multicast Listener. If NULL, MLR.req would have no Timeout Tlv by
-    ///                          default.
-    /// @param[in]  aCallback    A pointer to the callback function.
-    /// @param[in]  aContext     A pointer to the user context.
-    ///
-    /// @retval OT_ERROR_NONE           Successfully sent MLR.req. The @p aCallback will be called iff this method
-    ///                                 returns OT_ERROR_NONE.
-    /// @retval OT_ERROR_BUSY           If a previous registration was ongoing.
-    /// @retval OT_ERROR_INVALID_ARGS   If one or more arguments are invalid.
-    /// @retval OT_ERROR_INVALID_STATE  If the device was not in a valid state to send MLR.req (e.g. Commissioner not
-    ///                                 started, Primary Backbone Router not found).
-    /// @retval OT_ERROR_NO_BUFS        If insufficient message buffers available.
-    ///
-    /// @sa otIp6RegisterMulticastListenersCallback
-    pub fn otIp6RegisterMulticastListeners(
-        aInstance: *mut otInstance,
-        aAddresses: *const otIp6Address,
-        aAddressNum: u8,
-        aTimeout: *const u32,
-        aCallback: otIp6RegisterMulticastListenersCallback,
-        aContext: *mut ::core::ffi::c_void,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Sets the Mesh Local IID (for test purpose).
-    ///
-    /// Requires `OPENTHREAD_CONFIG_REFERENCE_DEVICE_ENABLE`.
-    ///
-    /// @param[in]   aInstance   A pointer to an OpenThread instance.
-    /// @param[in]   aIid        A pointer to the Mesh Local IID to set.
-    ///
-    /// @retval  OT_ERROR_NONE           Successfully set the Mesh Local IID.
-    /// @retval  OT_ERROR_INVALID_STATE  Thread protocols are enabled.
-    pub fn otIp6SetMeshLocalIid(
-        aInstance: *mut otInstance,
-        aIid: *const otIp6InterfaceIdentifier,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Converts a given IP protocol number to a human-readable string.
-    ///
-    /// @param[in] aIpProto   An IP protocol number (`OT_IP6_PROTO_*` enumeration).
-    ///
-    /// @returns A string representing @p aIpProto.
-    pub fn otIp6ProtoToString(aIpProto: u8) -> *const ::core::ffi::c_char;
-}
-/// Represents the counters for packets and bytes.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otPacketsAndBytes {
-    ///< The number of packets.
-    pub mPackets: u64,
-    ///< The number of bytes.
-    pub mBytes: u64,
-}
-/// Represents the counters of packets forwarded via Border Routing.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otBorderRoutingCounters {
-    ///< The counters for inbound unicast.
-    pub mInboundUnicast: otPacketsAndBytes,
-    ///< The counters for inbound multicast.
-    pub mInboundMulticast: otPacketsAndBytes,
-    ///< The counters for outbound unicast.
-    pub mOutboundUnicast: otPacketsAndBytes,
-    ///< The counters for outbound multicast.
-    pub mOutboundMulticast: otPacketsAndBytes,
-    ///< The counters for inbound Internet when DHCPv6 PD enabled.
-    pub mInboundInternet: otPacketsAndBytes,
-    ///< The counters for outbound Internet when DHCPv6 PD enabled.
-    pub mOutboundInternet: otPacketsAndBytes,
-    ///< The number of received RA packets.
-    pub mRaRx: u32,
-    ///< The number of RA packets successfully transmitted.
-    pub mRaTxSuccess: u32,
-    ///< The number of RA packets failed to transmit.
-    pub mRaTxFailure: u32,
-    ///< The number of received RS packets.
-    pub mRsRx: u32,
-    ///< The number of RS packets successfully transmitted.
-    pub mRsTxSuccess: u32,
-    ///< The number of RS packets failed to transmit.
-    pub mRsTxFailure: u32,
-}
-unsafe extern "C" {
-    /// Gets the Border Routing counters.
-    ///
-    /// `OPENTHREAD_CONFIG_IP6_BR_COUNTERS_ENABLE` build-time feature must be enabled.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    ///
-    /// @returns A pointer to the Border Routing counters.
-    pub fn otIp6GetBorderRoutingCounters(
-        aInstance: *mut otInstance,
-    ) -> *const otBorderRoutingCounters;
-}
-unsafe extern "C" {
-    /// Resets the Border Routing counters.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    pub fn otIp6ResetBorderRoutingCounters(aInstance: *mut otInstance);
-}
-/// This callback allows OpenThread to provide specific handlers for certain UDP messages.
-///
-/// @retval  true    The message is handled by this receiver and should not be further processed.
-/// @retval  false   The message is not handled by this receiver.
-pub type otUdpHandler = ::core::option::Option<
-    unsafe extern "C" fn(
-        aContext: *mut ::core::ffi::c_void,
-        aMessage: *const otMessage,
-        aMessageInfo: *const otMessageInfo,
-    ) -> bool,
->;
-/// Represents a UDP receiver.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otUdpReceiver {
-    ///< A pointer to the next UDP receiver (internal use only).
-    pub mNext: *mut otUdpReceiver,
-    ///< A function pointer to the receiver callback.
-    pub mHandler: otUdpHandler,
-    ///< A pointer to application-specific context.
-    pub mContext: *mut ::core::ffi::c_void,
-}
-unsafe extern "C" {
-    /// Adds a UDP receiver.
-    ///
-    /// @param[in]   aInstance       A pointer to an OpenThread instance.
-    /// @param[in]   aUdpReceiver    A pointer to the UDP receiver.
-    ///
-    /// @retval  OT_ERROR_NONE       The receiver is successfully added.
-    /// @retval  OT_ERROR_ALREADY    The UDP receiver was already added.
-    pub fn otUdpAddReceiver(
-        aInstance: *mut otInstance,
-        aUdpReceiver: *mut otUdpReceiver,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Removes a UDP receiver.
-    ///
-    /// @param[in]   aInstance       A pointer to an OpenThread instance.
-    /// @param[in]   aUdpReceiver    A pointer to the UDP receiver.
-    ///
-    /// @retval  OT_ERROR_NONE       The receiver is successfully removed.
-    /// @retval  OT_ERROR_NOT_FOUND  The UDP receiver was not added.
-    pub fn otUdpRemoveReceiver(
-        aInstance: *mut otInstance,
-        aUdpReceiver: *mut otUdpReceiver,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Sends a UDP message without socket.
-    ///
-    /// @param[in]  aInstance     A pointer to an OpenThread instance.
-    /// @param[in]  aMessage      A pointer to a message without UDP header.
-    /// @param[in]  aMessageInfo  A pointer to a message info associated with @p aMessage.
-    ///
-    /// @retval OT_ERROR_NONE          Successfully enqueued the message into an output interface.
-    /// @retval OT_ERROR_NO_BUFS       Insufficient available buffer to add the IPv6 headers.
-    /// @retval OT_ERROR_INVALID_ARGS  Invalid arguments are given.
-    pub fn otUdpSendDatagram(
-        aInstance: *mut otInstance,
-        aMessage: *mut otMessage,
-        aMessageInfo: *mut otMessageInfo,
-    ) -> otError;
-}
-/// This callback allows OpenThread to inform the application of a received UDP message.
-pub type otUdpReceive = ::core::option::Option<
-    unsafe extern "C" fn(
-        aContext: *mut ::core::ffi::c_void,
-        aMessage: *mut otMessage,
-        aMessageInfo: *const otMessageInfo,
-    ),
->;
-/// Represents a UDP socket.
-#[repr(C)]
-#[derive(Copy, Clone)]
-pub struct otUdpSocket {
-    ///< The local IPv6 socket address.
-    pub mSockName: otSockAddr,
-    ///< The peer IPv6 socket address.
-    pub mPeerName: otSockAddr,
-    ///< A function pointer to the application callback.
-    pub mHandler: otUdpReceive,
-    ///< A pointer to application-specific context.
-    pub mContext: *mut ::core::ffi::c_void,
-    ///< A handle to platform's UDP.
-    pub mHandle: *mut ::core::ffi::c_void,
-    ///< A pointer to the next UDP socket (internal use only).
-    pub mNext: *mut otUdpSocket,
-}
-///< Unspecified network interface.
-pub const otNetifIdentifier_OT_NETIF_UNSPECIFIED: otNetifIdentifier = 0;
-///< The Thread interface.
-pub const otNetifIdentifier_OT_NETIF_THREAD: otNetifIdentifier = 1;
-///< The Backbone interface.
-pub const otNetifIdentifier_OT_NETIF_BACKBONE: otNetifIdentifier = 2;
-/// Defines the OpenThread network interface identifiers.
-pub type otNetifIdentifier = ::core::ffi::c_uint;
-unsafe extern "C" {
-    /// Allocate a new message buffer for sending a UDP message.
-    ///
-    /// @note If @p aSettings is 'NULL', the link layer security is enabled and the message priority is set to
-    /// OT_MESSAGE_PRIORITY_NORMAL by default.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    /// @param[in]  aSettings  A pointer to the message settings or NULL to use default settings.
-    ///
-    /// @returns A pointer to the message buffer or NULL if no message buffers are available or parameters are invalid.
-    ///
-    /// @sa otMessageFree
-    pub fn otUdpNewMessage(
-        aInstance: *mut otInstance,
-        aSettings: *const otMessageSettings,
-    ) -> *mut otMessage;
-}
-unsafe extern "C" {
-    /// Open a UDP/IPv6 socket.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    /// @param[in]  aSocket    A pointer to a UDP socket structure.
-    /// @param[in]  aCallback  A pointer to the application callback function.
-    /// @param[in]  aContext   A pointer to application-specific context.
-    ///
-    /// @retval OT_ERROR_NONE    Successfully opened the socket.
-    /// @retval OT_ERROR_FAILED  Failed to open the socket.
-    pub fn otUdpOpen(
-        aInstance: *mut otInstance,
-        aSocket: *mut otUdpSocket,
-        aCallback: otUdpReceive,
-        aContext: *mut ::core::ffi::c_void,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Check if a UDP socket is open.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    /// @param[in]  aSocket    A pointer to a UDP socket structure.
-    ///
-    /// @returns Whether the UDP socket is open.
-    pub fn otUdpIsOpen(aInstance: *mut otInstance, aSocket: *const otUdpSocket) -> bool;
-}
-unsafe extern "C" {
-    /// Close a UDP/IPv6 socket.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    /// @param[in]  aSocket    A pointer to a UDP socket structure.
-    ///
-    /// @retval OT_ERROR_NONE   Successfully closed the socket.
-    /// @retval OT_ERROR_FAILED Failed to close UDP Socket.
-    pub fn otUdpClose(aInstance: *mut otInstance, aSocket: *mut otUdpSocket) -> otError;
-}
-unsafe extern "C" {
-    /// Bind a UDP/IPv6 socket.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    /// @param[in]  aSocket    A pointer to a UDP socket structure.
-    /// @param[in]  aSockName  A pointer to an IPv6 socket address structure.
-    /// @param[in]  aNetif     The network interface to bind.
-    ///
-    /// @retval OT_ERROR_NONE   Bind operation was successful.
-    /// @retval OT_ERROR_FAILED Failed to bind UDP socket.
-    pub fn otUdpBind(
-        aInstance: *mut otInstance,
-        aSocket: *mut otUdpSocket,
-        aSockName: *const otSockAddr,
-        aNetif: otNetifIdentifier,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Connect a UDP/IPv6 socket.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    /// @param[in]  aSocket    A pointer to a UDP socket structure.
-    /// @param[in]  aSockName  A pointer to an IPv6 socket address structure.
-    ///
-    /// @retval OT_ERROR_NONE   Connect operation was successful.
-    /// @retval OT_ERROR_FAILED Failed to connect UDP socket.
-    pub fn otUdpConnect(
-        aInstance: *mut otInstance,
-        aSocket: *mut otUdpSocket,
-        aSockName: *const otSockAddr,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Send a UDP/IPv6 message.
-    ///
-    /// @param[in]  aInstance     A pointer to an OpenThread instance.
-    /// @param[in]  aSocket       A pointer to a UDP socket structure.
-    /// @param[in]  aMessage      A pointer to a message buffer.
-    /// @param[in]  aMessageInfo  A pointer to a message info structure.
-    ///
-    /// If the return value is OT_ERROR_NONE, OpenThread takes ownership of @p aMessage, and the caller should no longer
-    /// reference @p aMessage. If the return value is not OT_ERROR_NONE, the caller retains ownership of @p aMessage,
-    /// including freeing @p aMessage if the message buffer is no longer needed.
-    ///
-    /// @retval OT_ERROR_NONE           The message is successfully scheduled for sending.
-    /// @retval OT_ERROR_INVALID_ARGS   Invalid arguments are given.
-    /// @retval OT_ERROR_NO_BUFS        Insufficient available buffer to add the UDP and IPv6 headers.
-    pub fn otUdpSend(
-        aInstance: *mut otInstance,
-        aSocket: *mut otUdpSocket,
-        aMessage: *mut otMessage,
-        aMessageInfo: *const otMessageInfo,
-    ) -> otError;
-}
-unsafe extern "C" {
-    /// Gets the head of linked list of UDP Sockets.
-    ///
-    /// @param[in]  aInstance  A pointer to an OpenThread instance.
-    ///
-    /// @returns A pointer to the head of UDP Socket linked list.
-    pub fn otUdpGetSockets(aInstance: *mut otInstance) -> *mut otUdpSocket;
-}
-/// Pointer delivers the UDP packet to host and host should send the packet through its own network stack.
-///
-/// @param[in]  aMessage   A pointer to the UDP Message.
-/// @param[in]  aPeerPort  The destination UDP port.
-/// @param[in]  aPeerAddr  A pointer to the destination IPv6 address.
-/// @param[in]  aSockPort  The source UDP port.
-/// @param[in]  aContext   A pointer to application-specific context.
-pub type otUdpForwarder = ::core::option::Option<
-    unsafe extern "C" fn(
-        aMessage: *mut otMessage,
-        aPeerPort: u16,
-        aPeerAddr: *mut otIp6Address,
-        aSockPort: u16,
-        aContext: *mut ::core::ffi::c_void,
-    ),
->;
-unsafe extern "C" {
-    /// Set UDP forward callback to deliver UDP packets to host.
-    ///
-    /// @param[in]  aInstance            A pointer to an OpenThread instance.
-    /// @param[in]  aForwarder           A pointer to a function called to forward UDP packet to host.
-    /// @param[in]  aContext             A pointer to application-specific context.
-    pub fn otUdpForwardSetForwarder(
-        aInstance: *mut otInstance,
-        aForwarder: otUdpForwarder,
-        aContext: *mut ::core::ffi::c_void,
-    );
-}
-unsafe extern "C" {
-    /// Handle a UDP packet received from host.
-    ///
-    /// @param[in]  aInstance            A pointer to an OpenThread instance.
-    /// @param[in]  aMessage             A pointer to the UDP Message.
-    /// @param[in]  aPeerPort            The source UDP port.
-    /// @param[in]  aPeerAddr            A pointer to the source address.
-    /// @param[in]  aSockPort            The destination UDP port.
-    ///
-    /// @warning No matter the call success or fail, the message is freed.
-    pub fn otUdpForwardReceive(
-        aInstance: *mut otInstance,
-        aMessage: *mut otMessage,
-        aPeerPort: u16,
-        aPeerAddr: *const otIp6Address,
-        aSockPort: u16,
-    );
-}
-unsafe extern "C" {
-    /// Determines if the given UDP port is exclusively opened by OpenThread API.
-    ///
-    /// @param[in]  aInstance            A pointer to an OpenThread instance.
-    /// @param[in]  port                 UDP port number to verify.
-    ///
-    /// @retval true    The port is being used exclusively by OpenThread.
-    /// @retval false   The port is not used by any of the OpenThread API or is shared (e.g. is Backbone socket).
-    pub fn otUdpIsPortInUse(aInstance: *mut otInstance, port: u16) -> bool;
-}
 /// @struct otNetworkKey
 ///
 /// Represents a Thread Network Key.
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otNetworkKey {
     ///< Byte values
     pub m8: [u8; 16usize],
@@ -6137,14 +5275,14 @@ pub type otNetworkKeyRef = otCryptoKeyRef;
 ///
 /// The `otNetworkName` is a null terminated C string (i.e., `m8` char array MUST end with null char `\0`).
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otNetworkName {
     ///< Byte values. The `+ 1` is for null char.
     pub m8: [::core::ffi::c_char; 17usize],
 }
 /// Represents an Extended PAN ID.
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otExtendedPanId {
     ///< Byte values
     pub m8: [u8; 8usize],
@@ -6153,7 +5291,7 @@ pub struct otExtendedPanId {
 pub type otMeshLocalPrefix = otIp6NetworkPrefix;
 /// Represents PSKc.
 #[repr(C, packed)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otPskc {
     ///< Byte values
     pub m8: [u8; 16usize],
@@ -6162,7 +5300,7 @@ pub struct otPskc {
 pub type otPskcRef = otCryptoKeyRef;
 /// Represent Security Policy.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otSecurityPolicy {
     ///< The value for thrKeyRotation in units of hours.
     pub mRotationTime: u16,
@@ -6565,11 +5703,13 @@ impl otSecurityPolicy {
         __bindgen_bitfield_unit
     }
 }
-/// Represents Channel Mask.
+/// Represents a Channel Mask.
+///
+/// The least significant bit (LSB), also referred to as bit 0, corresponds to channel number 0, and so on.
 pub type otChannelMask = u32;
 /// Represents presence of different components in Active or Pending Operational Dataset.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otOperationalDatasetComponents {
     ///< TRUE if Active Timestamp is present, FALSE otherwise.
     pub mIsActiveTimestampPresent: bool,
@@ -6600,7 +5740,7 @@ pub struct otOperationalDatasetComponents {
 }
 /// Represents a Thread Dataset timestamp component.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otTimestamp {
     pub mSeconds: u64,
     pub mTicks: u16,
@@ -6610,7 +5750,7 @@ pub struct otTimestamp {
 ///
 /// Components in Dataset are optional. `mComponents` structure specifies which components are present in the Dataset.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otOperationalDataset {
     ///< Active Timestamp
     pub mActiveTimestamp: otTimestamp,
@@ -6651,6 +5791,15 @@ pub struct otOperationalDatasetTlvs {
     pub mTlvs: [u8; 254usize],
     ///< Size of Operational Dataset in bytes.
     pub mLength: u8,
+}
+impl Default for otOperationalDatasetTlvs {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 ///< meshcop Channel TLV
 pub const otMeshcopTlvType_OT_MESHCOP_TLV_CHANNEL: otMeshcopTlvType = 0;
@@ -7063,7 +6212,7 @@ pub const otJoinerState_OT_JOINER_STATE_JOINED: otJoinerState = 5;
 pub type otJoinerState = ::core::ffi::c_uint;
 /// Represents a Joiner Discerner.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otJoinerDiscerner {
     ///< Discerner value (the lowest `mLength` bits specify the discerner).
     pub mValue: u64,
@@ -7187,7 +6336,7 @@ pub const otCommissionerJoinerEvent_OT_COMMISSIONER_JOINER_REMOVED: otCommission
 pub type otCommissionerJoinerEvent = ::core::ffi::c_uint;
 /// Represents the steering data.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otSteeringData {
     ///< Length of steering data (bytes)
     pub mLength: u8,
@@ -7196,7 +6345,7 @@ pub struct otSteeringData {
 }
 /// Represents a Commissioning Dataset.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otCommissioningDataset {
     ///< Border Router RLOC16
     pub mLocator: u16,
@@ -7415,6 +6564,15 @@ pub struct otJoinerPskd {
     ///< Char string array (must be null terminated - +1 is for null char).
     pub m8: [::core::ffi::c_char; 33usize],
 }
+impl Default for otJoinerPskd {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 ///< Accept any Joiner (no EUI64 or Discerner is specified).
 pub const otJoinerInfoType_OT_JOINER_INFO_TYPE_ANY: otJoinerInfoType = 0;
 ///< Joiner EUI-64 is specified (`mSharedId.mEui64` in `otJoinerInfo`).
@@ -7443,6 +6601,24 @@ pub union otJoinerInfo__bindgen_ty_1 {
     pub mEui64: otExtAddress,
     ///< Joiner Discerner (when `mType` is `OT_JOINER_INFO_TYPE_DISCERNER`)
     pub mDiscerner: otJoinerDiscerner,
+}
+impl Default for otJoinerInfo__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for otJoinerInfo {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 /// Pointer is called whenever the commissioner state changes.
 ///
@@ -7787,7 +6963,7 @@ pub const otMacFilterAddressMode_OT_MAC_FILTER_ADDRESS_MODE_DENYLIST: otMacFilte
 pub type otMacFilterAddressMode = ::core::ffi::c_uint;
 /// Represents a Mac Filter entry.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otMacFilterEntry {
     ///< IEEE 802.15.4 Extended Address
     pub mExtAddress: otExtAddress,
@@ -7796,7 +6972,7 @@ pub struct otMacFilterEntry {
 }
 /// Represents the MAC layer counters.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otMacCounters {
     /// The total number of unique MAC frame transmission requests.
     ///
@@ -7926,7 +7102,7 @@ pub struct otMacCounters {
 /// Represents a received IEEE 802.15.4 Beacon.
 #[repr(C)]
 #[repr(align(4))]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otActiveScanResult {
     ///< IEEE 802.15.4 Extended Address
     pub mExtAddress: otExtAddress,
@@ -8112,7 +7288,7 @@ impl otActiveScanResult {
 }
 /// Represents an energy scan result.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otEnergyScanResult {
     ///< IEEE 802.15.4 Channel
     pub mChannel: u8,
@@ -8350,8 +7526,16 @@ unsafe extern "C" {
     ///
     /// @param[in]  aInstance A pointer to an OpenThread instance.
     ///
-    /// @returns A pointer to the IEEE 802.15.4 Short Address.
+    /// @returns The IEEE 802.15.4 Short Address.
     pub fn otLinkGetShortAddress(aInstance: *mut otInstance) -> otShortAddress;
+}
+unsafe extern "C" {
+    /// Get the IEEE 802.15.4 alternate short address.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    ///
+    /// @returns The alternate short address, or `OT_RADIO_INVALID_SHORT_ADDR` (0xfffe) if there is no alternate address.
+    pub fn otLinkGetAlternateShortAddress(aInstance: *mut otInstance) -> otShortAddress;
 }
 unsafe extern "C" {
     /// Returns the maximum number of frame retries during direct transmission.
@@ -8836,7 +8020,7 @@ unsafe extern "C" {
     /// @param[out] aRegionCode  The radio region code. The `aRegionCode >> 8` is first ascii char
     ///                          and the `aRegionCode & 0xff` is the second ascii char.
     ///
-    /// @retval  OT_ERROR_INVALID_ARGS     @p aRegionCode is nullptr.
+    /// @retval  OT_ERROR_INVALID_ARGS     @p aRegionCode is NULL.
     /// @retval  OT_ERROR_FAILED           Other platform specific errors.
     /// @retval  OT_ERROR_NONE             Successfully got region code.
     /// @retval  OT_ERROR_NOT_IMPLEMENTED  The feature is not implemented.
@@ -8866,6 +8050,74 @@ unsafe extern "C" {
     /// @retval OT_ERROR_INVALID_ARGS   Invalid @p aChannel.
     pub fn otLinkSetWakeupChannel(aInstance: *mut otInstance, aChannel: u8) -> otError;
 }
+unsafe extern "C" {
+    /// Enables or disables listening for wake-up frames.
+    ///
+    /// Requires `OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE`.
+    ///
+    /// @param[in]  aInstance     A pointer to an OpenThread instance.
+    /// @param[in]  aEnable       true to enable listening for wake-up frames, or false otherwise.
+    ///
+    /// @retval OT_ERROR_NONE          Successfully enabled / disabled the listening for wake-up frames.
+    /// @retval OT_ERROR_INVALID_ARGS  The listen duration is greater than the listen interval.
+    /// @retval OT_ERROR_INVALID_STATE Could not enable listening for wake-up frames due to bad configuration.
+    pub fn otLinkSetWakeUpListenEnabled(aInstance: *mut otInstance, aEnable: bool) -> otError;
+}
+unsafe extern "C" {
+    /// Returns whether listening for wake-up frames is enabled.
+    ///
+    /// Requires `OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE`.
+    ///
+    /// @param[in]  aInstance     A pointer to an OpenThread instance.
+    ///
+    /// @retval TRUE   If listening for wake-up frames is enabled.
+    /// @retval FALSE  If listening for wake-up frames is not enabled.
+    pub fn otLinkIsWakeupListenEnabled(aInstance: *mut otInstance) -> bool;
+}
+unsafe extern "C" {
+    /// Get the wake-up listen parameters.
+    ///
+    /// Requires `OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE`.
+    ///
+    /// @param[in]  aInstance   A pointer to an OpenThread instance.
+    /// @param[out] aInterval   A pointer to return the wake-up listen interval in microseconds.
+    /// @param[out] aDuration   A pointer to return the wake-up listen duration in microseconds.
+    pub fn otLinkGetWakeupListenParameters(
+        aInstance: *mut otInstance,
+        aInterval: *mut u32,
+        aDuration: *mut u32,
+    );
+}
+unsafe extern "C" {
+    /// Set the wake-up listen parameters.
+    ///
+    /// The listen interval must be greater than the listen duration.
+    /// The listen duration must be greater or equal than the minimum supported.
+    ///
+    /// Requires `OPENTHREAD_CONFIG_WAKEUP_END_DEVICE_ENABLE`.
+    ///
+    /// @param[in]  aInstance   A pointer to an OpenThread instance.
+    /// @param[in]  aInterval   The wake-up listen interval in microseconds.
+    /// @param[in]  aDuration   The wake-up listen duration in microseconds.
+    ///
+    /// @retval OT_ERROR_NONE           Successfully set the wake-up listen parameters.
+    /// @retval OT_ERROR_INVALID_ARGS   Invalid wake-up listen parameters.
+    pub fn otLinkSetWakeupListenParameters(
+        aInstance: *mut otInstance,
+        aInterval: u32,
+        aDuration: u32,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Sets the rx-on-when-idle state.
+    ///
+    /// @param[in]  aInstance      A pointer to an OpenThread instance.
+    /// @param[in]  aRxOnWhenIdle  TRUE to keep radio in Receive state, FALSE to put to Sleep state during idle periods.
+    ///
+    /// @retval OT_ERROR_NONE             If successful.
+    /// @retval OT_ERROR_INVALID_STATE    If the raw link-layer isn't enabled.
+    pub fn otLinkSetRxOnWhenIdle(aInstance: *mut otInstance, aRxOnWhenIdle: bool) -> otError;
+}
 ///< The Thread stack is disabled.
 pub const otDeviceRole_OT_DEVICE_ROLE_DISABLED: otDeviceRole = 0;
 ///< Not currently participating in a Thread network/partition.
@@ -8880,7 +8132,7 @@ pub const otDeviceRole_OT_DEVICE_ROLE_LEADER: otDeviceRole = 4;
 pub type otDeviceRole = ::core::ffi::c_uint;
 /// Represents an MLE Link Mode configuration.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otLinkModeConfig {
     pub _bitfield_align_1: [u8; 0],
     pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
@@ -9009,7 +8261,7 @@ impl otLinkModeConfig {
 }
 /// Holds diagnostic information for a neighboring Thread node
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otNeighborInfo {
     ///< IEEE 802.15.4 Extended Address
     pub mExtAddress: otExtAddress,
@@ -9204,7 +8456,7 @@ impl otNeighborInfo {
 pub type otNeighborInfoIterator = i16;
 /// Represents the Thread Leader Data.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otLeaderData {
     ///< Partition ID
     pub mPartitionId: u32,
@@ -9219,7 +8471,7 @@ pub struct otLeaderData {
 }
 /// Holds diagnostic information for a Thread Router
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otRouterInfo {
     ///< IEEE 802.15.4 Extended Address
     pub mExtAddress: otExtAddress,
@@ -9332,7 +8584,7 @@ impl otRouterInfo {
 }
 /// Represents the IP level counters.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otIpCounters {
     ///< The number of IPv6 packets successfully transmitted.
     pub mTxSuccess: u32,
@@ -9345,7 +8597,7 @@ pub struct otIpCounters {
 }
 /// Represents the Thread MLE counters.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otMleCounters {
     ///< Number of times device entered OT_DEVICE_ROLE_DISABLED role.
     pub mDisabledRole: u16,
@@ -9363,6 +8615,8 @@ pub struct otMleCounters {
     pub mPartitionIdChanges: u16,
     ///< Number of attempts to attach to a better partition.
     pub mBetterPartitionAttachAttempts: u16,
+    ///< Number of attempts to attach to find a better parent (parent search).
+    pub mBetterParentAttachAttempts: u16,
     ///< Number of milliseconds device has been in OT_DEVICE_ROLE_DISABLED role.
     pub mDisabledTime: u64,
     ///< Number of milliseconds device has been in OT_DEVICE_ROLE_DETACHED role.
@@ -9384,7 +8638,7 @@ pub struct otMleCounters {
 }
 /// Represents the MLE Parent Response data.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otThreadParentResponseInfo {
     ///< IEEE 802.15.4 Extended Address of the Parent
     pub mExtAddr: otExtAddress,
@@ -9408,6 +8662,15 @@ pub struct otThreadParentResponseInfo {
 /// @param[in] aContext A pointer to application-specific context.
 pub type otDetachGracefullyCallback =
     ::core::option::Option<unsafe extern "C" fn(aContext: *mut ::core::ffi::c_void)>;
+/// Informs the application about the result of waking a Wake-up End Device.
+///
+/// @param[in] aError   OT_ERROR_NONE    Indicates that the Wake-up End Device has been added as a neighbor.
+///                     OT_ERROR_FAILED  Indicates that the Wake-up End Device has not received a wake-up frame, or it
+///                                      has failed the MLE procedure.
+/// @param[in] aContext A pointer to application-specific context.
+pub type otWakeupCallback = ::core::option::Option<
+    unsafe extern "C" fn(aError: otError, aContext: *mut ::core::ffi::c_void),
+>;
 unsafe extern "C" {
     /// Starts Thread protocol operation.
     ///
@@ -10101,6 +9364,20 @@ unsafe extern "C" {
     /// @param[in]  aInstance  A pointer to an OpenThread instance.
     pub fn otThreadResetMleCounters(aInstance: *mut otInstance);
 }
+unsafe extern "C" {
+    /// Gets the current attach duration (number of seconds since the device last attached).
+    ///
+    /// If the device is not currently attached, zero will be returned.
+    ///
+    /// Unlike the role-tracking variables in `otMleCounters`, which track the cumulative time the device is in each role,
+    /// this function tracks the time since the last successful attachment, indicating how long the device has been
+    /// connected to the Thread mesh (regardless of its role, whether acting as a child, router, or leader).
+    ///
+    /// @param[in] aInstance  A pointer to an OpenThread instance.
+    ///
+    /// @returns The number of seconds since last attached.
+    pub fn otThreadGetCurrentAttachDuration(aInstance: *mut otInstance) -> u32;
+}
 /// Pointer is called every time an MLE Parent Response message is received.
 ///
 /// This is used in `otThreadRegisterParentResponseCallback()`.
@@ -10129,7 +9406,7 @@ unsafe extern "C" {
 }
 /// Represents the Thread Discovery Request data.
 #[repr(C)]
-#[derive(Copy, Clone)]
+#[derive(Default, Copy, Clone)]
 pub struct otThreadDiscoveryRequestInfo {
     ///< IEEE 802.15.4 Extended Address of the requester
     pub mExtAddress: otExtAddress,
@@ -10390,6 +9667,37 @@ unsafe extern "C" {
     pub fn otThreadGetStoreFrameCounterAhead(aInstance: *mut otInstance) -> u32;
 }
 unsafe extern "C" {
+    /// Attempts to wake a Wake-up End Device.
+    ///
+    /// Requires `OPENTHREAD_CONFIG_WAKEUP_COORDINATOR_ENABLE` to be enabled.
+    ///
+    /// The wake-up starts with transmitting a wake-up frame sequence to the Wake-up End Device.
+    /// During the wake-up sequence, and for a short time after the last wake-up frame is sent, the Wake-up Coordinator keeps
+    /// its receiver on to be able to receive an initial mesh link establishment message from the WED.
+    ///
+    /// @warning The functionality implemented by this function is still in the design phase.
+    ///          Consequently, the prototype and semantics of this function are subject to change.
+    ///
+    /// @param[in] aInstance         A pointer to an OpenThread instance.
+    /// @param[in] aWedAddress       The extended address of the Wake-up End Device.
+    /// @param[in] aWakeupIntervalUs An interval between consecutive wake-up frames (in microseconds).
+    /// @param[in] aWakeupDurationMs Duration of the wake-up sequence (in milliseconds).
+    /// @param[in] aCallback         A pointer to function that is called when the wake-up succeeds or fails.
+    /// @param[in] aCallbackContext  A pointer to callback application-specific context.
+    ///
+    /// @retval OT_ERROR_NONE          Successfully started the wake-up.
+    /// @retval OT_ERROR_INVALID_STATE Another attachment request is still in progress.
+    /// @retval OT_ERROR_INVALID_ARGS  The wake-up interval or duration are invalid.
+    pub fn otThreadWakeup(
+        aInstance: *mut otInstance,
+        aWedAddress: *const otExtAddress,
+        aWakeupIntervalUs: u16,
+        aWakeupDurationMs: u16,
+        aCallback: otWakeupCallback,
+        aCallbackContext: *mut ::core::ffi::c_void,
+    ) -> otError;
+}
+unsafe extern "C" {
     /// Run all queued OpenThread tasklets at the time this is called.
     ///
     /// @param[in] aInstance A pointer to an OpenThread instance.
@@ -10409,6 +9717,1514 @@ unsafe extern "C" {
     ///
     /// @param[in] aInstance A pointer to an OpenThread instance.
     pub fn otTaskletsSignalPending(aInstance: *mut otInstance);
+}
+/// @struct otIp4Address
+///
+/// Represents an IPv4 address.
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub struct otIp4Address {
+    pub mFields: otIp4Address__bindgen_ty_1,
+}
+#[repr(C, packed)]
+#[derive(Copy, Clone)]
+pub union otIp4Address__bindgen_ty_1 {
+    ///< 8-bit fields
+    pub m8: [u8; 4usize],
+    ///< 32-bit representation
+    pub m32: u32,
+}
+impl Default for otIp4Address__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for otIp4Address {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// @struct otIp4Cidr
+///
+/// Represents an IPv4 CIDR block.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otIp4Cidr {
+    pub mAddress: otIp4Address,
+    pub mLength: u8,
+}
+impl Default for otIp4Cidr {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// Represents the counters for NAT64.
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct otNat64Counters {
+    ///< Number of packets translated from IPv4 to IPv6.
+    pub m4To6Packets: u64,
+    ///< Sum of size of packets translated from IPv4 to IPv6.
+    pub m4To6Bytes: u64,
+    ///< Number of packets translated from IPv6 to IPv4.
+    pub m6To4Packets: u64,
+    ///< Sum of size of packets translated from IPv6 to IPv4.
+    pub m6To4Bytes: u64,
+}
+/// Represents the counters for the protocols supported by NAT64.
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct otNat64ProtocolCounters {
+    ///< Counters for sum of all protocols.
+    pub mTotal: otNat64Counters,
+    ///< Counters for ICMP and ICMPv6.
+    pub mIcmp: otNat64Counters,
+    ///< Counters for UDP.
+    pub mUdp: otNat64Counters,
+    ///< Counters for TCP.
+    pub mTcp: otNat64Counters,
+}
+///< Packet drop for unknown reasons.
+pub const otNat64DropReason_OT_NAT64_DROP_REASON_UNKNOWN: otNat64DropReason = 0;
+///< Packet drop due to failed to parse the datagram.
+pub const otNat64DropReason_OT_NAT64_DROP_REASON_ILLEGAL_PACKET: otNat64DropReason = 1;
+///< Packet drop due to unsupported IP protocol.
+pub const otNat64DropReason_OT_NAT64_DROP_REASON_UNSUPPORTED_PROTO: otNat64DropReason = 2;
+///< Packet drop due to no mappings found or mapping pool exhausted.
+pub const otNat64DropReason_OT_NAT64_DROP_REASON_NO_MAPPING: otNat64DropReason = 3;
+pub const otNat64DropReason_OT_NAT64_DROP_REASON_COUNT: otNat64DropReason = 4;
+/// Packet drop reasons.
+pub type otNat64DropReason = ::core::ffi::c_uint;
+/// Represents the counters of dropped packets due to errors when handling NAT64 packets.
+#[repr(C)]
+#[derive(Default, Copy, Clone)]
+pub struct otNat64ErrorCounters {
+    ///< Errors translating IPv4 packets.
+    pub mCount4To6: [u64; 4usize],
+    ///< Errors translating IPv6 packets.
+    pub mCount6To4: [u64; 4usize],
+}
+unsafe extern "C" {
+    /// Gets NAT64 translator counters.
+    ///
+    /// The counter is counted since the instance initialized.
+    ///
+    /// Available when `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is enabled.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[out] aCounters A pointer to an `otNat64Counters` where the counters of NAT64 translator will be placed.
+    pub fn otNat64GetCounters(aInstance: *mut otInstance, aCounters: *mut otNat64ProtocolCounters);
+}
+unsafe extern "C" {
+    /// Gets the NAT64 translator error counters.
+    ///
+    /// The counters are initialized to zero when the OpenThread instance is initialized.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[out] aCounters A pointer to an `otNat64Counters` where the counters of NAT64 translator will be placed.
+    pub fn otNat64GetErrorCounters(
+        aInstance: *mut otInstance,
+        aCounters: *mut otNat64ErrorCounters,
+    );
+}
+/// Represents an address mapping record for NAT64.
+///
+/// @note The counters will be reset for each mapping session even for the same address pair. Applications can use `mId`
+/// to identify different sessions to calculate the packets correctly.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otNat64AddressMapping {
+    ///< The unique id for a mapping session.
+    pub mId: u64,
+    ///< The IPv4 address of the mapping.
+    pub mIp4: otIp4Address,
+    ///< The IPv6 address of the mapping.
+    pub mIp6: otIp6Address,
+    /// The source port or ICMP ID of the mapping. Used when
+    ///  OPENTHREAD_CONFIG_NAT64_PORT_TRANSLATION_ENABLE is true.
+    pub mSrcPortOrId: u16,
+    /// The translated port or ICMP ID of the mapping. Used when
+    ///  OPENTHREAD_CONFIG_NAT64_PORT_TRANSLATION_ENABLE is true.
+    pub mTranslatedPortOrId: u16,
+    ///< Remaining time before expiry in milliseconds.
+    pub mRemainingTimeMs: u32,
+    pub mCounters: otNat64ProtocolCounters,
+}
+impl Default for otNat64AddressMapping {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// Used to iterate through NAT64 address mappings.
+///
+/// The fields in this type are opaque (intended for use by OpenThread core only) and therefore should not be
+/// accessed or used by caller.
+///
+/// Before using an iterator, it MUST be initialized using `otNat64AddressMappingIteratorInit()`.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otNat64AddressMappingIterator {
+    pub mPtr: *mut ::core::ffi::c_void,
+}
+impl Default for otNat64AddressMappingIterator {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+unsafe extern "C" {
+    /// Initializes an `otNat64AddressMappingIterator`.
+    ///
+    /// An iterator MUST be initialized before it is used.
+    ///
+    /// An iterator can be initialized again to restart from the beginning of the mapping info.
+    ///
+    /// @param[in]  aInstance  The OpenThread instance.
+    /// @param[out] aIterator  A pointer to the iterator to initialize.
+    pub fn otNat64InitAddressMappingIterator(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNat64AddressMappingIterator,
+    );
+}
+unsafe extern "C" {
+    /// Gets the next AddressMapping info (using an iterator).
+    ///
+    /// Available when `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is enabled.
+    ///
+    /// @param[in]      aInstance      A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator      A pointer to the iterator. On success the iterator will be updated to point to next
+    ///                                NAT64 address mapping record. To get the first entry the iterator should be set to
+    ///                                OT_NAT64_ADDRESS_MAPPING_ITERATOR_INIT.
+    /// @param[out]     aMapping       A pointer to an `otNat64AddressMapping` where information of next NAT64 address
+    ///                                mapping record is placed (on success).
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next NAT64 address mapping info (@p aMapping was successfully
+    ///                             updated).
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent NAT64 address mapping info was found.
+    pub fn otNat64GetNextAddressMapping(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNat64AddressMappingIterator,
+        aMapping: *mut otNat64AddressMapping,
+    ) -> otError;
+}
+///< NAT64 is disabled.
+pub const otNat64State_OT_NAT64_STATE_DISABLED: otNat64State = 0;
+///< NAT64 is enabled, but one or more dependencies of NAT64 are not running.
+pub const otNat64State_OT_NAT64_STATE_NOT_RUNNING: otNat64State = 1;
+///< NAT64 is enabled, but this BR is not an active NAT64 BR.
+pub const otNat64State_OT_NAT64_STATE_IDLE: otNat64State = 2;
+///< The BR is publishing a NAT64 prefix and/or translating packets.
+pub const otNat64State_OT_NAT64_STATE_ACTIVE: otNat64State = 3;
+/// States of NAT64.
+pub type otNat64State = ::core::ffi::c_uint;
+unsafe extern "C" {
+    /// Gets the state of NAT64 translator.
+    ///
+    /// Available when `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is enabled.
+    ///
+    /// @param[in]  aInstance          A pointer to an OpenThread instance.
+    ///
+    /// @retval OT_NAT64_STATE_DISABLED    NAT64 translator is disabled.
+    /// @retval OT_NAT64_STATE_NOT_RUNNING NAT64 translator is enabled, but the translator is not configured with a valid
+    ///                                    NAT64 prefix and a CIDR.
+    /// @retval OT_NAT64_STATE_ACTIVE      NAT64 translator is enabled, and is translating packets.
+    pub fn otNat64GetTranslatorState(aInstance: *mut otInstance) -> otNat64State;
+}
+unsafe extern "C" {
+    /// Gets the state of NAT64 prefix manager.
+    ///
+    /// Available when `OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE` is enabled.
+    ///
+    /// @param[in]  aInstance          A pointer to an OpenThread instance.
+    ///
+    /// @retval OT_NAT64_STATE_DISABLED    NAT64 prefix manager is disabled.
+    /// @retval OT_NAT64_STATE_NOT_RUNNING NAT64 prefix manager is enabled, but is not running (because the routing manager
+    ///                                    is not running).
+    /// @retval OT_NAT64_STATE_IDLE        NAT64 prefix manager is enabled, but is not publishing a NAT64 prefix. Usually
+    ///                                    when there is another border router publishing a NAT64 prefix with higher
+    ///                                    priority.
+    /// @retval OT_NAT64_STATE_ACTIVE      NAT64 prefix manager is enabled, and is publishing NAT64 prefix to the Thread
+    ///                                    network.
+    pub fn otNat64GetPrefixManagerState(aInstance: *mut otInstance) -> otNat64State;
+}
+unsafe extern "C" {
+    /// Enable or disable NAT64 functions.
+    ///
+    /// Note: This includes the NAT64 Translator (when `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is enabled) and the NAT64
+    /// Prefix Manager (when `OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE` is enabled).
+    ///
+    /// When `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is enabled, setting disabled to true resets the
+    /// mapping table in the translator.
+    ///
+    /// Available when `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` or `OPENTHREAD_CONFIG_NAT64_BORDER_ROUTING_ENABLE` is
+    /// enabled.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aEnabled   A boolean to enable/disable the NAT64 functions
+    ///
+    /// @sa otNat64GetTranslatorState
+    /// @sa otNat64GetPrefixManagerState
+    pub fn otNat64SetEnabled(aInstance: *mut otInstance, aEnabled: bool);
+}
+unsafe extern "C" {
+    /// Allocate a new message buffer for sending an IPv4 message to the NAT64 translator.
+    ///
+    /// Message buffers allocated by this function will have 20 bytes (difference between the size of IPv6 headers
+    /// and IPv4 header sizes) reserved.
+    ///
+    /// Available when `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is enabled.
+    ///
+    /// @note If @p aSettings is `NULL`, the link layer security is enabled and the message priority is set to
+    /// OT_MESSAGE_PRIORITY_NORMAL by default.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aSettings  A pointer to the message settings or NULL to set default settings.
+    ///
+    /// @returns A pointer to the message buffer or NULL if no message buffers are available or parameters are invalid.
+    ///
+    /// @sa otNat64Send
+    pub fn otIp4NewMessage(
+        aInstance: *mut otInstance,
+        aSettings: *const otMessageSettings,
+    ) -> *mut otMessage;
+}
+unsafe extern "C" {
+    /// Sets the CIDR used when setting the source address of the outgoing translated IPv4 packets.
+    ///
+    /// Is available only when OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE is enabled.
+    ///
+    /// @note A valid CIDR must have a non-zero prefix length. The actual addresses pool is limited by the size of the
+    /// mapping pool and the number of addresses available in the CIDR block.
+    ///
+    /// @note This function can be called at any time, but the NAT64 translator will be reset and all existing sessions will
+    /// be expired when updating the configured CIDR.
+    ///
+    /// @param[in] aInstance  A pointer to an OpenThread instance.
+    /// @param[in] aCidr      A pointer to an otIp4Cidr for the IPv4 CIDR block for NAT64.
+    ///
+    /// @retval  OT_ERROR_INVALID_ARGS   The given CIDR is not a valid IPv4 CIDR for NAT64.
+    /// @retval  OT_ERROR_NONE           Successfully set the CIDR for NAT64.
+    ///
+    /// @sa otNat64Send
+    /// @sa otNat64SetReceiveIp4Callback
+    pub fn otNat64SetIp4Cidr(aInstance: *mut otInstance, aCidr: *const otIp4Cidr) -> otError;
+}
+unsafe extern "C" {
+    /// Clears the CIDR used when setting the source address of the outgoing translated IPv4 packets.
+    ///
+    /// Is available only when OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE is enabled.
+    ///
+    /// @note This function can be called at any time, but the NAT64 translator will be reset and all existing sessions
+    /// will be expired when clearing the configured CIDR.
+    ///
+    /// @param[in] aInstance  A pointer to an OpenThread instance.
+    ///
+    /// @sa otNat64SetIp4Cidr
+    pub fn otNat64ClearIp4Cidr(aInstance: *mut otInstance);
+}
+unsafe extern "C" {
+    /// Translates an IPv4 datagram to an IPv6 datagram and sends via the Thread interface.
+    ///
+    /// The caller transfers ownership of @p aMessage when making this call. OpenThread will free @p aMessage when
+    /// processing is complete, including when a value other than `OT_ERROR_NONE` is returned.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    /// @param[in]  aMessage  A pointer to the message buffer containing the IPv4 datagram.
+    ///
+    /// @retval OT_ERROR_NONE                    Successfully processed the message.
+    /// @retval OT_ERROR_DROP                    Message was well-formed but not fully processed due to packet processing
+    ///                                          rules.
+    /// @retval OT_ERROR_NO_BUFS                 Could not allocate necessary message buffers when processing the datagram.
+    /// @retval OT_ERROR_NO_ROUTE                No route to host.
+    /// @retval OT_ERROR_INVALID_SOURCE_ADDRESS  Source address is invalid, e.g. an anycast address or a multicast address.
+    /// @retval OT_ERROR_PARSE                   Encountered a malformed header when processing the message.
+    pub fn otNat64Send(aInstance: *mut otInstance, aMessage: *mut otMessage) -> otError;
+}
+/// Pointer is called when an IPv4 datagram (translated by NAT64 translator) is received.
+///
+/// @param[in]  aMessage  A pointer to the message buffer containing the received IPv6 datagram. This function transfers
+///                       the ownership of the @p aMessage to the receiver of the callback. The message should be
+///                       freed by the receiver of the callback after it is processed.
+/// @param[in]  aContext  A pointer to application-specific context.
+pub type otNat64ReceiveIp4Callback = ::core::option::Option<
+    unsafe extern "C" fn(aMessage: *mut otMessage, aContext: *mut ::core::ffi::c_void),
+>;
+unsafe extern "C" {
+    /// Registers a callback to provide received IPv4 datagrams.
+    ///
+    /// @param[in]  aInstance         A pointer to an OpenThread instance.
+    /// @param[in]  aCallback         A pointer to a function that is called when an IPv4 datagram is received or
+    ///                               NULL to disable the callback.
+    /// @param[in]  aContext          A pointer to application-specific context.
+    pub fn otNat64SetReceiveIp4Callback(
+        aInstance: *mut otInstance,
+        aCallback: otNat64ReceiveIp4Callback,
+        aContext: *mut ::core::ffi::c_void,
+    );
+}
+unsafe extern "C" {
+    /// Gets the IPv4 CIDR configured in the NAT64 translator.
+    ///
+    /// Available when `OPENTHREAD_CONFIG_NAT64_TRANSLATOR_ENABLE` is enabled.
+    ///
+    /// @param[in]  aInstance         A pointer to an OpenThread instance.
+    /// @param[out] aCidr             A pointer to an otIp4Cidr. Where the CIDR will be filled.
+    pub fn otNat64GetCidr(aInstance: *mut otInstance, aCidr: *mut otIp4Cidr) -> otError;
+}
+unsafe extern "C" {
+    /// Test if two IPv4 addresses are the same.
+    ///
+    /// @param[in]  aFirst   A pointer to the first IPv4 address to compare.
+    /// @param[in]  aSecond  A pointer to the second IPv4 address to compare.
+    ///
+    /// @retval TRUE   The two IPv4 addresses are the same.
+    /// @retval FALSE  The two IPv4 addresses are not the same.
+    pub fn otIp4IsAddressEqual(aFirst: *const otIp4Address, aSecond: *const otIp4Address) -> bool;
+}
+unsafe extern "C" {
+    /// Set @p aIp4Address by performing NAT64 address translation from @p aIp6Address as specified
+    /// in RFC 6052.
+    ///
+    /// The NAT64 @p aPrefixLength MUST be one of the following values: 32, 40, 48, 56, 64, or 96, otherwise the behavior
+    /// of this method is undefined.
+    ///
+    /// @param[in]  aPrefixLength  The prefix length to use for IPv4/IPv6 translation.
+    /// @param[in]  aIp6Address    A pointer to an IPv6 address.
+    /// @param[out] aIp4Address    A pointer to output the IPv4 address.
+    pub fn otIp4ExtractFromIp6Address(
+        aPrefixLength: u8,
+        aIp6Address: *const otIp6Address,
+        aIp4Address: *mut otIp4Address,
+    );
+}
+unsafe extern "C" {
+    /// Extracts the IPv4 address from a given IPv4-mapped IPv6 address.
+    ///
+    /// An IPv4-mapped IPv6 address consists of an 80-bit prefix of zeros, the next 16 bits set to ones, and the remaining,
+    /// least-significant 32 bits contain the IPv4 address, e.g., `::ffff:192.0.2.128` representing `192.0.2.128`.
+    ///
+    /// @param[in]  aIp6Address  An IPv6 address to extract IPv4 from.
+    /// @param[out] aIp4Address  An IPv4 address to output the extracted address.
+    ///
+    /// @retval OT_ERROR_NONE   Extracted the IPv4 address successfully. @p aIp4Address is updated.
+    /// @retval OT_ERROR_PARSE  The @p aIp6Address does not follow the IPv4-mapped IPv6 address format.
+    pub fn otIp4FromIp4MappedIp6Address(
+        aIp6Address: *const otIp6Address,
+        aIp4Address: *mut otIp4Address,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Converts a given IP4 address to an IPv6 address following the IPv4-mapped IPv6 address format.
+    ///
+    /// @param[in]  aIp4Address  An IPv4 address to convert.
+    /// @param[out] aIp6Address  An IPv6 address to set.
+    pub fn otIp4ToIp4MappedIp6Address(
+        aIp4Address: *const otIp4Address,
+        aIp6Address: *mut otIp6Address,
+    );
+}
+unsafe extern "C" {
+    /// Converts the address to a string.
+    ///
+    /// The string format uses quad-dotted notation of four bytes in the address (e.g., "127.0.0.1").
+    ///
+    /// If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be
+    /// truncated but the outputted string is always null-terminated.
+    ///
+    /// @param[in]  aAddress  A pointer to an IPv4 address (MUST NOT be NULL).
+    /// @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be NULL).
+    /// @param[in]  aSize     The size of @p aBuffer (in bytes).
+    pub fn otIp4AddressToString(
+        aAddress: *const otIp4Address,
+        aBuffer: *mut ::core::ffi::c_char,
+        aSize: u16,
+    );
+}
+unsafe extern "C" {
+    /// Converts a human-readable IPv4 CIDR string into a binary representation.
+    ///
+    /// @param[in]   aString   A pointer to a NULL-terminated string.
+    /// @param[out]  aCidr     A pointer to an IPv4 CIDR.
+    ///
+    /// @retval OT_ERROR_NONE          Successfully parsed the string.
+    /// @retval OT_ERROR_INVALID_ARGS  Failed to parse the string.
+    pub fn otIp4CidrFromString(
+        aString: *const ::core::ffi::c_char,
+        aCidr: *mut otIp4Cidr,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Converts the IPv4 CIDR to a string.
+    ///
+    /// The string format uses quad-dotted notation of four bytes in the address with the length of prefix (e.g.,
+    /// "127.0.0.1/32").
+    ///
+    /// If the resulting string does not fit in @p aBuffer (within its @p aSize characters), the string will be
+    /// truncated but the outputted string is always null-terminated.
+    ///
+    /// @param[in]  aCidr     A pointer to an IPv4 CIDR (MUST NOT be NULL).
+    /// @param[out] aBuffer   A pointer to a char array to output the string (MUST NOT be NULL).
+    /// @param[in]  aSize     The size of @p aBuffer (in bytes).
+    pub fn otIp4CidrToString(
+        aCidr: *const otIp4Cidr,
+        aBuffer: *mut ::core::ffi::c_char,
+        aSize: u16,
+    );
+}
+unsafe extern "C" {
+    /// Converts a human-readable IPv4 address string into a binary representation.
+    ///
+    /// @param[in]   aString   A pointer to a NULL-terminated string.
+    /// @param[out]  aAddress  A pointer to an IPv4 address.
+    ///
+    /// @retval OT_ERROR_NONE          Successfully parsed the string.
+    /// @retval OT_ERROR_INVALID_ARGS  Failed to parse the string.
+    pub fn otIp4AddressFromString(
+        aString: *const ::core::ffi::c_char,
+        aAddress: *mut otIp4Address,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Sets the IPv6 address by performing NAT64 address translation from the preferred NAT64 prefix and the given IPv4
+    /// address as specified in RFC 6052.
+    ///
+    /// @param[in]   aInstance    A pointer to an OpenThread instance.
+    /// @param[in]   aIp4Address  A pointer to the IPv4 address to translate to IPv6.
+    /// @param[out]  aIp6Address  A pointer to the synthesized IPv6 address.
+    ///
+    /// @returns  OT_ERROR_NONE           Successfully synthesized the IPv6 address from NAT64 prefix and IPv4 address.
+    /// @returns  OT_ERROR_INVALID_STATE  No valid NAT64 prefix in the network data.
+    pub fn otNat64SynthesizeIp6Address(
+        aInstance: *mut otInstance,
+        aIp4Address: *const otIp4Address,
+        aIp6Address: *mut otIp6Address,
+    ) -> otError;
+}
+pub type otNetworkDataIterator = u32;
+/// Represents a Border Router configuration.
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Copy, Clone)]
+pub struct otBorderRouterConfig {
+    ///< The IPv6 prefix.
+    pub mPrefix: otIp6Prefix,
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 2usize]>,
+    ///< The border router's RLOC16 (value ignored on config add).
+    pub mRloc16: u16,
+}
+impl Default for otBorderRouterConfig {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otBorderRouterConfig {
+    #[inline]
+    pub fn mPreference(&self) -> ::core::ffi::c_int {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mPreference(&mut self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mPreference_raw(this: *const Self) -> ::core::ffi::c_int {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mPreference_raw(this: *mut Self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mPreferred(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mPreferred(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mPreferred_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mPreferred_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mSlaac(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mSlaac(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mSlaac_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mSlaac_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mDhcp(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mDhcp(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mDhcp_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mDhcp_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mConfigure(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mConfigure(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mConfigure_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mConfigure_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mDefaultRoute(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(6usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mDefaultRoute(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(6usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mDefaultRoute_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                6usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mDefaultRoute_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                6usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mOnMesh(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(7usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mOnMesh(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(7usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mOnMesh_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                7usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mOnMesh_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                7usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mStable(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(8usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mStable(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(8usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mStable_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                8usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mStable_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                8usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mNdDns(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(9usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mNdDns(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(9usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mNdDns_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                9usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mNdDns_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                9usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mDp(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(10usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mDp(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(10usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mDp_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 2usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                10usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mDp_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 2usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                10usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        mPreference: ::core::ffi::c_int,
+        mPreferred: bool,
+        mSlaac: bool,
+        mDhcp: bool,
+        mConfigure: bool,
+        mDefaultRoute: bool,
+        mOnMesh: bool,
+        mStable: bool,
+        mNdDns: bool,
+        mDp: bool,
+    ) -> __BindgenBitfieldUnit<[u8; 2usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 2usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let mPreference: u32 = unsafe { ::core::mem::transmute(mPreference) };
+            mPreference as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let mPreferred: u8 = unsafe { ::core::mem::transmute(mPreferred) };
+            mPreferred as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let mSlaac: u8 = unsafe { ::core::mem::transmute(mSlaac) };
+            mSlaac as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let mDhcp: u8 = unsafe { ::core::mem::transmute(mDhcp) };
+            mDhcp as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let mConfigure: u8 = unsafe { ::core::mem::transmute(mConfigure) };
+            mConfigure as u64
+        });
+        __bindgen_bitfield_unit.set(6usize, 1u8, {
+            let mDefaultRoute: u8 = unsafe { ::core::mem::transmute(mDefaultRoute) };
+            mDefaultRoute as u64
+        });
+        __bindgen_bitfield_unit.set(7usize, 1u8, {
+            let mOnMesh: u8 = unsafe { ::core::mem::transmute(mOnMesh) };
+            mOnMesh as u64
+        });
+        __bindgen_bitfield_unit.set(8usize, 1u8, {
+            let mStable: u8 = unsafe { ::core::mem::transmute(mStable) };
+            mStable as u64
+        });
+        __bindgen_bitfield_unit.set(9usize, 1u8, {
+            let mNdDns: u8 = unsafe { ::core::mem::transmute(mNdDns) };
+            mNdDns as u64
+        });
+        __bindgen_bitfield_unit.set(10usize, 1u8, {
+            let mDp: u8 = unsafe { ::core::mem::transmute(mDp) };
+            mDp as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+/// Represents 6LoWPAN Context ID information associated with a prefix in Network Data.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otLowpanContextInfo {
+    ///< The 6LoWPAN Context ID.
+    pub mContextId: u8,
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+    ///< The associated IPv6 prefix.
+    pub mPrefix: otIp6Prefix,
+}
+impl Default for otLowpanContextInfo {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otLowpanContextInfo {
+    #[inline]
+    pub fn mCompressFlag(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mCompressFlag(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mCompressFlag_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mCompressFlag_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mStable(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(1usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mStable(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(1usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mStable_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                1usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mStable_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                1usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        mCompressFlag: bool,
+        mStable: bool,
+    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let mCompressFlag: u8 = unsafe { ::core::mem::transmute(mCompressFlag) };
+            mCompressFlag as u64
+        });
+        __bindgen_bitfield_unit.set(1usize, 1u8, {
+            let mStable: u8 = unsafe { ::core::mem::transmute(mStable) };
+            mStable as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+/// Represents an External Route configuration.
+#[repr(C)]
+#[repr(align(4))]
+#[derive(Copy, Clone)]
+pub struct otExternalRouteConfig {
+    ///< The IPv6 prefix.
+    pub mPrefix: otIp6Prefix,
+    ///< The border router's RLOC16 (value ignored on config add).
+    pub mRloc16: u16,
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+    pub __bindgen_padding_0: [u8; 3usize],
+}
+impl Default for otExternalRouteConfig {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otExternalRouteConfig {
+    #[inline]
+    pub fn mPreference(&self) -> ::core::ffi::c_int {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 2u8) as u32) }
+    }
+    #[inline]
+    pub fn set_mPreference(&mut self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 2u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mPreference_raw(this: *const Self) -> ::core::ffi::c_int {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                2u8,
+            ) as u32)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mPreference_raw(this: *mut Self, val: ::core::ffi::c_int) {
+        unsafe {
+            let val: u32 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                2u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mNat64(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(2usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mNat64(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(2usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mNat64_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                2usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mNat64_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                2usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mStable(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(3usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mStable(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(3usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mStable_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                3usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mStable_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                3usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mNextHopIsThisDevice(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(4usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mNextHopIsThisDevice(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(4usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mNextHopIsThisDevice_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                4usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mNextHopIsThisDevice_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                4usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn mAdvPio(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(5usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mAdvPio(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(5usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mAdvPio_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                5usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mAdvPio_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                5usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(
+        mPreference: ::core::ffi::c_int,
+        mNat64: bool,
+        mStable: bool,
+        mNextHopIsThisDevice: bool,
+        mAdvPio: bool,
+    ) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 2u8, {
+            let mPreference: u32 = unsafe { ::core::mem::transmute(mPreference) };
+            mPreference as u64
+        });
+        __bindgen_bitfield_unit.set(2usize, 1u8, {
+            let mNat64: u8 = unsafe { ::core::mem::transmute(mNat64) };
+            mNat64 as u64
+        });
+        __bindgen_bitfield_unit.set(3usize, 1u8, {
+            let mStable: u8 = unsafe { ::core::mem::transmute(mStable) };
+            mStable as u64
+        });
+        __bindgen_bitfield_unit.set(4usize, 1u8, {
+            let mNextHopIsThisDevice: u8 = unsafe { ::core::mem::transmute(mNextHopIsThisDevice) };
+            mNextHopIsThisDevice as u64
+        });
+        __bindgen_bitfield_unit.set(5usize, 1u8, {
+            let mAdvPio: u8 = unsafe { ::core::mem::transmute(mAdvPio) };
+            mAdvPio as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+///< Low route preference.
+pub const otRoutePreference_OT_ROUTE_PREFERENCE_LOW: otRoutePreference = -1;
+///< Medium route preference.
+pub const otRoutePreference_OT_ROUTE_PREFERENCE_MED: otRoutePreference = 0;
+///< High route preference.
+pub const otRoutePreference_OT_ROUTE_PREFERENCE_HIGH: otRoutePreference = 1;
+/// Defines valid values for `mPreference` in `otExternalRouteConfig` and `otBorderRouterConfig`.
+pub type otRoutePreference = ::core::ffi::c_int;
+/// Represents a Server configuration.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otServerConfig {
+    pub _bitfield_align_1: [u8; 0],
+    pub _bitfield_1: __BindgenBitfieldUnit<[u8; 1usize]>,
+    ///< Length of server data.
+    pub mServerDataLength: u8,
+    ///< Server data bytes.
+    pub mServerData: [u8; 248usize],
+    ///< The Server RLOC16.
+    pub mRloc16: u16,
+}
+impl Default for otServerConfig {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl otServerConfig {
+    #[inline]
+    pub fn mStable(&self) -> bool {
+        unsafe { ::core::mem::transmute(self._bitfield_1.get(0usize, 1u8) as u8) }
+    }
+    #[inline]
+    pub fn set_mStable(&mut self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            self._bitfield_1.set(0usize, 1u8, val as u64)
+        }
+    }
+    #[inline]
+    pub unsafe fn mStable_raw(this: *const Self) -> bool {
+        unsafe {
+            ::core::mem::transmute(<__BindgenBitfieldUnit<[u8; 1usize]>>::raw_get(
+                ::core::ptr::addr_of!((*this)._bitfield_1),
+                0usize,
+                1u8,
+            ) as u8)
+        }
+    }
+    #[inline]
+    pub unsafe fn set_mStable_raw(this: *mut Self, val: bool) {
+        unsafe {
+            let val: u8 = ::core::mem::transmute(val);
+            <__BindgenBitfieldUnit<[u8; 1usize]>>::raw_set(
+                ::core::ptr::addr_of_mut!((*this)._bitfield_1),
+                0usize,
+                1u8,
+                val as u64,
+            )
+        }
+    }
+    #[inline]
+    pub fn new_bitfield_1(mStable: bool) -> __BindgenBitfieldUnit<[u8; 1usize]> {
+        let mut __bindgen_bitfield_unit: __BindgenBitfieldUnit<[u8; 1usize]> = Default::default();
+        __bindgen_bitfield_unit.set(0usize, 1u8, {
+            let mStable: u8 = unsafe { ::core::mem::transmute(mStable) };
+            mStable as u64
+        });
+        __bindgen_bitfield_unit
+    }
+}
+/// Represents a Service configuration.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otServiceConfig {
+    ///< Service ID (when iterating over the  Network Data).
+    pub mServiceId: u8,
+    ///< IANA Enterprise Number.
+    pub mEnterpriseNumber: u32,
+    ///< Length of service data.
+    pub mServiceDataLength: u8,
+    ///< Service data bytes.
+    pub mServiceData: [u8; 252usize],
+    ///< The Server configuration.
+    pub mServerConfig: otServerConfig,
+}
+impl Default for otServiceConfig {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+unsafe extern "C" {
+    /// Provide full or stable copy of the Partition's Thread Network Data.
+    ///
+    /// @param[in]      aInstance    A pointer to an OpenThread instance.
+    /// @param[in]      aStable      TRUE when copying the stable version, FALSE when copying the full version.
+    /// @param[out]     aData        A pointer to the data buffer.
+    /// @param[in,out]  aDataLength  On entry, size of the data buffer pointed to by @p aData.
+    ///                              On exit, number of copied bytes.
+    ///
+    /// @retval OT_ERROR_NONE    Successfully copied the Thread Network Data into @p aData and updated @p aDataLength.
+    /// @retval OT_ERROR_NO_BUFS Not enough space in @p aData to fully copy the Thread Network Data.
+    pub fn otNetDataGet(
+        aInstance: *mut otInstance,
+        aStable: bool,
+        aData: *mut u8,
+        aDataLength: *mut u8,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the current length (number of bytes) of Partition's Thread Network Data.
+    ///
+    /// @param[in] aInstance    A pointer to an OpenThread instance.
+    ///
+    /// @return The length of the Network Data.
+    pub fn otNetDataGetLength(aInstance: *mut otInstance) -> u8;
+}
+unsafe extern "C" {
+    /// Get the maximum observed length of the Thread Network Data since OT stack initialization or since the last call to
+    /// `otNetDataResetMaxLength()`.
+    ///
+    /// @param[in] aInstance    A pointer to an OpenThread instance.
+    ///
+    /// @return The maximum length of the Network Data (high water mark for Network Data length).
+    pub fn otNetDataGetMaxLength(aInstance: *mut otInstance) -> u8;
+}
+unsafe extern "C" {
+    /// Reset the tracked maximum length of the Thread Network Data.
+    ///
+    /// @param[in] aInstance    A pointer to an OpenThread instance.
+    ///
+    /// @sa otNetDataGetMaxLength
+    pub fn otNetDataResetMaxLength(aInstance: *mut otInstance);
+}
+unsafe extern "C" {
+    /// Get the next On Mesh Prefix in the partition's Network Data.
+    ///
+    /// @param[in]      aInstance  A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator  A pointer to the Network Data iterator context. To get the first on-mesh entry
+    ///it should be set to OT_NETWORK_DATA_ITERATOR_INIT.
+    /// @param[out]     aConfig    A pointer to where the On Mesh Prefix information will be placed.
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next On Mesh prefix.
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent On Mesh prefix exists in the Thread Network Data.
+    pub fn otNetDataGetNextOnMeshPrefix(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNetworkDataIterator,
+        aConfig: *mut otBorderRouterConfig,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the next external route in the partition's Network Data.
+    ///
+    /// @param[in]      aInstance  A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator  A pointer to the Network Data iterator context. To get the first external route entry
+    ///it should be set to OT_NETWORK_DATA_ITERATOR_INIT.
+    /// @param[out]     aConfig    A pointer to where the External Route information will be placed.
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next External Route.
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent external route entry exists in the Thread Network Data.
+    pub fn otNetDataGetNextRoute(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNetworkDataIterator,
+        aConfig: *mut otExternalRouteConfig,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the next service in the partition's Network Data.
+    ///
+    /// @param[in]      aInstance  A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator  A pointer to the Network Data iterator context. To get the first service entry
+    ///it should be set to OT_NETWORK_DATA_ITERATOR_INIT.
+    /// @param[out]     aConfig    A pointer to where the service information will be placed.
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next service.
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent service exists in the partition's Network Data.
+    pub fn otNetDataGetNextService(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNetworkDataIterator,
+        aConfig: *mut otServiceConfig,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the next 6LoWPAN Context ID info in the partition's Network Data.
+    ///
+    /// @param[in]      aInstance     A pointer to an OpenThread instance.
+    /// @param[in,out]  aIterator     A pointer to the Network Data iterator. To get the first service entry
+    ///it should be set to OT_NETWORK_DATA_ITERATOR_INIT.
+    /// @param[out]     aContextInfo  A pointer to where the retrieved 6LoWPAN Context ID information will be placed.
+    ///
+    /// @retval OT_ERROR_NONE       Successfully found the next 6LoWPAN Context ID info.
+    /// @retval OT_ERROR_NOT_FOUND  No subsequent 6LoWPAN Context info exists in the partition's Network Data.
+    pub fn otNetDataGetNextLowpanContextInfo(
+        aInstance: *mut otInstance,
+        aIterator: *mut otNetworkDataIterator,
+        aContextInfo: *mut otLowpanContextInfo,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Gets the Commissioning Dataset from the partition's Network Data.
+    ///
+    /// @param[in]  aInstance   A pointer to the OpenThread instance.
+    /// @param[out] aDataset    A pointer to a `otCommissioningDataset` to populate.
+    pub fn otNetDataGetCommissioningDataset(
+        aInstance: *mut otInstance,
+        aDataset: *mut otCommissioningDataset,
+    );
+}
+unsafe extern "C" {
+    /// Get the Network Data Version.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    ///
+    /// @returns The Network Data Version.
+    pub fn otNetDataGetVersion(aInstance: *mut otInstance) -> u8;
+}
+unsafe extern "C" {
+    /// Get the Stable Network Data Version.
+    ///
+    /// @param[in]  aInstance A pointer to an OpenThread instance.
+    ///
+    /// @returns The Stable Network Data Version.
+    pub fn otNetDataGetStableVersion(aInstance: *mut otInstance) -> u8;
+}
+unsafe extern "C" {
+    /// Check if the steering data includes a Joiner.
+    ///
+    /// @param[in]  aInstance          A pointer to an OpenThread instance.
+    /// @param[in]  aEui64             A pointer to the Joiner's IEEE EUI-64.
+    ///
+    /// @retval OT_ERROR_NONE          @p aEui64 is included in the steering data.
+    /// @retval OT_ERROR_INVALID_STATE No steering data present.
+    /// @retval OT_ERROR_NOT_FOUND     @p aEui64 is not included in the steering data.
+    pub fn otNetDataSteeringDataCheckJoiner(
+        aInstance: *mut otInstance,
+        aEui64: *const otExtAddress,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Check if the steering data includes a Joiner with a given discerner value.
+    ///
+    /// @param[in]  aInstance          A pointer to an OpenThread instance.
+    /// @param[in]  aDiscerner         A pointer to the Joiner Discerner.
+    ///
+    /// @retval OT_ERROR_NONE          @p aDiscerner is included in the steering data.
+    /// @retval OT_ERROR_INVALID_STATE No steering data present.
+    /// @retval OT_ERROR_NOT_FOUND     @p aDiscerner is not included in the steering data.
+    pub fn otNetDataSteeringDataCheckJoinerWithDiscerner(
+        aInstance: *mut otInstance,
+        aDiscerner: *const otJoinerDiscerner,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Check whether a given Prefix can act as a valid OMR prefix and also the Leader's Network Data contains this prefix.
+    ///
+    /// @param[in]  aInstance  A pointer to an OpenThread instance.
+    /// @param[in]  aPrefix    A pointer to the IPv6 prefix.
+    ///
+    /// @returns  Whether @p aPrefix is a valid OMR prefix and Leader's Network Data contains the OMR prefix @p aPrefix.
+    ///
+    /// @note This API is only available when `OPENTHREAD_CONFIG_BORDER_ROUTING_ENABLE` is used.
+    pub fn otNetDataContainsOmrPrefix(
+        aInstance: *mut otInstance,
+        aPrefix: *const otIp6Prefix,
+    ) -> bool;
 }
 unsafe extern "C" {
     /// Set the alarm to fire at @p aDt milliseconds after @p aT0.
@@ -10615,6 +11431,8 @@ pub const OT_SETTINGS_KEY_BR_ULA_PREFIX: _bindgen_ty_10 = 15;
 pub const OT_SETTINGS_KEY_BR_ON_LINK_PREFIXES: _bindgen_ty_10 = 16;
 ///< Unique Border Agent/Router ID.
 pub const OT_SETTINGS_KEY_BORDER_AGENT_ID: _bindgen_ty_10 = 17;
+///< TCAT Commissioner certificate
+pub const OT_SETTINGS_KEY_TCAT_COMMR_CERT: _bindgen_ty_10 = 18;
 pub const OT_SETTINGS_KEY_VENDOR_RESERVED_MIN: _bindgen_ty_10 = 32768;
 pub const OT_SETTINGS_KEY_VENDOR_RESERVED_MAX: _bindgen_ty_10 = 65535;
 /// Defines the keys of settings.
@@ -10793,6 +11611,88 @@ unsafe extern "C" {
     /// @param[in] aInstance  The OpenThread instance structure.
     pub fn otPlatSettingsWipe(aInstance: *mut otInstance);
 }
+/// Represents the log level.
+pub type otLogLevel = ::core::ffi::c_int;
+///< OpenThread API
+pub const otLogRegion_OT_LOG_REGION_API: otLogRegion = 1;
+///< MLE
+pub const otLogRegion_OT_LOG_REGION_MLE: otLogRegion = 2;
+///< EID-to-RLOC mapping.
+pub const otLogRegion_OT_LOG_REGION_ARP: otLogRegion = 3;
+///< Network Data
+pub const otLogRegion_OT_LOG_REGION_NET_DATA: otLogRegion = 4;
+///< ICMPv6
+pub const otLogRegion_OT_LOG_REGION_ICMP: otLogRegion = 5;
+///< IPv6
+pub const otLogRegion_OT_LOG_REGION_IP6: otLogRegion = 6;
+///< TCP
+pub const otLogRegion_OT_LOG_REGION_TCP: otLogRegion = 7;
+///< IEEE 802.15.4 MAC
+pub const otLogRegion_OT_LOG_REGION_MAC: otLogRegion = 8;
+///< Memory
+pub const otLogRegion_OT_LOG_REGION_MEM: otLogRegion = 9;
+///< NCP
+pub const otLogRegion_OT_LOG_REGION_NCP: otLogRegion = 10;
+///< Mesh Commissioning Protocol
+pub const otLogRegion_OT_LOG_REGION_MESH_COP: otLogRegion = 11;
+///< Network Diagnostic
+pub const otLogRegion_OT_LOG_REGION_NET_DIAG: otLogRegion = 12;
+///< Platform
+pub const otLogRegion_OT_LOG_REGION_PLATFORM: otLogRegion = 13;
+///< CoAP
+pub const otLogRegion_OT_LOG_REGION_COAP: otLogRegion = 14;
+///< CLI
+pub const otLogRegion_OT_LOG_REGION_CLI: otLogRegion = 15;
+///< OpenThread Core
+pub const otLogRegion_OT_LOG_REGION_CORE: otLogRegion = 16;
+///< Utility module
+pub const otLogRegion_OT_LOG_REGION_UTIL: otLogRegion = 17;
+///< Backbone Router (available since Thread 1.2)
+pub const otLogRegion_OT_LOG_REGION_BBR: otLogRegion = 18;
+///< Multicast Listener Registration (available since Thread 1.2)
+pub const otLogRegion_OT_LOG_REGION_MLR: otLogRegion = 19;
+///< Domain Unicast Address (available since Thread 1.2)
+pub const otLogRegion_OT_LOG_REGION_DUA: otLogRegion = 20;
+///< Border Router
+pub const otLogRegion_OT_LOG_REGION_BR: otLogRegion = 21;
+///< Service Registration Protocol (SRP)
+pub const otLogRegion_OT_LOG_REGION_SRP: otLogRegion = 22;
+///< DNS
+pub const otLogRegion_OT_LOG_REGION_DNS: otLogRegion = 23;
+/// Represents log regions.
+///
+/// The support for log region is removed and instead each core module can define its own name to appended to the logs.
+/// However, the `otLogRegion` enumeration is still defined as before to help with platforms which we may be using it
+/// in their `otPlatLog()` implementation. The OT core will always emit all logs with `OT_LOG_REGION_CORE`.
+pub type otLogRegion = ::core::ffi::c_uint;
+unsafe extern "C" {
+    /// Outputs logs.
+    ///
+    /// Note that the support for log region is removed. The OT core will always emit all logs with `OT_LOG_REGION_CORE`
+    /// as @p aLogRegion.
+    ///
+    /// @param[in]  aLogLevel   The log level.
+    /// @param[in]  aLogRegion  The log region.
+    /// @param[in]  aFormat     A pointer to the format string.
+    /// @param[in]  ...         Arguments for the format specification.
+    pub fn otPlatLog(
+        aLogLevel: otLogLevel,
+        aLogRegion: otLogRegion,
+        aFormat: *const ::core::ffi::c_char,
+        ...
+    );
+}
+unsafe extern "C" {
+    /// Handles OpenThread log level changes.
+    ///
+    /// This platform function is called whenever the OpenThread log level changes.
+    /// This platform function is optional since an empty weak implementation has been provided.
+    ///
+    /// @note Only applicable when `OPENTHREAD_CONFIG_LOG_LEVEL_DYNAMIC_ENABLE=1`.
+    ///
+    /// @param[in]  aLogLevel  The new OpenThread log level.
+    pub fn otPlatLogHandleLevelChanged(aLogLevel: otLogLevel);
+}
 /// Represents a TXT record entry representing a key/value pair (RFC 6763 - section 6.3).
 ///
 /// The string buffers pointed to by `mKey` and `mValue` MUST persist and remain unchanged after an instance of such
@@ -10821,6 +11721,15 @@ pub struct otDnsTxtEntry {
     ///< Number of bytes in `mValue` buffer.
     pub mValueLength: u16,
 }
+impl Default for otDnsTxtEntry {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 /// Represents an iterator for TXT record entries (key/value pairs).
 ///
 /// The data fields in this structure are intended for use by OpenThread core and caller should not read or change them.
@@ -10830,6 +11739,15 @@ pub struct otDnsTxtEntryIterator {
     pub mPtr: *const ::core::ffi::c_void,
     pub mData: [u16; 2usize],
     pub mChar: [::core::ffi::c_char; 65usize],
+}
+impl Default for otDnsTxtEntryIterator {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 unsafe extern "C" {
     /// Initializes a TXT record iterator.
@@ -10941,6 +11859,15 @@ pub struct otSrpClientHostInfo {
     ///< Host info state.
     pub mState: otSrpClientItemState,
 }
+impl Default for otSrpClientHostInfo {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 /// Represents an SRP client service.
 ///
 /// The values in this structure, including the string buffers for the names and the TXT record entries, MUST persist
@@ -10987,6 +11914,15 @@ pub struct otSrpClientService {
     pub mLease: u32,
     ///< Desired key lease interval in sec - zero to use default.
     pub mKeyLease: u32,
+}
+impl Default for otSrpClientService {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
 }
 /// Pointer type defines the callback used by SRP client to notify user of changes/events/errors.
 ///
@@ -11560,6 +12496,15 @@ pub struct otSrpClientBuffersServiceEntry {
     ///< The SRP client TXT entry.
     pub mTxtEntry: otDnsTxtEntry,
 }
+impl Default for otSrpClientBuffersServiceEntry {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
 unsafe extern "C" {
     /// Gets the string buffer to use for SRP client host name.
     ///
@@ -11681,4 +12626,3 @@ unsafe extern "C" {
         aArrayLength: *mut u16,
     ) -> *mut *const ::core::ffi::c_char;
 }
-pub type __builtin_va_list = *mut ::core::ffi::c_void;
