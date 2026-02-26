@@ -44,7 +44,7 @@ pub use bindings::*;
     unnecessary_transmutes,
     clippy::all
 )]
-pub mod bindings {
+mod bindings {
     #[cfg(not(target_os = "espidf"))]
     include!(env!("OPENTHREAD_SYS_BINDINGS_FILE"));
 

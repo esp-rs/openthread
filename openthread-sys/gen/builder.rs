@@ -95,14 +95,8 @@ impl OpenThreadBuilder {
             .derive_debug(false)
             .derive_default(true)
             .layout_tests(false)
-            .blocklist_function("strtold")
-            .blocklist_function("_strtold_r")
-            .blocklist_function("v.*printf")
-            .blocklist_function("v.*scanf")
-            .blocklist_function("_v.*printf_r")
-            .blocklist_function("_v.*scanf_r")
-            .blocklist_function("q.*cvt")
-            .blocklist_function("q.*cvt_r")
+            .allowlist_item("ot.*")
+            .allowlist_item("OT_.*")
             .header(
                 self.crate_root_path
                     .join("gen")
