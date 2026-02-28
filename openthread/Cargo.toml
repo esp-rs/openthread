@@ -36,7 +36,7 @@ embassy-futures = "0.1"
 heapless = "0.8"
 bitflags = "2.5"
 embassy-net-driver-channel = { version = "0.3", optional = true }
-edge-nal = { version = "0.5", optional = true }
+edge-nal = { version = "0.6", optional = true }
 esp-radio = { version = "0.17", features = ["unstable", "ieee802154"], optional = true }
-embassy-nrf = { version = "0.8", optional = true }
+embassy-nrf = { version = "0.9", optional = true }
 portable-atomic = "1"

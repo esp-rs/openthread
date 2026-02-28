@@ -154,6 +154,11 @@ extern "C" fn otPlatRadioSetPanId(instance: *const otInstance, pan_id: u16) {
 }
 
 #[no_mangle]
+extern "C" fn otPlatRadioSetRxOnWhenIdle(instance: *const otInstance, enable: bool) {
+    OtContext::callback(instance).plat_radio_set_rx_on_when_idle(enable);
+}
+
+#[no_mangle]
 extern "C" fn otPlatRadioTransmit(
     instance: *const otInstance,
     frame: *const otRadioFrame,
