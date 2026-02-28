@@ -7,6 +7,7 @@
 
 use core::cell::{RefCell, RefMut};
 use core::ffi::c_void;
+use core::fmt::Display;
 use core::future::poll_fn;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
@@ -108,6 +109,14 @@ impl From<otError> for OtError {
         Self(value)
     }
 }
+
+impl Display for OtError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "OtError({})", self.0)
+    }
+}
+
+impl core::error::Error for OtError {}
 
 /// A macro for converting an `otError` value to a `Result<(), OtError>` value.
 macro_rules! ot {
