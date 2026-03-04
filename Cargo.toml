@@ -6,3 +6,7 @@ members = [
 ]
 
 exclude = ["examples", "xtask"]
+
+[patch.crates-io]
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "e156b5453a8adc123b7a8b6aa08e0698ec87dfe8" }

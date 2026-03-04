@@ -3,20 +3,12 @@
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::signal::Signal;
 
-use esp_radio::ieee802154::{Config as EspConfig, Error};
+use esp_radio::ieee802154::Config as EspConfig;
 
-use crate::{
-    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
-};
+use crate::fmt::Bytes;
+use crate::{Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioErrorKind};
 
 pub use esp_radio::ieee802154::Ieee802154;
-
-impl RadioError for Error {
-    fn kind(&self) -> RadioErrorKind {
-        // TODO
-        RadioErrorKind::Other
-    }
-}
 
 /// The `esp-hal` ESP IEEE 802.15.4 radio.
 pub struct EspRadio<'a> {
@@ -35,7 +27,9 @@ impl<'a> EspRadio<'a> {
         };
 
         this.driver.set_rx_available_callback_fn(Self::rx_callback);
-        this.driver.set_tx_done_callback_fn(Self::tx_callback);
+        this.driver.set_tx_done_callback_fn(Self::tx_done_callback);
+        this.driver
+            .set_tx_failed_callback_fn(Self::tx_failed_callback);
 
         this.update_driver_config();
 
@@ -69,6 +63,10 @@ impl<'a> EspRadio<'a> {
             pan_id: config.pan_id,
             short_addr: config.short_addr,
             ext_addr: config.ext_addr,
+            // The default of 10 is too small for OpenThread,
+            // which can have bursts of incoming frames, so we increase it to 50.
+            // TODO: See if we can get by with a smaller number to save memory.
+            rx_queue_size: 50,
             ..Default::default()
         };
 
@@ -79,15 +77,22 @@ impl<'a> EspRadio<'a> {
         RX_SIGNAL.signal(());
     }
 
-    fn tx_callback() {
-        TX_SIGNAL.signal(());
+    fn tx_done_callback() {
+        TX_SIGNAL.signal(true); // success
+    }
+
+    fn tx_failed_callback() {
+        TX_SIGNAL.signal(false); // failure
     }
 }
 
 impl Radio for EspRadio<'_> {
-    type Error = Error;
+    type Error = RadioErrorKind;
 
-    const CAPS: Capabilities = Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF) /* TODO: Depends on coex being off .union(Capabilities::RX_WHEN_IDLE) */;
+    const CAPS: Capabilities = Capabilities::ACK_TIMEOUT
+        .union(Capabilities::CSMA_BACKOFF)
+        // .union(Capabilities::RX_ON_WHEN_IDLE) TODO: Depends on coex being off in ESP-IDF
+        ;
 
     const MAC_CAPS: MacCapabilities = MacCapabilities::all();
 
@@ -105,33 +110,79 @@ impl Radio for EspRadio<'_> {
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        _cca: bool,
-        _ack_psdu_buf: Option<&mut [u8]>,
+        cca: bool,
+        ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         TX_SIGNAL.reset();
 
         trace!(
-            "802.15.4 TX: {} bytes ch{}",
+            "802.15.4: About to TX {} bytes ch{}",
             psdu.len(),
             self.config.channel
         );
 
-        self.driver.transmit_raw(psdu)?;
+        self.driver
+            .transmit_raw(psdu, cca)
+            .map_err(|_| RadioErrorKind::Other)?;
 
-        TX_SIGNAL.wait().await;
+        let success = TX_SIGNAL.wait().await;
 
-        trace!("802.15.4 TX done");
+        if success {
+            trace!("802.15.4: TX done");
 
-        Ok(None)
+            if let Some(ack_psdu_buf) = ack_psdu_buf {
+                // After tx_done signal received, get the ACK frame:
+                if let Some(ack_frame) = self.driver.get_ack_frame() {
+                    if ack_frame.data.len() >= 1 {
+                        // Must have at least 1 byte for PSDU
+                        let ack_psdu_len =
+                            (ack_frame.data.len() - 1).min((ack_frame.data[0] & 0x7f) as usize);
+
+                        if ack_psdu_len <= ack_psdu_buf.len() {
+                            ack_psdu_buf[..ack_psdu_len]
+                                .copy_from_slice(&ack_frame.data[1..][..ack_psdu_len]);
+
+                            trace!(
+                                "802.15.4: ACK: {} on ch{}",
+                                Bytes(&ack_psdu_buf[..ack_psdu_len]),
+                                ack_frame.channel
+                            );
+
+                            // Only read RSSI if there is at least one byte after the PSDU.
+                            let rssi = if ack_frame.data.len() > 1 + ack_psdu_len {
+                                Some(ack_frame.data[1..][ack_psdu_len] as i8)
+                            } else {
+                                None
+                            };
+
+                            return Ok(Some(PsduMeta {
+                                len: ack_psdu_len,
+                                channel: ack_frame.channel,
+                                rssi,
+                            }));
+                        } else {
+                            trace!(
+                                "802.15.4: ACK frame too large for provided buffer: {} bytes",
+                                ack_psdu_len
+                            );
+                        }
+                    }
+                }
+            }
+
+            Ok(None)
+        } else {
+            trace!("802.15.4: TX failed");
+
+            // Report as a failure so OpenThread SubMac retries
+            Err(RadioErrorKind::TxFailed)
+        }
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         RX_SIGNAL.reset();
 
-        trace!(
-            "ESP Radio, about to receive on channel {}",
-            self.config.channel
-        );
+        trace!("802.15.4: About to RX on ch{}", self.config.channel);
 
         self.driver.start_receive();
 
@@ -143,13 +194,32 @@ impl Radio for EspRadio<'_> {
             RX_SIGNAL.wait().await;
         };
 
+        if raw.data.len() < 1 {
+            // Must have at least 1 byte for PSDU
+            return Err(RadioErrorKind::Other);
+        }
+
         let psdu_len = (raw.data.len() - 1).min((raw.data[0] & 0x7f) as usize);
+        if psdu_len > psdu_buf.len() {
+            // PSDU length is larger than the provided buffer
+            trace!(
+                "802.15.4: Received frame too large for provided buffer: {} bytes",
+                psdu_len
+            );
+            return Err(RadioErrorKind::Other);
+        }
+
         psdu_buf[..psdu_len].copy_from_slice(&raw.data[1..][..psdu_len]);
 
-        let rssi = raw.data[1..][psdu_len] as i8;
+        // Only read RSSI if there is at least one byte after the PSDU.
+        let rssi = if raw.data.len() > 1 + psdu_len {
+            Some(raw.data[1..][psdu_len] as i8)
+        } else {
+            None
+        };
 
         trace!(
-            "802.15.4 RX: {} bytes ch{} rssi={}",
+            "802.15.4: RX {} bytes ch{} rssi={:?}",
             psdu_len,
             raw.channel,
             rssi
@@ -158,11 +228,11 @@ impl Radio for EspRadio<'_> {
         Ok(PsduMeta {
             len: psdu_len,
             channel: raw.channel,
-            rssi: Some(rssi),
+            rssi,
         })
     }
 }
 
 // Esp chips have a single radio, so having statics for these is OK
-static TX_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();
+static TX_SIGNAL: Signal<CriticalSectionRawMutex, bool> = Signal::new();
 static RX_SIGNAL: Signal<CriticalSectionRawMutex, ()> = Signal::new();

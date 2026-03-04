@@ -7,6 +7,7 @@
 
 use core::cell::{RefCell, RefMut};
 use core::ffi::c_void;
+use core::fmt::Display;
 use core::future::poll_fn;
 use core::marker::PhantomData;
 use core::mem::MaybeUninit;
@@ -108,6 +109,14 @@ impl From<otError> for OtError {
         Self(value)
     }
 }
+
+impl Display for OtError {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        write!(f, "OtError({})", self.0)
+    }
+}
+
+impl core::error::Error for OtError {}
 
 /// A macro for converting an `otError` value to a `Result<(), OtError>` value.
 macro_rules! ot {
@@ -1706,6 +1715,18 @@ impl<'a> OtContext<'a> {
         state.ot.radio.signal(RadioCommand::Rx(conf));
 
         Ok(())
+    }
+
+    fn plat_radio_set_rx_on_when_idle(&mut self, on: bool) {
+        info!("Plat radio set RX on when idle callback, on: {}", on);
+
+        let state = self.state();
+
+        if state.ot.radio_conf.rx_when_idle != on {
+            // Defer applying the new rx_when_idle value until the next role change event, to avoid
+            // unnecessary otThreadGetDeviceRole calls on every state change.
+            state.ot.pending_rx_when_idle = Some(on);
+        }
     }
 
     fn plat_settings_init(&mut self, sensitive_keys: &[u16]) {
