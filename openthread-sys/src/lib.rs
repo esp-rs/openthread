@@ -34,7 +34,9 @@
 #![no_std]
 #![allow(unknown_lints)]
 
-pub use bindings::*;
+pub use self::bindings::*;
+// Make sure mbedtls-rs-sys is linked.
+use mbedtls_rs as _;
 
 #[allow(
     non_camel_case_types,
