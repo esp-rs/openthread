@@ -30,6 +30,7 @@ impl OpenThreadBuilder {
     /// - `force_esp_riscv_toolchain`: If true, and if the target is a riscv32 target, force the use of the Espressif RISCV GCC toolchain
     ///   (`riscv32-esp-elf-gcc`) rather than the derived `riscv32-unknown-elf-gcc` toolchain which is the "official" RISC-V one
     ///   (https://github.com/riscv-collab/riscv-gnu-toolchain)
+    #[expect(clippy::too_many_arguments)]
     pub fn new(
         force_clang: bool,
         crate_root_path: PathBuf,
