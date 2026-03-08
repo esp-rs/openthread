@@ -32,6 +32,13 @@
 //! Note that this list is likely to change over time.
 
 #![no_std]
+#![allow(
+    rustdoc::bare_urls,
+    rustdoc::broken_intra_doc_links,
+    rustdoc::invalid_html_tags,
+    rustdoc::invalid_rust_codeblocks,
+    reason = "Documentation is generated from the C header files"
+)]
 #![allow(unknown_lints)]
 
 pub use bindings::*;
