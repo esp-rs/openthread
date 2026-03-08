@@ -4,9 +4,9 @@ use core::{
 };
 
 use openthread_sys::{
-    otBorderRouterConfig, otError_OT_ERROR_NONE, otNetDataGetNextOnMeshPrefix,
-    otRoutePreference_OT_ROUTE_PREFERENCE_HIGH, otRoutePreference_OT_ROUTE_PREFERENCE_LOW,
-    otRoutePreference_OT_ROUTE_PREFERENCE_MED, OT_NETWORK_DATA_ITERATOR_INIT,
+    otBorderRouterConfig, otNetDataGetNextOnMeshPrefix, OT_ERROR_NONE,
+    OT_NETWORK_DATA_ITERATOR_INIT, OT_ROUTE_PREFERENCE_HIGH, OT_ROUTE_PREFERENCE_LOW,
+    OT_ROUTE_PREFERENCE_MED,
 };
 
 use crate::{OpenThread, OtError};
@@ -14,22 +14,22 @@ use crate::{OpenThread, OtError};
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub enum OtRoutePreference {
     /// Low route preference
-    OtRoutePreferenceLow = otRoutePreference_OT_ROUTE_PREFERENCE_LOW as isize,
+    OtRoutePreferenceLow = OT_ROUTE_PREFERENCE_LOW as isize,
     /// Medium route preference
-    OtRoutePreferenceMed = otRoutePreference_OT_ROUTE_PREFERENCE_MED as isize,
+    OtRoutePreferenceMed = OT_ROUTE_PREFERENCE_MED as isize,
     /// High route preference
-    OtRoutePreferenceHigh = otRoutePreference_OT_ROUTE_PREFERENCE_HIGH as isize,
+    OtRoutePreferenceHigh = OT_ROUTE_PREFERENCE_HIGH as isize,
     Unkown = 2,
 }
 
 #[allow(non_upper_case_globals, clippy::unnecessary_cast)]
 impl OtRoutePreference {
     fn from_ot_int(input: i32) -> Self {
-        // These cast are needed as otRoutePreference_OT_ROUTE_PREFERENCE_* are i8 for thumbv*
+        // These cast are needed as OT_ROUTE_PREFERENCE_* are i8 for thumbv*
         // but i32 for riscv32im*
-        const value_low: i32 = otRoutePreference_OT_ROUTE_PREFERENCE_LOW as i32;
-        const value_med: i32 = otRoutePreference_OT_ROUTE_PREFERENCE_MED as i32;
-        const value_high: i32 = otRoutePreference_OT_ROUTE_PREFERENCE_HIGH as i32;
+        const value_low: i32 = OT_ROUTE_PREFERENCE_LOW as i32;
+        const value_med: i32 = OT_ROUTE_PREFERENCE_MED as i32;
+        const value_high: i32 = OT_ROUTE_PREFERENCE_HIGH as i32;
         match input {
             value_low => OtRoutePreference::OtRoutePreferenceLow,
             value_med => OtRoutePreference::OtRoutePreferenceMed,
@@ -209,7 +209,7 @@ impl OpenThread<'_> {
                 &mut network_data_iterator,
                 &mut a_config,
             )
-        } == otError_OT_ERROR_NONE
+        } == OT_ERROR_NONE
         {
             f(Some(OtBorderRouterConfig::from_ot(a_config)))?;
         }

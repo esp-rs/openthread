@@ -96,6 +96,7 @@ impl OpenThreadBuilder {
             .derive_debug(false)
             .derive_default(true)
             .layout_tests(false)
+            .prepend_enum_name(false)
             .allowlist_item("ot.*")
             .allowlist_item("OT_.*")
             .header(

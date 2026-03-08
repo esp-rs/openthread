@@ -67,20 +67,17 @@ mod srp;
 mod udp;
 
 use sys::{
-    otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
-    otDeviceRole_OT_DEVICE_ROLE_DETACHED, otDeviceRole_OT_DEVICE_ROLE_DISABLED,
-    otDeviceRole_OT_DEVICE_ROLE_LEADER, otDeviceRole_OT_DEVICE_ROLE_ROUTER, otError,
-    otError_OT_ERROR_ABORT, otError_OT_ERROR_CHANNEL_ACCESS_FAILURE, otError_OT_ERROR_DROP,
-    otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND, otError_OT_ERROR_NO_ACK,
-    otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize, otInstanceInitSingle, otIp6Address,
-    otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
+    otChangedFlags, otDeviceRole, otError, otInstance, otInstanceFinalize, otInstanceInitSingle,
+    otIp6Address, otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
     otIp6SetEnabled, otIp6SetReceiveCallback, otLinkModeConfig, otMessage, otMessageFree,
-    otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings,
-    otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone,
-    otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
-    otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
-    otThreadSetLinkMode, OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT,
-    OT_RADIO_FRAME_MAX_SIZE,
+    otMessageRead, otMessageSettings, otOperationalDataset, otOperationalDatasetTlvs,
+    otPlatAlarmMilliFired, otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted,
+    otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole,
+    otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode, OT_CHANGED_THREAD_ROLE,
+    OT_DEVICE_ROLE_CHILD, OT_DEVICE_ROLE_DETACHED, OT_DEVICE_ROLE_DISABLED, OT_DEVICE_ROLE_LEADER,
+    OT_DEVICE_ROLE_ROUTER, OT_ERROR_ABORT, OT_ERROR_CHANNEL_ACCESS_FAILURE, OT_ERROR_DROP,
+    OT_ERROR_NONE, OT_ERROR_NOT_FOUND, OT_ERROR_NO_ACK, OT_ERROR_NO_BUFS,
+    OT_MESSAGE_PRIORITY_NORMAL, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -122,7 +119,7 @@ impl core::error::Error for OtError {}
 macro_rules! ot {
     ($code: expr) => {{
         match $code {
-            $crate::sys::otError_OT_ERROR_NONE => Ok(()),
+            $crate::sys::OT_ERROR_NONE => Ok(()),
             err => Err($crate::OtError::new(err)),
         }
     }};
@@ -139,7 +136,7 @@ pub trait IntoOtCode {
 impl IntoOtCode for Result<(), OtError> {
     fn into_ot_code(self) -> otError {
         match self {
-            Ok(_) => otError_OT_ERROR_NONE,
+            Ok(_) => OT_ERROR_NONE,
             Err(e) => e.into_inner(),
         }
     }
@@ -176,7 +173,7 @@ impl<'a> OpenThread<'a> {
         {
             // `OpenThread` is already instantiated; can't instantiate another instance
             // until all `OpenThread` instances are dropped
-            Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
+            Err(OtError::new(OT_ERROR_NO_BUFS))?;
         }
 
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
@@ -853,7 +850,7 @@ impl<'a> OpenThread<'a> {
                                             state.ot.instance,
                                             &mut state.ot.radio_resources.snd_frame,
                                             core::ptr::null_mut(),
-                                            otError_OT_ERROR_ABORT,
+                                            OT_ERROR_ABORT,
                                         );
                                     }
                                 }
@@ -897,7 +894,7 @@ impl<'a> OpenThread<'a> {
                                                     state.ot.instance,
                                                     &mut state.ot.radio_resources.snd_frame,
                                                     ack_frame_ptr,
-                                                    otError_OT_ERROR_NONE,
+                                                    OT_ERROR_NONE,
                                                 );
                                             }
                                         }
@@ -968,7 +965,7 @@ impl<'a> OpenThread<'a> {
                                                 otPlatRadioReceiveDone(
                                                     instance,
                                                     &mut radio_resources.rcv_frame,
-                                                    otError_OT_ERROR_NONE,
+                                                    OT_ERROR_NONE,
                                                 );
                                             }
                                         }
@@ -1033,11 +1030,11 @@ impl<'a> OpenThread<'a> {
         E: RadioError,
     {
         match err.kind() {
-            RadioErrorKind::TxFailed => otError_OT_ERROR_CHANNEL_ACCESS_FAILURE,
+            RadioErrorKind::TxFailed => OT_ERROR_CHANNEL_ACCESS_FAILURE,
             RadioErrorKind::TxAckFailed
             | RadioErrorKind::RxAckTimeout
-            | RadioErrorKind::RxAckInvalid => otError_OT_ERROR_NO_ACK,
-            _ => otError_OT_ERROR_ABORT,
+            | RadioErrorKind::RxAckInvalid => OT_ERROR_NO_ACK,
+            _ => OT_ERROR_ABORT,
         }
     }
 }
@@ -1205,11 +1202,11 @@ impl From<otDeviceRole> for DeviceRole {
     #[allow(non_snake_case)]
     fn from(value: otDeviceRole) -> Self {
         match value {
-            otDeviceRole_OT_DEVICE_ROLE_DISABLED => Self::Disabled,
-            otDeviceRole_OT_DEVICE_ROLE_DETACHED => Self::Detached,
-            otDeviceRole_OT_DEVICE_ROLE_CHILD => Self::Child,
-            otDeviceRole_OT_DEVICE_ROLE_ROUTER => Self::Router,
-            otDeviceRole_OT_DEVICE_ROLE_LEADER => Self::Leader,
+            OT_DEVICE_ROLE_DISABLED => Self::Disabled,
+            OT_DEVICE_ROLE_DETACHED => Self::Detached,
+            OT_DEVICE_ROLE_CHILD => Self::Child,
+            OT_DEVICE_ROLE_ROUTER => Self::Router,
+            OT_DEVICE_ROLE_LEADER => Self::Leader,
             other => Self::Other(other),
         }
     }
@@ -1241,7 +1238,7 @@ impl<'a> OtActiveState<'a> {
         let udp = self
             .udp
             .as_mut()
-            .ok_or(OtError::new(crate::sys::otError_OT_ERROR_FAILED))?;
+            .ok_or(OtError::new(crate::sys::OT_ERROR_FAILED))?;
 
         Ok(udp)
     }
@@ -1255,7 +1252,7 @@ impl<'a> OtActiveState<'a> {
         let srp = self
             .srp
             .as_mut()
-            .ok_or(OtError::new(crate::sys::otError_OT_ERROR_FAILED))?;
+            .ok_or(OtError::new(crate::sys::OT_ERROR_FAILED))?;
 
         Ok(srp)
     }
@@ -1358,14 +1355,14 @@ impl<'a> OtContext<'a> {
                 packet.len() as _,
                 &otMessageSettings {
                     mLinkSecurityEnabled: true,
-                    mPriority: otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL as _,
+                    mPriority: OT_MESSAGE_PRIORITY_NORMAL as _,
                 },
             )
         };
 
         if !msg.is_null() {
             let res = unsafe { otIp6Send(state.ot.instance, msg) };
-            if res != otError_OT_ERROR_DROP {
+            if res != OT_ERROR_DROP {
                 ot!(res)?;
 
                 trace!("Transmitted IPv6 packet: {}", Bytes(packet));
@@ -1377,7 +1374,7 @@ impl<'a> OtContext<'a> {
 
             Ok(())
         } else {
-            Err(OtError::new(otError_OT_ERROR_NO_BUFS))
+            Err(OtError::new(OT_ERROR_NO_BUFS))
         }
     }
 
@@ -1758,7 +1755,7 @@ impl<'a> OtContext<'a> {
         );
 
         if index < 0 {
-            Err(OtError::new(otError_OT_ERROR_NOT_FOUND))?;
+            Err(OtError::new(OT_ERROR_NOT_FOUND))?;
         }
 
         let state = self.state();
@@ -1767,7 +1764,7 @@ impl<'a> OtContext<'a> {
 
         let len = settings
             .get(key, index as _, buf)?
-            .ok_or(OtError::new(otError_OT_ERROR_NOT_FOUND))?;
+            .ok_or(OtError::new(OT_ERROR_NOT_FOUND))?;
 
         Ok(len)
     }
@@ -1812,7 +1809,7 @@ impl<'a> OtContext<'a> {
         );
 
         if index < 0 {
-            Err(OtError::new(otError_OT_ERROR_NOT_FOUND))?;
+            Err(OtError::new(OT_ERROR_NOT_FOUND))?;
         }
 
         let state = self.state();
@@ -1820,7 +1817,7 @@ impl<'a> OtContext<'a> {
         let settings = &mut state.ot.settings;
 
         if !settings.remove(key, Some(index as _))? {
-            Err(OtError::new(otError_OT_ERROR_NOT_FOUND))?;
+            Err(OtError::new(OT_ERROR_NOT_FOUND))?;
         }
 
         Ok(())

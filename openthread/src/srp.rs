@@ -8,23 +8,19 @@ use core::net::{Ipv6Addr, SocketAddrV6};
 
 use crate::signal::Signal;
 use crate::sys::{
-    otDnsTxtEntry, otError_OT_ERROR_INVALID_ARGS, otError_OT_ERROR_INVALID_STATE,
-    otError_OT_ERROR_NO_BUFS, otIp6Address, otSrpClientAddService, otSrpClientClearHostAndServices,
+    otDnsTxtEntry, otIp6Address, otSrpClientAddService, otSrpClientClearHostAndServices,
     otSrpClientClearService, otSrpClientEnableAutoHostAddress, otSrpClientEnableAutoStartMode,
     otSrpClientGetHostInfo, otSrpClientGetKeyLeaseInterval, otSrpClientGetLeaseInterval,
     otSrpClientGetServerAddress, otSrpClientGetServices, otSrpClientGetTtl, otSrpClientHostInfo,
     otSrpClientIsAutoStartModeEnabled, otSrpClientIsRunning, otSrpClientItemState,
-    otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_ADDING,
-    otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REFRESHING,
-    otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REGISTERED,
-    otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REMOVED,
-    otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REMOVING,
-    otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_TO_ADD,
-    otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_TO_REFRESH,
-    otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_TO_REMOVE, otSrpClientRemoveHostAndServices,
-    otSrpClientRemoveService, otSrpClientService, otSrpClientSetHostAddresses,
-    otSrpClientSetHostName, otSrpClientSetKeyLeaseInterval, otSrpClientSetLeaseInterval,
-    otSrpClientSetTtl, otSrpClientStart, otSrpClientStop,
+    otSrpClientRemoveHostAndServices, otSrpClientRemoveService, otSrpClientService,
+    otSrpClientSetHostAddresses, otSrpClientSetHostName, otSrpClientSetKeyLeaseInterval,
+    otSrpClientSetLeaseInterval, otSrpClientSetTtl, otSrpClientStart, otSrpClientStop,
+    OT_ERROR_INVALID_ARGS, OT_ERROR_INVALID_STATE, OT_ERROR_NO_BUFS,
+    OT_SRP_CLIENT_ITEM_STATE_ADDING, OT_SRP_CLIENT_ITEM_STATE_REFRESHING,
+    OT_SRP_CLIENT_ITEM_STATE_REGISTERED, OT_SRP_CLIENT_ITEM_STATE_REMOVED,
+    OT_SRP_CLIENT_ITEM_STATE_REMOVING, OT_SRP_CLIENT_ITEM_STATE_TO_ADD,
+    OT_SRP_CLIENT_ITEM_STATE_TO_REFRESH, OT_SRP_CLIENT_ITEM_STATE_TO_REMOVE,
 };
 use crate::{ot, to_ot_addr, to_sock_addr, OpenThread, OtContext, OtError};
 
@@ -220,14 +216,14 @@ impl defmt::Format for SrpState {
 impl From<otSrpClientItemState> for SrpState {
     fn from(value: otSrpClientItemState) -> Self {
         match value {
-            otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_TO_ADD => Self::ToAdd,
-            otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_ADDING => Self::Adding,
-            otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_TO_REFRESH => Self::ToRefresh,
-            otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REFRESHING => Self::Refreshing,
-            otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_TO_REMOVE => Self::ToRemove,
-            otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REMOVING => Self::Removing,
-            otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REMOVED => Self::Removed,
-            otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REGISTERED => Self::Registered,
+            OT_SRP_CLIENT_ITEM_STATE_TO_ADD => Self::ToAdd,
+            OT_SRP_CLIENT_ITEM_STATE_ADDING => Self::Adding,
+            OT_SRP_CLIENT_ITEM_STATE_TO_REFRESH => Self::ToRefresh,
+            OT_SRP_CLIENT_ITEM_STATE_REFRESHING => Self::Refreshing,
+            OT_SRP_CLIENT_ITEM_STATE_TO_REMOVE => Self::ToRemove,
+            OT_SRP_CLIENT_ITEM_STATE_REMOVING => Self::Removing,
+            OT_SRP_CLIENT_ITEM_STATE_REMOVED => Self::Removed,
+            OT_SRP_CLIENT_ITEM_STATE_REGISTERED => Self::Registered,
             other => Self::Other(other),
         }
     }
@@ -639,7 +635,7 @@ impl OpenThread<'_> {
         let srp = ot.state().srp()?;
 
         if srp.conf_taken {
-            Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
+            Err(OtError::new(OT_ERROR_INVALID_STATE))?;
         }
 
         unsafe {
@@ -808,7 +804,7 @@ impl OpenThread<'_> {
             .taken
             .iter()
             .position(|&taken| !taken)
-            .ok_or(OtError::new(otError_OT_ERROR_NO_BUFS))?;
+            .ok_or(OtError::new(OT_ERROR_NO_BUFS))?;
 
         let service_data = &mut srp.services[slot];
         let buf = &mut srp.buffers[srp.buf_len * slot..srp.buf_len * (slot + 1)];
@@ -836,7 +832,7 @@ impl OpenThread<'_> {
         let srp = ot.state().srp()?;
 
         if slot > srp.services.len() || !srp.taken[slot] {
-            Err(OtError::new(otError_OT_ERROR_INVALID_ARGS))?;
+            Err(OtError::new(OT_ERROR_INVALID_ARGS))?;
         }
 
         if immediate {
@@ -910,7 +906,7 @@ impl OtContext<'_> {
         let state = self.state();
 
         if let Ok(srp) = state.srp() {
-            if host_info.mState == otSrpClientItemState_OT_SRP_CLIENT_ITEM_STATE_REMOVED {
+            if host_info.mState == OT_SRP_CLIENT_ITEM_STATE_REMOVED {
                 srp.conf_taken = false;
                 info!("SRP host removed");
             }
@@ -961,7 +957,7 @@ fn align_min<T>(buf: &mut [u8], count: usize) -> Result<(&mut [T], &mut [u8]), O
 
     let (t_leading_buf0, t_buf, _) = unsafe { buf.align_to_mut::<T>() };
     if t_buf.len() < count {
-        Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
+        Err(OtError::new(OT_ERROR_NO_BUFS))?;
     }
 
     // Shrink `t_buf` to the number of requested items (count)
@@ -983,7 +979,7 @@ fn store_str<'t>(str: &str, buf: &'t mut [u8]) -> Result<(&'t CStr, &'t mut [u8]
     let data_len = str.len() + 1;
 
     if data_len > buf.len() {
-        Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
+        Err(OtError::new(OT_ERROR_NO_BUFS))?;
     }
 
     let (str_buf, rem_buf) = buf.split_at_mut(data_len);
@@ -1002,7 +998,7 @@ fn store_str<'t>(str: &str, buf: &'t mut [u8]) -> Result<(&'t CStr, &'t mut [u8]
 
 fn store_data<'t>(data: &[u8], buf: &'t mut [u8]) -> Result<(&'t [u8], &'t mut [u8]), OtError> {
     if data.len() > buf.len() {
-        Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
+        Err(OtError::new(OT_ERROR_NO_BUFS))?;
     }
 
     let (data_buf, rem_buf) = buf.split_at_mut(data.len());

@@ -6,10 +6,9 @@ use core::net::{Ipv6Addr, SocketAddrV6};
 
 use crate::signal::Signal;
 use crate::sys::{
-    otError_OT_ERROR_DROP, otError_OT_ERROR_NO_BUFS, otIp6Address, otIp6Address__bindgen_ty_1,
-    otMessage, otMessageAppend, otMessageGetLength, otMessageInfo, otMessageRead,
-    otNetifIdentifier_OT_NETIF_THREAD_INTERNAL, otSockAddr, otUdpBind, otUdpClose, otUdpConnect,
-    otUdpNewMessage, otUdpOpen, otUdpSend, otUdpSocket,
+    otIp6Address, otIp6Address__bindgen_ty_1, otMessage, otMessageAppend, otMessageGetLength,
+    otMessageInfo, otMessageRead, otSockAddr, otUdpBind, otUdpClose, otUdpConnect, otUdpNewMessage,
+    otUdpOpen, otUdpSend, otUdpSocket, OT_ERROR_DROP, OT_ERROR_NO_BUFS, OT_NETIF_THREAD_INTERNAL,
 };
 use crate::{ot, to_ot_addr, to_sock_addr, Bytes, OpenThread, OtContext, OtError};
 
@@ -36,7 +35,7 @@ impl<'a> UdpSocket<'a> {
                     state.ot.instance,
                     &mut unwrap!(state.udp.as_mut()).sockets[this.slot].ot_socket,
                     &to_ot_addr(local),
-                    otNetifIdentifier_OT_NETIF_THREAD_INTERNAL,
+                    OT_NETIF_THREAD_INTERNAL,
                 );
             }
         }
@@ -77,7 +76,7 @@ impl<'a> UdpSocket<'a> {
                 .sockets
                 .iter()
                 .position(|socket| !socket.taken)
-                .ok_or(otError_OT_ERROR_NO_BUFS)?;
+                .ok_or(OT_ERROR_NO_BUFS)?;
 
             let socket = &mut udp.sockets[slot];
             socket.ot_socket = Default::default();
@@ -206,7 +205,7 @@ impl<'a> UdpSocket<'a> {
             message_info.mPeerAddr.mFields.m8 = dst.ip().octets();
 
             let res = unsafe { otUdpSend(instance, &mut socket.ot_socket, msg, &message_info) };
-            if res != otError_OT_ERROR_DROP {
+            if res != OT_ERROR_DROP {
                 ot!(res)?;
             } else {
                 // OpenThread will intentionally drop some multicast and ICMPv6 packets
@@ -218,7 +217,7 @@ impl<'a> UdpSocket<'a> {
 
             Ok(())
         } else {
-            Err(OtError::new(otError_OT_ERROR_NO_BUFS))
+            Err(OtError::new(OT_ERROR_NO_BUFS))
         }
     }
 
@@ -395,7 +394,7 @@ impl UdpSocketCtx {
                     },
                     mPort: 0,
                 },
-                mNetifId: otNetifIdentifier_OT_NETIF_THREAD_INTERNAL,
+                mNetifId: OT_NETIF_THREAD_INTERNAL,
                 mHandler: None,
                 mContext: core::ptr::null_mut(),
                 mHandle: core::ptr::null_mut(),

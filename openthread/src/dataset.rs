@@ -4,9 +4,9 @@
 
 use crate::sys::{
     otDatasetParseTlvs, otDatasetSetActive, otDatasetSetActiveTlvs, otDatasetSetPending,
-    otDatasetSetPendingTlvs, otError_OT_ERROR_INVALID_ARGS, otError_OT_ERROR_NO_BUFS,
-    otExtendedPanId, otMeshLocalPrefix, otNetworkKey, otOperationalDataset,
-    otOperationalDatasetTlvs, otPskc, otTimestamp,
+    otDatasetSetPendingTlvs, otExtendedPanId, otMeshLocalPrefix, otNetworkKey,
+    otOperationalDataset, otOperationalDatasetTlvs, otPskc, otTimestamp, OT_ERROR_INVALID_ARGS,
+    OT_ERROR_NO_BUFS,
 };
 use crate::{ot, OpenThread, OtActiveState, OtError};
 
@@ -203,7 +203,7 @@ impl OperationalDataset<'_> {
         raw_dataset: &mut otOperationalDataset,
     ) -> Result<(), OtError> {
         if tlv.len() > ot_tlv.mTlvs.len() {
-            Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
+            Err(OtError::new(OT_ERROR_NO_BUFS))?;
         }
 
         ot_tlv.mTlvs[..tlv.len()].copy_from_slice(tlv);
@@ -366,7 +366,7 @@ impl OpenThread<'_> {
     /// Populates the internal OT TLV dataset structure with the given dataset in TLV slice format.
     fn fill_dataset_tlv(state: &mut OtActiveState<'_>, dataset: &[u8]) -> Result<(), OtError> {
         if state.ot.dataset_resources.dataset_tlv.mTlvs.len() < dataset.len() {
-            Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
+            Err(OtError::new(OT_ERROR_NO_BUFS))?;
         }
 
         state.ot.dataset_resources.dataset_tlv.mTlvs[..dataset.len()].copy_from_slice(dataset);
@@ -390,14 +390,14 @@ impl OpenThread<'_> {
         {
             let byte = (chf
                 .to_digit(16)
-                .ok_or(OtError::new(otError_OT_ERROR_INVALID_ARGS))?
+                .ok_or(OtError::new(OT_ERROR_INVALID_ARGS))?
                 << 4)
                 | chs
                     .to_digit(16)
-                    .ok_or(OtError::new(otError_OT_ERROR_INVALID_ARGS))?;
+                    .ok_or(OtError::new(OT_ERROR_INVALID_ARGS))?;
 
             if offset >= state.ot.dataset_resources.dataset_tlv.mTlvs.len() {
-                Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
+                Err(OtError::new(OT_ERROR_NO_BUFS))?;
             }
 
             state.ot.dataset_resources.dataset_tlv.mTlvs[offset] = byte as _;

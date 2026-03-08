@@ -3,14 +3,14 @@ use core::future::poll_fn;
 
 use crate::fmt::bitflags;
 use crate::sys::{
-    otActiveScanResult, otError_OT_ERROR_BUSY, otInstance, otLinkActiveScan,
-    otLinkIsActiveScanInProgress, OT_CHANNEL_10_MASK, OT_CHANNEL_11_MASK, OT_CHANNEL_12_MASK,
-    OT_CHANNEL_13_MASK, OT_CHANNEL_14_MASK, OT_CHANNEL_15_MASK, OT_CHANNEL_16_MASK,
-    OT_CHANNEL_17_MASK, OT_CHANNEL_18_MASK, OT_CHANNEL_19_MASK, OT_CHANNEL_1_MASK,
-    OT_CHANNEL_20_MASK, OT_CHANNEL_21_MASK, OT_CHANNEL_22_MASK, OT_CHANNEL_23_MASK,
-    OT_CHANNEL_24_MASK, OT_CHANNEL_25_MASK, OT_CHANNEL_26_MASK, OT_CHANNEL_2_MASK,
-    OT_CHANNEL_3_MASK, OT_CHANNEL_4_MASK, OT_CHANNEL_5_MASK, OT_CHANNEL_6_MASK, OT_CHANNEL_7_MASK,
-    OT_CHANNEL_8_MASK, OT_CHANNEL_9_MASK,
+    otActiveScanResult, otInstance, otLinkActiveScan, otLinkIsActiveScanInProgress,
+    OT_CHANNEL_10_MASK, OT_CHANNEL_11_MASK, OT_CHANNEL_12_MASK, OT_CHANNEL_13_MASK,
+    OT_CHANNEL_14_MASK, OT_CHANNEL_15_MASK, OT_CHANNEL_16_MASK, OT_CHANNEL_17_MASK,
+    OT_CHANNEL_18_MASK, OT_CHANNEL_19_MASK, OT_CHANNEL_1_MASK, OT_CHANNEL_20_MASK,
+    OT_CHANNEL_21_MASK, OT_CHANNEL_22_MASK, OT_CHANNEL_23_MASK, OT_CHANNEL_24_MASK,
+    OT_CHANNEL_25_MASK, OT_CHANNEL_26_MASK, OT_CHANNEL_2_MASK, OT_CHANNEL_3_MASK,
+    OT_CHANNEL_4_MASK, OT_CHANNEL_5_MASK, OT_CHANNEL_6_MASK, OT_CHANNEL_7_MASK, OT_CHANNEL_8_MASK,
+    OT_CHANNEL_9_MASK, OT_ERROR_BUSY,
 };
 use crate::{ot, OpenThread, OtContext, OtError};
 
@@ -137,7 +137,7 @@ impl<'a> OpenThread<'a> {
 
             if in_progress {
                 warn!("Another scan in progress");
-                return Err(OtError::new(otError_OT_ERROR_BUSY));
+                return Err(OtError::new(OT_ERROR_BUSY));
             }
 
             {
