@@ -5,7 +5,7 @@ use core::ffi::{c_char, CStr};
 
 use portable_atomic::AtomicUsize;
 
-use openthread_sys::otError_OT_ERROR_NONE;
+use openthread_sys::OT_ERROR_NONE;
 
 use crate::sys::{otError, otInstance, otLogLevel, otLogRegion, otRadioCaps, otRadioFrame};
 use crate::{IntoOtCode, OtActiveState, OtContext};
@@ -206,7 +206,7 @@ extern "C" fn otPlatSettingsGet(
     }) {
         Ok(len) => {
             *value_length = len as _;
-            otError_OT_ERROR_NONE
+            OT_ERROR_NONE
         }
         Err(e) => e.into_inner(),
     }
@@ -304,7 +304,7 @@ extern "C" fn otPlatLog(
         }
     }
 
-    otError_OT_ERROR_NONE
+    OT_ERROR_NONE
 }
 
 // Other C functions which might generally not be supported by MCU ROMs or by - say - `tinyrlibc`

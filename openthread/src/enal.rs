@@ -1,6 +1,6 @@
 use core::net::{Ipv4Addr, SocketAddr, SocketAddrV6};
 
-use crate::sys::otError_OT_ERROR_FAILED;
+use crate::sys::OT_ERROR_FAILED;
 use crate::{OpenThread, OtError, UdpSocket};
 
 impl edge_nal::io::Error for OtError {
@@ -199,7 +199,7 @@ impl<'a> edge_nal::UdpBind for OpenThread<'a> {
 
 fn socket_addr_v6(addr: SocketAddr) -> Result<SocketAddrV6, OtError> {
     match addr {
-        SocketAddr::V4(_) => Err(OtError::new(otError_OT_ERROR_FAILED)),
+        SocketAddr::V4(_) => Err(OtError::new(OT_ERROR_FAILED)),
         SocketAddr::V6(v6) => Ok(v6),
     }
 }

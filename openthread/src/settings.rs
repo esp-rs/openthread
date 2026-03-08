@@ -11,7 +11,7 @@ use embassy_sync::blocking_mutex::Mutex;
 use crate::fmt::Bytes;
 use crate::signal::Signal;
 use crate::sys::{
-    otError_OT_ERROR_INVALID_ARGS, otError_OT_ERROR_NOT_IMPLEMENTED, otError_OT_ERROR_NO_BUFS,
+    OT_ERROR_INVALID_ARGS, OT_ERROR_NOT_IMPLEMENTED, OT_ERROR_NO_BUFS,
     OT_SETTINGS_KEY_ACTIVE_DATASET, OT_SETTINGS_KEY_BORDER_AGENT_ID,
     OT_SETTINGS_KEY_BR_ON_LINK_PREFIXES, OT_SETTINGS_KEY_BR_ULA_PREFIX, OT_SETTINGS_KEY_CHILD_INFO,
     OT_SETTINGS_KEY_DAD_INFO, OT_SETTINGS_KEY_NETWORK_INFO, OT_SETTINGS_KEY_PARENT_INFO,
@@ -36,9 +36,9 @@ pub enum SettingsError {
 impl From<SettingsError> for OtError {
     fn from(error: SettingsError) -> OtError {
         match error {
-            SettingsError::NoBufs => OtError::new(otError_OT_ERROR_NO_BUFS),
-            SettingsError::InvalidData => OtError::new(otError_OT_ERROR_INVALID_ARGS),
-            SettingsError::NotImplemented => OtError::new(otError_OT_ERROR_NOT_IMPLEMENTED),
+            SettingsError::NoBufs => OtError::new(OT_ERROR_NO_BUFS),
+            SettingsError::InvalidData => OtError::new(OT_ERROR_INVALID_ARGS),
+            SettingsError::NotImplemented => OtError::new(OT_ERROR_NOT_IMPLEMENTED),
         }
     }
 }
