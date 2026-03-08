@@ -12,6 +12,8 @@ use core::net::Ipv6Addr;
 
 use defmt::info;
 
+use embedded_alloc::LlffHeap as Heap;
+
 use embassy_executor::InterruptExecutor;
 use embassy_executor::Spawner;
 
@@ -79,6 +81,11 @@ const THREAD_DATASET: &str = if let Some(dataset) = option_env!("THREAD_DATASET"
 };
 
 const NRF_RADIO_CAPS: otRadioCaps = NrfRadio::CAPS.bits();
+
+// TODO: Only needed for tinyrlibc's alloc functions which won't be called at
+//       runtime.
+#[global_allocator]
+static HEAP: Heap = Heap::empty();
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
