@@ -20,6 +20,19 @@ force-generate-bindings = []
 # https://github.com/riscv-collab/riscv-gnu-toolchain
 force-esp-riscv-toolchain = []
 
+# TODO: Unfortunately we need the full-blown mbedtls-rs here because it defines
+#       crucial symbols.
+[dependencies.mbedtls-rs]
+git = "https://github.com/esp-rs/mbedtls-rs"
+rev = "8b00d965aba67688caf5e40576f531fd5ac35b93"
+
+[dependencies.mbedtls-rs-sys]
+git = "https://github.com/esp-rs/mbedtls-rs"
+rev = "8b00d965aba67688caf5e40576f531fd5ac35b93"
+# TODO: this is currently required because otherwise mbedtls-rs-sys won't
+#       expose the 'include' metadata. 
+features = ["force-generate-bindings"]
+
 [build-dependencies]
 anyhow = "1"
 bindgen = "0.71"

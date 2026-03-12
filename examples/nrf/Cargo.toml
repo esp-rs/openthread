@@ -46,7 +46,8 @@ rand_core = "0.9"
 static_cell = "2.1"
 
 openthread = { path = "../../openthread", features = ["udp", "srp", "embassy-net-driver-channel", "embassy-nrf", "defmt"] }
-tinyrlibc = { version = "0.5", default-features = false, features = ["strstr", "strcmp", "isupper", "utoa", "strtoul"] }
+tinyrlibc = { version = "0.5", default-features = false, features = ["alloc", "strstr", "strcmp", "isupper", "utoa", "strtoul"] }
+embedded-alloc = "0.7.0"
 
 [[bin]]
 path = "./src/bin/basic_enet.rs"
