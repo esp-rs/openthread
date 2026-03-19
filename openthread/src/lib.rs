@@ -747,8 +747,12 @@ impl<'a> OpenThread<'a> {
         R: Radio,
         T: MacRadioTimer,
     {
-        // Fetch the radio capabilities from the driver
-        self.activate().state().ot.radio_caps = R::CAPS.bits();
+        // Fetch the radio capabilities and receive sensitivity from the driver
+        {
+            let mut active = self.activate();
+            active.state().ot.radio_caps = R::CAPS.bits();
+            active.state().ot.radio_receive_sensitivity = R::RECEIVE_SENSITIVITY_DBM;
+        }
 
         /// Fill the OpenThread frame structure based on the PSDU data returned by the radio
         fn fill_frame(
@@ -777,11 +781,18 @@ impl<'a> OpenThread<'a> {
 
             frame_psdu[..psdu.len()].copy_from_slice(psdu);
             frame.mLength = psdu.len() as _;
-            frame.mRadioType = 1; // TODO: Figure out what is this
+            frame.mRadioType = 0; // Radio 802.15.4 (trel is 1)
             frame.mChannel = psdu_meta.channel;
             frame.mInfo.mRxInfo.mRssi = rssi;
             frame.mInfo.mRxInfo.mLqi = rssi_to_lqi(rssi);
             frame.mInfo.mRxInfo.mTimestamp = Instant::now().as_micros(); // TODO: Not precise
+            frame.mInfo.mRxInfo.mAckFrameCounter = 0;
+            frame.mInfo.mRxInfo.mAckKeyId = 0;
+
+            unsafe {
+                frame.mInfo.mRxInfo.set_mAckedWithFramePending(false);
+                frame.mInfo.mRxInfo.set_mAckedWithSecEnhAck(false);
+            }
         }
 
         let mut radio = MacRadio::new(radio, timer);
@@ -1148,6 +1159,7 @@ impl OtResources {
             radio: Signal::new(),
             radio_conf: Config::new(),
             radio_caps: OT_RADIO_CAPS_ACK_TIMEOUT as otRadioCaps,
+            radio_receive_sensitivity: -120, // Some meaningful default for an MCU
             pending_rx_when_idle: None,
         }));
 
@@ -1582,9 +1594,8 @@ impl<'a> OtContext<'a> {
         rssi
     }
 
-    // from https://github.com/espressif/esp-idf/blob/release/v5.3/components/openthread/src/port/esp_openthread_radio.c#L35
     fn plat_radio_receive_sensititivy(&mut self) -> i8 {
-        let sens = 0; // TODO
+        let sens = self.state().ot.radio_receive_sensitivity;
         trace!(
             "Plat radio receive sensitivity callback, sensitivity: {}",
             sens
@@ -1594,13 +1605,14 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_get_promiscuous(&mut self) -> bool {
-        let promiscuous = false; // TODO
+        let state = self.state();
+
         trace!(
             "Plat radio get promiscuous callback, promiscuous: {}",
-            promiscuous
+            state.ot.radio_conf.promiscuous
         );
 
-        promiscuous
+        state.ot.radio_conf.promiscuous
     }
 
     fn plat_radio_enable(&mut self) -> Result<(), OtError> {
@@ -1882,6 +1894,9 @@ struct OtState<'a> {
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,
+    /// Radio receive sensitivity reported to OpenThread via otPlatRadioReceiveSensitivity
+    /// Fetched from the actual radio trait in the `OpenThread::run` API
+    radio_receive_sensitivity: i8,
     /// Deferred rx_when_idle value from set_link_mode called before device connects.
     /// Applied automatically via plat_changed when the device role becomes connected.
     pending_rx_when_idle: Option<bool>,

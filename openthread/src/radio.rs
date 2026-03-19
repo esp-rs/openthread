@@ -68,25 +68,43 @@ impl RadioError for RadioErrorKind {
 }
 
 /// Carrier sense or Energy Detection (ED) mode.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub enum Cca {
     /// Carrier sense
-    #[default]
     Carrier,
     /// Energy Detection / Energy Above Threshold
     Ed {
-        /// Energy measurements above this value mean that the channel is assumed to be busy.
-        /// Note the measurement range is 0..0xFF - where 0 means that the received power was
-        /// less than 10 dB above the selected receiver sensitivity. This value is not given in dBm,
-        /// but can be converted. See the nrf52840 Product Specification Section 6.20.12.4
-        /// for details.
-        ed_threshold: u8,
+        /// Energy measurements above this dBm value mean that the channel is assumed to be busy.
+        ed_threshold: i8,
     },
     /// Carrier sense or Energy Detection
-    CarrierOrEd { ed_threshold: u8 },
+    CarrierOrEd {
+        /// Energy measurements above this dBm value mean that the channel is assumed to be busy.
+        ed_threshold: i8,
+    },
     /// Carrier sense and Energy Detection
-    CarrierAndEd { ed_threshold: u8 },
+    CarrierAndEd {
+        /// Energy measurements above this dBm value mean that the channel is assumed to be busy.
+        ed_threshold: i8,
+    },
+}
+
+impl Cca {
+    /// Default CCA energy detection threshold in dBm
+    pub const DEFAULT_ED_THRESHOLD_DBM: i8 = -60;
+
+    pub const fn new() -> Self {
+        Self::Ed {
+            ed_threshold: Self::DEFAULT_ED_THRESHOLD_DBM,
+        }
+    }
+}
+
+impl Default for Cca {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 bitflags! {
@@ -153,8 +171,6 @@ pub struct Config {
     pub power: i8,
     /// Clear channel assessment (CCA) mode
     pub cca: Cca,
-    /// TBD
-    pub sfd: u8,
     /// Promiscuous mode (receive all frames regardless of address filtering)
     /// Disregarded if the radio is not capable of operating in promiscuous mode.
     pub promiscuous: bool,
@@ -180,8 +196,7 @@ impl Config {
             // Run with max power by default
             // TODO: Figure out how to have this specified by the user
             power: 20,
-            cca: Cca::Carrier,
-            sfd: 0,
+            cca: Cca::new(),
             promiscuous: false,
             // OpenThread can have bursts of incoming frames, so we need to receive during idle state to not miss them.
             rx_when_idle: true,
@@ -242,6 +257,9 @@ pub trait Radio {
     /// If some of these are missing, `OpenThread` will emulate them in software.
     const MAC_CAPS: MacCapabilities;
 
+    /// Radio receive sensitivity
+    const RECEIVE_SENSITIVITY_DBM: i8;
+
     /// Set the radio configuration.
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error>;
 
@@ -296,6 +314,8 @@ where
     const CAPS: Capabilities = T::CAPS;
 
     const MAC_CAPS: MacCapabilities = T::MAC_CAPS;
+
+    const RECEIVE_SENSITIVITY_DBM: i8 = T::RECEIVE_SENSITIVITY_DBM;
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         T::set_config(self, config).await
@@ -441,6 +461,8 @@ where
     const CAPS: Capabilities = R::CAPS;
 
     const MAC_CAPS: MacCapabilities = R::MAC_CAPS;
+
+    const RECEIVE_SENSITIVITY_DBM: i8 = R::RECEIVE_SENSITIVITY_DBM;
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.radio
@@ -700,7 +722,7 @@ impl Default for ProxyRadioResources {
 ///   by passing it to `OpenThread::run`
 /// - `PhyRadioRunner`, which is `Send` and therefore can be sent to a separate executor - to run the radio.
 ///   Invoke `PhyRadioRunner::run(<the-phy-radio>, <delay-provider>).await` in that separate executor.
-pub struct ProxyRadio<'a, const CAPS: otRadioCaps> {
+pub struct ProxyRadio<'a, const CAPS: otRadioCaps, const RSENS: i8> {
     /// The request channel to the PHY radio
     request: Sender<'a, CriticalSectionRawMutex, ProxyRadioRequest>,
     /// The response channel from the PHY radio
@@ -715,7 +737,7 @@ pub struct ProxyRadio<'a, const CAPS: otRadioCaps> {
     config: Config,
 }
 
-impl<'a, const CAPS: otRadioCaps> ProxyRadio<'a, CAPS> {
+impl<'a, const CAPS: otRadioCaps, const RSENS: i8> ProxyRadio<'a, CAPS, RSENS> {
     const INIT_REQUEST: [ProxyRadioRequest; 1] = [ProxyRadioRequest::new()];
     const INIT_RESPONSE: [ProxyRadioResponse; 1] = [ProxyRadioResponse::new()];
 
@@ -747,7 +769,7 @@ impl<'a, const CAPS: otRadioCaps> ProxyRadio<'a, CAPS> {
 
         let state = unsafe { resources.state.assume_init_mut() };
 
-        state.split::<CAPS>()
+        state.split::<CAPS, RSENS>()
     }
 
     /// Clear any cancelled response from the driver
@@ -763,7 +785,7 @@ impl<'a, const CAPS: otRadioCaps> ProxyRadio<'a, CAPS> {
     }
 }
 
-impl<const CAPS: otRadioCaps> Radio for ProxyRadio<'_, CAPS> {
+impl<const CAPS: otRadioCaps, const RSENS: i8> Radio for ProxyRadio<'_, CAPS, RSENS> {
     type Error = RadioErrorKind;
 
     const CAPS: Capabilities = Capabilities::from_bits_truncate(CAPS);
@@ -771,6 +793,8 @@ impl<const CAPS: otRadioCaps> Radio for ProxyRadio<'_, CAPS> {
     // ... because the actual PHY radio on the other side
     // of the pipe will be wrapped with `MacRadio` if it cannot do ACKs and filtering in hardware
     const MAC_CAPS: MacCapabilities = MacCapabilities::all();
+
+    const RECEIVE_SENSITIVITY_DBM: i8 = RSENS;
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         // There is no separate command for updating the configuration
@@ -1077,7 +1101,9 @@ impl<'a> ProxyRadioState<'a> {
     }
 
     /// Split the state into the proxy radio and the PHY radio runner.
-    fn split<const CAPS: otRadioCaps>(&mut self) -> (ProxyRadio<'_, CAPS>, PhyRadioRunner<'_>) {
+    fn split<const CAPS: otRadioCaps, const RSENS: i8>(
+        &mut self,
+    ) -> (ProxyRadio<'_, CAPS, RSENS>, PhyRadioRunner<'_>) {
         let (request_sender, request_receiver) = self.request.split();
         let (response_sender, response_receiver) = self.response.split();
 

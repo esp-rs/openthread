@@ -4,7 +4,8 @@ pub use embassy_nrf::radio::ieee802154::{Cca as RadioCca, Packet};
 
 use crate::fmt::Bytes;
 use crate::{
-    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
+    otRadioCaps, Capabilities, Cca, Config, MacCapabilities, ProxyRadio, PsduMeta, Radio,
+    RadioError, RadioErrorKind,
 };
 
 pub use embassy_nrf::radio::ieee802154::Radio as Ieee802154;
@@ -44,9 +45,15 @@ impl<'a> NrfRadio<'a> {
         self.driver.set_channel(config.channel);
         self.driver.set_cca(match config.cca {
             Cca::Carrier => RadioCca::CarrierSense,
-            Cca::Ed { ed_threshold } => RadioCca::EnergyDetection { ed_threshold },
-            Cca::CarrierAndEd { ed_threshold } => RadioCca::EnergyDetection { ed_threshold },
-            Cca::CarrierOrEd { ed_threshold } => RadioCca::EnergyDetection { ed_threshold },
+            Cca::Ed { ed_threshold } => RadioCca::EnergyDetection {
+                ed_threshold: ed_threshold as _,
+            },
+            Cca::CarrierAndEd { ed_threshold } => RadioCca::EnergyDetection {
+                ed_threshold: ed_threshold as _,
+            },
+            Cca::CarrierOrEd { ed_threshold } => RadioCca::EnergyDetection {
+                ed_threshold: ed_threshold as _,
+            },
         });
         self.driver.set_transmission_power(config.power);
     }
@@ -59,6 +66,8 @@ impl Radio for NrfRadio<'_> {
 
     // The NRF radio does not have any MAC offloading capabilities
     const MAC_CAPS: MacCapabilities = MacCapabilities::empty();
+
+    const RECEIVE_SENSITIVITY_DBM: i8 = -100;
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         if self.config != *config {
@@ -125,3 +134,9 @@ impl Radio for NrfRadio<'_> {
         }
     }
 }
+
+const NRF_RADIO_CAPS: otRadioCaps = NrfRadio::CAPS.bits();
+const NRF_RADIO_RSENS: i8 = NrfRadio::RECEIVE_SENSITIVITY_DBM;
+
+/// A proxy radio type alias where the proxied radio is `NrfRadio`
+pub type NrfProxyRadio<'a> = ProxyRadio<'a, NRF_RADIO_CAPS, NRF_RADIO_RSENS>;

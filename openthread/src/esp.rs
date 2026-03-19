@@ -49,10 +49,10 @@ impl<'a> EspRadio<'a> {
             txpower: config.power,
             channel: config.channel,
             cca_threshold: match config.cca {
-                Cca::Carrier => 0,
-                Cca::Ed { ed_threshold } => ed_threshold as _,
-                Cca::CarrierAndEd { ed_threshold } => ed_threshold as _,
-                Cca::CarrierOrEd { ed_threshold } => ed_threshold as _,
+                Cca::Carrier => Cca::DEFAULT_ED_THRESHOLD_DBM,
+                Cca::Ed { ed_threshold } => ed_threshold,
+                Cca::CarrierAndEd { ed_threshold } => ed_threshold,
+                Cca::CarrierOrEd { ed_threshold } => ed_threshold,
             },
             cca_mode: match config.cca {
                 Cca::Carrier => esp_radio::ieee802154::CcaMode::Carrier,
@@ -89,12 +89,20 @@ impl<'a> EspRadio<'a> {
 impl Radio for EspRadio<'_> {
     type Error = RadioErrorKind;
 
+    // NOTE: Do NOT declare CSMA_BACKOFF here. The ESP32 hardware CcaTxStart
+    // only performs a single CCA check before transmitting. If CCA fails,
+    // the driver reports failure immediately with no backoff/retry.
+    // By omitting CSMA_BACKOFF, OpenThread's SubMac will handle CSMA/CA
+    // in software (random exponential backoff, multiple CCA retries).
     const CAPS: Capabilities = Capabilities::ACK_TIMEOUT
-        .union(Capabilities::CSMA_BACKOFF)
-        // .union(Capabilities::RX_ON_WHEN_IDLE) TODO: Depends on coex being off in ESP-IDF
+        .union(Capabilities::RX_ON_WHEN_IDLE) // TODO: Depends on coex being off in ESP-IDF
         ;
 
     const MAC_CAPS: MacCapabilities = MacCapabilities::all();
+
+    // Taken from the ESP-IDF driver
+    // https://github.com/espressif/esp-idf/blob/6f6766f917bc940ffbcc97eac4765a6ab15d5f79/components/openthread/src/port/esp_openthread_radio.c#L39
+    const RECEIVE_SENSITIVITY_DBM: i8 = -120;
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         if self.config != *config {
