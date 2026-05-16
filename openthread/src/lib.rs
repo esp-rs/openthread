@@ -29,6 +29,8 @@ use signal::Signal;
 
 pub use rand_core::RngCore as OtRngCore;
 
+#[cfg(feature = "coap")]
+pub use coap::*;
 pub use dataset::*;
 pub use fmt::Bytes as BytesFmt;
 pub use nat64::*;
@@ -45,6 +47,8 @@ pub use udp::*;
 // This mod MUST go first, so that the others see its macros.
 pub(crate) mod fmt;
 
+#[cfg(feature = "coap")]
+mod coap;
 mod dataset;
 #[cfg(all(feature = "edge-nal", feature = "udp"))]
 pub mod enal;
@@ -152,6 +156,8 @@ pub struct OpenThread<'a> {
     udp_state: Option<&'a RefCell<OtUdpState<'a>>>,
     #[cfg(feature = "srp")]
     srp_state: Option<&'a RefCell<OtSrpState<'a>>>,
+    #[cfg(feature = "coap")]
+    coap_state: Option<&'a RefCell<OtCoapState<'a>>>,
 }
 
 impl<'a> OpenThread<'a> {
@@ -200,6 +206,8 @@ impl<'a> OpenThread<'a> {
             udp_state: None,
             #[cfg(feature = "srp")]
             srp_state: None,
+            #[cfg(feature = "coap")]
+            coap_state: None,
         };
 
         this.init()?;
@@ -252,6 +260,8 @@ impl<'a> OpenThread<'a> {
             udp_state: Some(udp_state),
             #[cfg(feature = "srp")]
             srp_state: None,
+            #[cfg(feature = "coap")]
+            coap_state: None,
         };
 
         this.init()?;
@@ -304,6 +314,8 @@ impl<'a> OpenThread<'a> {
             #[cfg(feature = "udp")]
             udp_state: None,
             srp_state: Some(srp_state),
+            #[cfg(feature = "coap")]
+            coap_state: None,
         };
 
         this.init()?;
@@ -370,6 +382,175 @@ impl<'a> OpenThread<'a> {
             state,
             udp_state: Some(udp_state),
             srp_state: Some(srp_state),
+            #[cfg(feature = "coap")]
+            coap_state: None,
+        };
+
+        this.init()?;
+
+        Ok(this)
+    }
+
+    /// Create a new OpenThread instance with support for the native OpenThread CoAP server.
+    #[cfg(feature = "coap")]
+    pub fn new_with_coap<const COAP_RES: usize, const COAP_REQ: usize, const COAP_RX_SZ: usize>(
+        ieee_eui64: [u8; 8],
+        rng: &'a mut dyn OtRngCore,
+        settings: &'a mut dyn Settings,
+        resources: &'a mut OtResources,
+        coap_resources: &'a mut OtCoapResources<COAP_RES, COAP_REQ, COAP_RX_SZ>,
+    ) -> Result<Self, OtError> {
+        let state = resources.init(
+            ieee_eui64,
+            unsafe {
+                core::mem::transmute::<&'a mut dyn OtRngCore, &'static mut dyn OtRngCore>(rng)
+            },
+            unsafe {
+                core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
+            },
+        );
+
+        let state = unsafe {
+            core::mem::transmute::<&RefCell<OtState<'static>>, &'a RefCell<OtState<'a>>>(state)
+        };
+
+        let coap_state = coap_resources.init();
+        let coap_state = unsafe {
+            core::mem::transmute::<&RefCell<OtCoapState<'static>>, &'a RefCell<OtCoapState<'a>>>(
+                coap_state,
+            )
+        };
+
+        let mut this = Self {
+            state,
+            #[cfg(feature = "udp")]
+            udp_state: None,
+            #[cfg(feature = "srp")]
+            srp_state: None,
+            coap_state: Some(coap_state),
+        };
+
+        this.init()?;
+
+        Ok(this)
+    }
+
+    /// Create a new OpenThread instance with support for UDP sockets and the CoAP server.
+    #[cfg(all(feature = "udp", feature = "coap"))]
+    pub fn new_with_udp_coap<
+        const UDP_SOCKETS: usize,
+        const UDP_RX_SZ: usize,
+        const COAP_RES: usize,
+        const COAP_REQ: usize,
+        const COAP_RX_SZ: usize,
+    >(
+        ieee_eui64: [u8; 8],
+        rng: &'a mut dyn OtRngCore,
+        settings: &'a mut dyn Settings,
+        resources: &'a mut OtResources,
+        udp_resources: &'a mut OtUdpResources<UDP_SOCKETS, UDP_RX_SZ>,
+        coap_resources: &'a mut OtCoapResources<COAP_RES, COAP_REQ, COAP_RX_SZ>,
+    ) -> Result<Self, OtError> {
+        let state = resources.init(
+            ieee_eui64,
+            unsafe {
+                core::mem::transmute::<&'a mut dyn OtRngCore, &'static mut dyn OtRngCore>(rng)
+            },
+            unsafe {
+                core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
+            },
+        );
+
+        let state = unsafe {
+            core::mem::transmute::<&RefCell<OtState<'static>>, &'a RefCell<OtState<'a>>>(state)
+        };
+
+        let udp_state = udp_resources.init();
+        let udp_state = unsafe {
+            core::mem::transmute::<&RefCell<OtUdpState<'static>>, &'a RefCell<OtUdpState<'a>>>(
+                udp_state,
+            )
+        };
+
+        let coap_state = coap_resources.init();
+        let coap_state = unsafe {
+            core::mem::transmute::<&RefCell<OtCoapState<'static>>, &'a RefCell<OtCoapState<'a>>>(
+                coap_state,
+            )
+        };
+
+        let mut this = Self {
+            state,
+            udp_state: Some(udp_state),
+            #[cfg(feature = "srp")]
+            srp_state: None,
+            coap_state: Some(coap_state),
+        };
+
+        this.init()?;
+
+        Ok(this)
+    }
+
+    /// Create a new OpenThread instance with support for UDP sockets, SRP services, and the CoAP server.
+    #[cfg(all(feature = "udp", feature = "srp", feature = "coap"))]
+    pub fn new_with_udp_srp_coap<
+        const UDP_SOCKETS: usize,
+        const UDP_RX_SZ: usize,
+        const SRP_SVCS: usize,
+        const SRP_BUF_SZ: usize,
+        const COAP_RES: usize,
+        const COAP_REQ: usize,
+        const COAP_RX_SZ: usize,
+    >(
+        ieee_eui64: [u8; 8],
+        rng: &'a mut dyn OtRngCore,
+        settings: &'a mut dyn Settings,
+        resources: &'a mut OtResources,
+        udp_resources: &'a mut OtUdpResources<UDP_SOCKETS, UDP_RX_SZ>,
+        srp_resources: &'a mut OtSrpResources<SRP_SVCS, SRP_BUF_SZ>,
+        coap_resources: &'a mut OtCoapResources<COAP_RES, COAP_REQ, COAP_RX_SZ>,
+    ) -> Result<Self, OtError> {
+        let state = resources.init(
+            ieee_eui64,
+            unsafe {
+                core::mem::transmute::<&'a mut dyn OtRngCore, &'static mut dyn OtRngCore>(rng)
+            },
+            unsafe {
+                core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
+            },
+        );
+
+        let state = unsafe {
+            core::mem::transmute::<&RefCell<OtState<'static>>, &'a RefCell<OtState<'a>>>(state)
+        };
+
+        let udp_state = udp_resources.init();
+        let udp_state = unsafe {
+            core::mem::transmute::<&RefCell<OtUdpState<'static>>, &'a RefCell<OtUdpState<'a>>>(
+                udp_state,
+            )
+        };
+
+        let srp_state = srp_resources.init();
+        let srp_state = unsafe {
+            core::mem::transmute::<&RefCell<OtSrpState<'static>>, &'a RefCell<OtSrpState<'a>>>(
+                srp_state,
+            )
+        };
+
+        let coap_state = coap_resources.init();
+        let coap_state = unsafe {
+            core::mem::transmute::<&RefCell<OtCoapState<'static>>, &'a RefCell<OtCoapState<'a>>>(
+                coap_state,
+            )
+        };
+
+        let mut this = Self {
+            state,
+            udp_state: Some(udp_state),
+            srp_state: Some(srp_state),
+            coap_state: Some(coap_state),
         };
 
         this.init()?;
@@ -1070,6 +1251,8 @@ impl Clone for OpenThread<'_> {
             udp_state: self.udp_state,
             #[cfg(feature = "srp")]
             srp_state: self.srp_state,
+            #[cfg(feature = "coap")]
+            coap_state: self.coap_state,
         }
     }
 }
@@ -1228,6 +1411,9 @@ struct OtActiveState<'a> {
     /// The activated `OtSrpState` instance.
     #[cfg(feature = "srp")]
     srp: Option<RefMut<'a, OtSrpState<'a>>>,
+    /// The activated `OtCoapState` instance.
+    #[cfg(feature = "coap")]
+    coap: Option<RefMut<'a, OtCoapState<'a>>>,
 }
 
 #[allow(clippy::needless_lifetimes)]
@@ -1258,6 +1444,20 @@ impl<'a> OtActiveState<'a> {
             .ok_or(OtError::new(crate::sys::otError_OT_ERROR_FAILED))?;
 
         Ok(srp)
+    }
+
+    /// A utility to get a reference to the CoAP state
+    ///
+    /// This method will return an error if the `OpenThread` instance was not
+    /// initialized with CoAP resources.
+    #[cfg(feature = "coap")]
+    pub(crate) fn coap(&mut self) -> Result<&mut OtCoapState<'a>, OtError> {
+        let coap = self
+            .coap
+            .as_mut()
+            .ok_or(OtError::new(crate::sys::otError_OT_ERROR_FAILED))?;
+
+        Ok(coap)
     }
 }
 
@@ -1307,6 +1507,8 @@ impl<'a> OtContext<'a> {
             udp: ot.udp_state.map(|u| u.borrow_mut()),
             #[cfg(feature = "srp")]
             srp: ot.srp_state.map(|s| s.borrow_mut()),
+            #[cfg(feature = "coap")]
+            coap: ot.coap_state.map(|c| c.borrow_mut()),
         };
 
         // Needed so that we convert from the fake `'static` lifetime in `OT_ACTIVE_STATE` to the actual `'a` lifetime of `ot`

@@ -191,6 +191,8 @@ impl OpenThreadBuilder {
             .define("OT_SLAAC", "ON")
             .define("OT_ECDSA", "ON")
             .define("OT_PING_SENDER", "ON")
+            .define("OT_COAP", "ON")
+            .define("OT_COAP_OBSERVE", "ON")
             // Do not change from here below
             .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
             .define("OT_PLATFORM", "external")
