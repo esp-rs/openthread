@@ -66,13 +66,12 @@ const THREAD_DATASET: &str = if let Some(dataset) = option_env!("THREAD_DATASET"
     entry = "cortex_m_rt::entry"
 )]
 async fn main(spawner: Spawner) {
-    // TODO: Update the recommended binary
     /*
         How to make this work:
 
         - Obtain a NUCLEO-STM32WB55 from your preferred supplier.
         - Download and Install STM32CubeProgrammer.
-        - Download stm32wb5x_FUS_fw.bin, stm32wb5x_BLE_Mac_802_15_4_fw.bin, and Release_Notes.html from
+        - Download stm32wb5x_FUS_fw.bin, stm32wb5x_Thread_MTD_fw.bin, and Release_Notes.html from
           gh:STMicroelectronics/STM32CubeWB@2234d97/Projects/STM32WB_Copro_Wireless_Binaries/STM32WB5x
         - Open STM32CubeProgrammer
         - On the right-hand pane, click "firmware upgrade" to upgrade the st-link firmware.
