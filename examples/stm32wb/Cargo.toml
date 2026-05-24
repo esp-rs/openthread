@@ -1,0 +1,66 @@
+[package]
+name = "nrf-openthread-examples"
+version = "0.1.0"
+edition = "2024"
+authors = ["bjoernQ <bjoern.quentin@mobile-j.de>"]
+resolver = "2"
+categories = ["embedded", "hardware-support"]
+keywords = ["thread", "openthread", "embedded", "embassy"]
+description = "openthread examples for stm32wb chips"
+repository = "https://github.com/ivmarkov/esp-openthread"
+license = "MIT OR Apache-2.0"
+readme = "README.md"
+
+[profile.dev]
+# Rust debug is too slow.
+# For debug builds always builds with some optimization
+opt-level = "z"
+
+[profile.release]
+codegen-units = 1 # LLVM can perform better optimizations using a single thread
+opt-level = "z"
+lto = "fat"
+debug = 2
+debug-assertions = false
+overflow-checks = false
+
+[features]
+default = []
+
+[dependencies]
+# Change stm32wb55rg to your chip name in both dependencies, if necessary.
+embassy-stm32 = { version = "0.6.0", features = [ "defmt", "stm32wb55rg", "time-driver-any", "memory-x", "exti", "low-power", "executor-thread"]  }
+embassy-stm32-wpan = { version = "0.1.0", features = ["defmt", "stm32wb55rg", "wb-thread"] }
+embassy-sync = { version = "0.8.0", features = ["defmt"] }
+embassy-executor = { version = "0.10.0", features = ["defmt"] }
+embassy-time = { version = "0.5.1", features = ["defmt", "defmt-timestamp-uptime", "tick-hz-32_768"] }
+embassy-net = { version = "0.9.1", features = ["defmt", "proto-ipv6", "medium-ip", "udp"] }
+
+defmt = "1.0.1"
+defmt-rtt = "1.0.0"
+
+cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = "0.7.0"
+embedded-hal = "1.0.0"
+panic-probe = { version = "1.0.0", features = ["print-defmt"] }
+heapless = { version = "0.9", default-features = false }
+static_cell = "2"
+embassy-futures = "0.1.2"
+rand_core = "0.9"
+
+openthread = { path = "../../openthread", features = ["udp", "srp", "embassy-net-driver-channel", "stm32-offload", "defmt"] }
+tinyrlibc = { version = "0.5", default-features = false, features = ["strstr", "strcmp", "isupper", "utoa", "strtoul"] }
+
+[[bin]]
+path = "./src/bin/basic_udp.rs"
+name = "basic_udp"
+#required-features = ["udp"]
+harness = false
+
+[patch.crates-io]
+embassy-stm32 = { version = "0.6.0", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
+embassy-stm32-wpan = { version = "0.1.0", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
+embassy-sync = { version = "0.8.0", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
+embassy-executor = { version = "0.10.0", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
+embassy-time = { version = "0.5.1", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
+embassy-net = { version = "0.9.1", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }

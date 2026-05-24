@@ -19,6 +19,11 @@ force-generate-bindings = []
 # If this feature is not enabled, the build will assume and use the "official" RiscV GCC toolchain:
 # https://github.com/riscv-collab/riscv-gnu-toolchain
 force-esp-riscv-toolchain = []
+# stm32wb support
+stm32-offload = ["dep:stm32-bindings"]
+
+[dependencies]
+stm32-bindings = { version = "0.2.1", features = ["lib_stm32wb_ot_mtd_lib", "wb_wpan_openthread"], optional=true }
 
 [build-dependencies]
 anyhow = "1"

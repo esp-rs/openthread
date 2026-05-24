@@ -1,0 +1,13 @@
+[target.'cfg(all(target_arch = "arm", target_os = "none"))']
+# replace nRF82840_xxAA with your chip as listed in `probe-rs chip list`
+runner = "probe-rs run --chip stm32wb55"
+
+[build]
+target = "thumbv7em-none-eabi"
+
+[unstable]
+build-std = ["core", "alloc", "panic_abort"]
+#build-std-features = ["panic_immediate_abort"]
+
+[env]
+DEFMT_LOG="info"
