@@ -58,9 +58,9 @@ name = "basic_udp"
 harness = false
 
 [patch.crates-io]
-embassy-stm32 = { version = "0.6.0", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
-embassy-stm32-wpan = { version = "0.1.0", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
-embassy-sync = { version = "0.8.0", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
-embassy-executor = { version = "0.10.0", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
-embassy-time = { version = "0.5.1", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
-embassy-net = { version = "0.9.1", git="https://github.com/xoviat/embassy.git", rev="7c6cc3a" }
+embassy-stm32 = { version = "0.6.0", git="https://github.com/xoviat/embassy.git", rev="9cf2edb" }
+embassy-stm32-wpan = { version = "0.1.0", git="https://github.com/xoviat/embassy.git", rev="9cf2edb" }
+embassy-sync = { version = "0.8.0", git="https://github.com/xoviat/embassy.git", rev="9cf2edb" }
+embassy-executor = { version = "0.10.0", git="https://github.com/xoviat/embassy.git", rev="9cf2edb" }
+embassy-time = { version = "0.5.1", git="https://github.com/xoviat/embassy.git", rev="9cf2edb" }
+embassy-net = { version = "0.9.1", git="https://github.com/xoviat/embassy.git", rev="9cf2edb" }
