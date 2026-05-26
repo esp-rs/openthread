@@ -63,3 +63,6 @@ jobs:
 
       - name: Examples-NRF-Build | Compile
         run: cd examples/nrf; cargo build
+
+      - name: Examples-STM32WB-Build | Compile
+        run: cd examples/stm32wb; cargo build

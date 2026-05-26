@@ -63,6 +63,8 @@ mod settings;
 mod signal;
 #[cfg(feature = "srp")]
 mod srp;
+#[cfg(feature = "stm32-offload")]
+pub mod stm32wb;
 #[cfg(feature = "udp")]
 mod udp;
 

@@ -30,8 +30,9 @@ fn main() -> Result<()> {
     let dirs = if pregen_bindings && pregen_bindings_rs_file.exists() {
         // Use the pre-generated bindings
         Some((pregen_bindings_rs_file, pregen_libs_dir))
-    } else if target.ends_with("-espidf") {
+    } else if target.ends_with("-espidf") || env::var("CARGO_FEATURE_STM32_OFFLOAD").is_ok() {
         // Nothing to do for ESP-IDF, `esp-idf-sys` will do everything for us
+        // Nothing to do for stm32wb, `stm32-bindings` will do everything for us
         None
     } else {
         let clang_sysroot = if use_gcc {

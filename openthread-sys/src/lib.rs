@@ -45,9 +45,12 @@ pub use bindings::*;
     clippy::all
 )]
 mod bindings {
-    #[cfg(not(target_os = "espidf"))]
+    #[cfg(not(any(target_os = "espidf", feature = "stm32-offload")))]
     include!(env!("OPENTHREAD_SYS_BINDINGS_FILE"));
 
     #[cfg(target_os = "espidf")]
     pub use esp_idf_sys::*;
+
+    #[cfg(feature = "stm32-offload")]
+    pub use stm32_bindings::openthread::*;
 }
