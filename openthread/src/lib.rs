@@ -56,6 +56,8 @@ mod nat64;
 mod netdata;
 #[cfg(feature = "embassy-nrf")]
 pub mod nrf;
+#[cfg(feature="stm32-offload")]
+pub mod stm32wb;
 mod platform;
 mod radio;
 mod scan;
