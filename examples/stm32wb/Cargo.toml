@@ -1,5 +1,5 @@
 [package]
-name = "nrf-openthread-examples"
+name = "stm32wb-openthread-examples"
 version = "0.1.0"
 edition = "2024"
 authors = ["bjoernQ <bjoern.quentin@mobile-j.de>"]
