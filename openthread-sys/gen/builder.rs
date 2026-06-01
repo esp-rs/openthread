@@ -202,7 +202,14 @@ impl OpenThreadBuilder {
             .define("OT_BUILD_EXECUTABLES", "OFF")
             .define("CMAKE_POLICY_VERSION_MINIMUM", "3.5") // For MbedTLS
             .profile("Release")
-            .out_dir(&target_dir);
+            .out_dir(&target_dir)
+            // The `cmake` crate defaults to running `cmake --build . --target install`.
+            // OpenThread's install target pulls in pkg-config / CMake helper files
+            // and 3rdparty install bits we don't need (we link `.a` files directly).
+            // Some host setups (notably rs-matter integration runners) also fail during
+            // that step. We harvest build outputs straight from `target_dir` via the
+            // CMAKE_*_OUTPUT_DIRECTORY defines, so the install target is unnecessary.
+            .no_build_target(true);
 
         config.build();
 
