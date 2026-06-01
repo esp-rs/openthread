@@ -201,7 +201,7 @@ impl OpenThreadBuilder {
             .define("BUILD_TESTING", "OFF")
             .define("OT_BUILD_EXECUTABLES", "OFF")
             .define("CMAKE_POLICY_VERSION_MINIMUM", "3.5") // For MbedTLS
-            .profile("Release")
+            .profile("MinSizeRel")
             .out_dir(&target_dir)
             // The `cmake` crate defaults to running `cmake --build . --target install`.
             // OpenThread's install target pulls in pkg-config / CMake helper files
@@ -296,7 +296,18 @@ impl CMakeConfigurer {
             config
                 .define("CMAKE_ARCHIVE_OUTPUT_DIRECTORY", target_dir)
                 .define("CMAKE_LIBRARY_OUTPUT_DIRECTORY", target_dir)
-                .define("CMAKE_RUNTIME_OUTPUT_DIRECTORY", target_dir);
+                .define("CMAKE_RUNTIME_OUTPUT_DIRECTORY", target_dir)
+                // Multi-config generators (Ninja Multi-Config, Visual Studio, Xcode)
+                // ignore `CMAKE_BUILD_TYPE` and the unsuffixed *_OUTPUT_DIRECTORY
+                // vars at build time. Restrict the generated configs to
+                // `MinSizeRel` (matching the single-config `CMAKE_BUILD_TYPE`
+                // above and `compile()`'s `.profile("MinSizeRel")`) and pin the
+                // per-config output dirs to `target_dir` so the build script can
+                // locate the produced static libs.
+                .define("CMAKE_CONFIGURATION_TYPES", "MinSizeRel")
+                .define("CMAKE_ARCHIVE_OUTPUT_DIRECTORY_MINSIZEREL", target_dir)
+                .define("CMAKE_LIBRARY_OUTPUT_DIRECTORY_MINSIZEREL", target_dir)
+                .define("CMAKE_RUNTIME_OUTPUT_DIRECTORY_MINSIZEREL", target_dir);
         }
 
         if let Some((compiler, _)) = self.derive_forced_c_compiler() {
