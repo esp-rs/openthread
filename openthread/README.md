@@ -8,8 +8,8 @@ The crate does not depend on any platform features and only needs an implementat
 The radio might be located on the same die, or the user might provide an implementation that communicates with the actual radio over UART, SPI, USB, etc.
 
 Two IEEE 802.15.4 radios are supported out of the box:
-- The ESP32C6 and ESP32H2 radio (enable the `esp-ieee802154` feature; see [examples](examples/esp));
-- The NRF radio (enable the `embasy-nrf` feature; see [examples](examples/nrf)).
+- The ESP32C6 and ESP32H2 radio (enable the `esp-ieee802154` feature);
+- The NRF radio (enable the `embasy-nrf` feature).
 
 ## Build
 
@@ -21,7 +21,7 @@ Current list (might be extended upon request):
 
 **For these targets you only need `rustc`/`cargo` as usual!**
 
-Small caveat: since `openthread` does a few calls into the C standard library (primarily `str*` functions), at link time, it is up to the user to poly-fill the `str*` syscalls - [either with the MCU ROM functions](examples/esp/.cargo/config.toml), or by [depending](examples/nrf/Cargo.toml) on [`tinyrlibc`](https://github.com/rust-embedded-community/tinyrlibc), or with both.
+Small caveat: since `openthread` does a few calls into the C standard library (primarily `str*` functions), at link time, it is up to the user to poly-fill the `str*` syscalls - either with the MCU ROM functions, or by depending on [`tinyrlibc`](https://github.com/rust-embedded-community/tinyrlibc), or with both.
 
 ### Build for other targets / custom build
 
