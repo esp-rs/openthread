@@ -371,17 +371,83 @@ impl CMakeConfigurer {
         let (compiler, gnu) = unforce_clang.derive_c_compiler();
 
         if gnu {
-            let output = Command::new(compiler).arg("-print-sysroot").output().ok()?;
+            let output = Command::new(&compiler)
+                .arg("-print-sysroot")
+                .output()
+                .ok()?;
 
             if output.status.success() {
                 let sysroot = String::from_utf8(output.stdout).ok()?.trim().to_string();
 
-                (!sysroot.is_empty()).then_some(PathBuf::from(sysroot))
-            } else {
-                None
+                if !sysroot.is_empty() {
+                    return Some(PathBuf::from(sysroot));
+                }
             }
+
+            // Some packaged GCC cross-toolchains (e.g. PlatformIO's
+            // `toolchain-riscv32-esp` / `toolchain-xtensa-esp32s3`, both based
+            // on crosstool-NG esp-2021r2-patch5 / GCC 8.4.0) print an empty
+            // string for `-print-sysroot` even though the sysroot is present
+            // on disk. Fall back to deriving the prefix from
+            // `-print-search-dirs` (the `install:` line points at
+            // `<prefix>/lib/gcc/<triple>/<version>/`) and then joining the
+            // target triple.
+            let install_dir = Command::new(compiler)
+                .arg("-print-search-dirs")
+                .output()
+                .ok()
+                .and_then(|o| String::from_utf8(o.stdout).ok())
+                .and_then(|s| {
+                    s.lines()
+                        .find(|l| l.starts_with("install:"))
+                        .map(|l| PathBuf::from(l.trim_start_matches("install:").trim()))
+                });
+
+            if let Some(install_dir) = install_dir {
+                // install_dir = <prefix>/lib/gcc/<triple>/<version>/
+                // Walk up 4 levels (version -> triple -> gcc -> lib) to recover <prefix>.
+                if let Some(prefix) = install_dir
+                    .parent() // <version>
+                    .and_then(|p| p.parent()) // <triple>
+                    .and_then(|p| p.parent()) // gcc
+                    .and_then(|p| p.parent())
+                // lib  ->  <prefix>
+                {
+                    if let Some(triple) = self.derive_gcc_target_triple() {
+                        let candidate = prefix.join(triple);
+                        if candidate.join("include").join("stdio.h").exists() {
+                            return Some(candidate);
+                        }
+                    }
+                }
+            }
+
+            None
         } else {
             None
+        }
+    }
+
+    /// Returns the GCC cross-toolchain triple for ESP cross targets, mirroring
+    /// the compiler binary names in `derive_forced_c_compiler`. Returns `None`
+    /// for host GCC or any target where no fixed cross-triple is known
+    /// (e.g. unforced RISC-V, where `cc-rs` selects the compiler).
+    fn derive_gcc_target_triple(&self) -> Option<&'static str> {
+        match self.target().as_str() {
+            "xtensa-esp32-none-elf" | "xtensa-esp32-espidf" => Some("xtensa-esp32-elf"),
+            "xtensa-esp32s2-none-elf" | "xtensa-esp32s2-espidf" => Some("xtensa-esp32s2-elf"),
+            "xtensa-esp32s3-none-elf" | "xtensa-esp32s3-espidf" => Some("xtensa-esp32s3-elf"),
+            "riscv32imc-unknown-none-elf"
+            | "riscv32imc-esp-espidf"
+            | "riscv32imac-unknown-none-elf"
+            | "riscv32imac-esp-espidf"
+            | "riscv32imafc-unknown-none-elf"
+            | "riscv32imafc-esp-espidf"
+                if self.force_esp_riscv_toolchain =>
+            {
+                Some("riscv32-esp-elf")
+            }
+            _ => None,
         }
     }
 
