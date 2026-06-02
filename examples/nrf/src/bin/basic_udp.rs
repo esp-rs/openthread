@@ -77,7 +77,7 @@ const NRF_RADIO_CAPS: otRadioCaps = NrfRadio::CAPS.bits();
 
 // Only needed for tinyrlibc's alloc functions which won't be called at runtime.
 //
-// If the firmware would not use or need heap allocation for other purposes, this could be replaced 
+// If the firmware would not use or need heap allocation for other purposes, this could be replaced
 // with stub impls of `calloc` and `free` that panic with `unimplemented!()`,
 // and the `#[global_allocator]` attribute could be removed.
 #[global_allocator]

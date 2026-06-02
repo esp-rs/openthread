@@ -47,7 +47,7 @@ force-esp-riscv-gcc = ["use-gcc"]
 use-gcc = []
 
 [dependencies]
-mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", default-features = false }
+mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", branch = "rework-xtask", default-features = false }
 
 [build-dependencies]
 anyhow = "1"

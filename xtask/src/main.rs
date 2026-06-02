@@ -56,6 +56,18 @@ enum Commands {
 
         /// Target triple for which to generate bindings and `.a` libraries.
         target: String,
+
+        /// Extra arguments to forward verbatim to the underlying
+        /// `cargo build` invocation. Specify after a `--` separator.
+        ///
+        /// Notably useful for `-Zbuild-std=core,alloc,panic_abort` when
+        /// building for Tier-3 targets like Xtensa, where rustup doesn't
+        /// ship a pre-compiled `core`. Such a build also requires the
+        /// matching toolchain to be active (e.g. `cargo +esp xtask gen
+        /// xtensa-esp32-none-elf -- -Zbuild-std=core,alloc,panic_abort`);
+        /// the xtask itself stays toolchain-agnostic.
+        #[arg(last = true, allow_hyphen_values = true)]
+        cargo_args: Vec<String>,
     },
 }
 
@@ -77,6 +89,7 @@ fn main() -> Result<()> {
         target,
         use_gcc,
         force_esp_riscv_gcc,
+        cargo_args,
     }) = args.command
     {
         let libs_dst = sys_crate_root_path.join("libs").join(&target);
@@ -88,7 +101,13 @@ fn main() -> Result<()> {
         // `_target_dir` is kept in scope for the duration of `harvest` so the
         // scratch CARGO_TARGET_DIR (and therefore `out_dir`, which lives inside
         // it) is not yet cleaned up. It's dropped at the end of this scope.
-        let (_target_dir, out_dir) = run_cargo(&workspace, &target, use_gcc, force_esp_riscv_gcc)?;
+        let (_target_dir, out_dir) = run_cargo(
+            &workspace,
+            &target,
+            use_gcc,
+            force_esp_riscv_gcc,
+            &cargo_args,
+        )?;
 
         harvest(&out_dir, &libs_dst, &bindings_dst)?;
     }
@@ -104,6 +123,7 @@ fn run_cargo(
     target: &str,
     use_gcc: bool,
     force_esp_riscv_gcc: bool,
+    cargo_args: &[String],
 ) -> Result<(TempDir, PathBuf)> {
     let mut features: Vec<&str> = vec!["force-generate-bindings"];
     if use_gcc {
@@ -143,6 +163,9 @@ fn run_cargo(
         // JSON on stdout for programmatic consumption; human-readable
         // diagnostics still rendered on stderr.
         .arg("--message-format=json-render-diagnostics")
+        // Forward any user-supplied extra args (e.g.
+        // `-Zbuild-std=core,alloc,panic_abort` for Xtensa) verbatim.
+        .args(cargo_args)
         .current_dir(workspace)
         .env("CARGO_TARGET_DIR", target_dir.path())
         .stdout(Stdio::piped())
