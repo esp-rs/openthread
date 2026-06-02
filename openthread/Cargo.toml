@@ -2,14 +2,14 @@
 name = "openthread"
 version = "0.1.0"
 edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.84"
 resolver = "2"
 categories = ["embedded", "hardware-support"]
 keywords = ["thread", "openthread", "embedded", "embassy"]
-description = "Raw bindings for OpenThread"
-repository = "https://github.com/ivmarkov/esp-openthread"
-license = "MIT OR Apache-2.0"
+description = "Platform-agnostic, async Rust bindings for OpenThread"
+repository = "https://github.com/esp-rs/openthread"
 readme = "README.md"
-rust-version = "1.84"
 
 [lib]
 harness = false

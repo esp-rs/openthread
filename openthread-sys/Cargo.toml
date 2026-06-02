@@ -2,14 +2,38 @@
 name = "openthread-sys"
 version = "0.1.0"
 edition = "2021"
+links = "mbedtls"
+license = "MIT OR Apache-2.0"
 resolver = "2"
+rust-version = "1.84"
 categories = ["embedded", "hardware-support"]
 keywords = ["thread", "openthread", "embedded", "embassy"]
-description = "Platform-agnostic, async Rust bindings for OpenThread"
-repository = "https://github.com/ivmarkov/esp-openthread"
-license = "MIT OR Apache-2.0"
+description = "Raw bindings for OpenThread"
+repository = "https://github.com/esp-rs/openthread"
 readme = "README.md"
-rust-version = "1.84"
+exclude = [
+    "*.pyc",
+    "openthread/.github",
+    "openthread/doc",
+    "openthread/script",
+    # The vendored mbedtls subtree ships its own tests, programs, docs and IDE
+    # project files. We only need the library sources + headers + CMakeLists.
+    "openthread/third_party/mbedtls/repo/tests",
+    "openthread/third_party/mbedtls/repo/programs",
+    "openthread/third_party/mbedtls/repo/framework",
+    "openthread/third_party/mbedtls/repo/docs",
+    "openthread/third_party/mbedtls/repo/visualc",
+    # OpenThread's own `tests/CMakeLists.txt` is unconditionally `add_subdirectory`'d
+    # by the root, but every subdir below it is gated by flags we never set
+    # (`OT_FTD`, `BUILD_TESTING`, `OT_FUZZ_TARGETS`, `OT_PLATFORM=nexus`).
+    # Keeping the top-level CMakeLists; pruning the unreached contents.
+    "openthread/tests/unit",
+    "openthread/tests/gtest",
+    "openthread/tests/fuzz",
+    "openthread/tests/nexus",
+    "openthread/tests/toranj",
+    "openthread/tests/scripts",
+]
 
 [features]
 default = []
@@ -22,8 +46,8 @@ force-esp-riscv-toolchain = []
 
 [build-dependencies]
 anyhow = "1"
-bindgen = "0.71"
-env_logger = "0.10"
+bindgen = "0.72"
+env_logger = "0.11"
 log = "0.4"
 cmake = "0.1.52"
 cc = "1.1"
