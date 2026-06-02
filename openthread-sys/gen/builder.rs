@@ -1,5 +1,4 @@
 use std::{
-    env,
     path::{Path, PathBuf},
     process::Command,
 };
@@ -72,13 +71,13 @@ impl OpenThreadBuilder {
 
         if let Some(clang_path) = &self.clang_path {
             // For bindgen
-            env::set_var("CLANG_PATH", clang_path);
+            std::env::set_var("CLANG_PATH", clang_path);
         }
 
         if let Some(cmake_rust_target) = &self.cmake_configurer.cmake_rust_target {
             // Necessary for bindgen. See this:
             // https://github.com/rust-lang/rust-bindgen/blob/af7fd38d5e80514406fb6a8bba2d407d252c30b9/bindgen/lib.rs#L711
-            env::set_var("TARGET", cmake_rust_target);
+            std::env::set_var("TARGET", cmake_rust_target);
         }
 
         let canon = |path: &Path| {
@@ -181,9 +180,9 @@ impl OpenThreadBuilder {
             .cxxflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128");
 
         // Add the include directories for MbedTLS.
-        let mbedtls_include = env::var_os("DEP_MBEDTLS_INCLUDE")
+        let mbedtls_include = std::env::var_os("DEP_MBEDTLS_INCLUDE")
             .expect("mbedtls-rs-sys should set the 'include' metadata");
-        env::split_paths(&mbedtls_include).for_each(|include_dir| {
+        std::env::split_paths(&mbedtls_include).for_each(|include_dir| {
             config.cflag(format!("-I{}", include_dir.display()));
             config.cxxflag(format!("-I{}", include_dir.display()));
         });
@@ -242,7 +241,7 @@ impl OpenThreadBuilder {
     /// This is necessary for `bindgen` to generate correct bindings for OpenThread.
     /// See https://github.com/rust-lang/rust-bindgen/issues/711
     fn short_enums(&self) -> bool {
-        let target = env::var("TARGET").unwrap();
+        let target = std::env::var("TARGET").unwrap();
 
         target.ends_with("-eabi") || target.ends_with("-eabihf")
     }
@@ -295,7 +294,7 @@ impl CMakeConfigurer {
     pub fn configure(&self, target_dir: Option<&Path>) -> Config {
         if let Some(cmake_rust_target) = &self.cmake_rust_target {
             // For `cc-rs`
-            env::set_var("TARGET", cmake_rust_target);
+            std::env::set_var("TARGET", cmake_rust_target);
         }
 
         let mut config = Config::new(&self.project_path);
@@ -347,10 +346,10 @@ impl CMakeConfigurer {
                 target_env = next;
             }
 
-            env::set_var("CARGO_CFG_TARGET_ARCH", target_arch);
-            env::set_var("CARGO_CFG_TARGET_OS", target_os);
-            env::set_var("CARGO_CFG_TARGET_VENDOR", target_vendor);
-            env::set_var("CARGO_CFG_TARGET_ENV", target_env);
+            std::env::set_var("CARGO_CFG_TARGET_ARCH", target_arch);
+            std::env::set_var("CARGO_CFG_TARGET_OS", target_os);
+            std::env::set_var("CARGO_CFG_TARGET_VENDOR", target_vendor);
+            std::env::set_var("CARGO_CFG_TARGET_ENV", target_env);
         }
 
         for arg in self.derive_c_args() {
@@ -589,6 +588,6 @@ impl CMakeConfigurer {
     fn target(&self) -> String {
         self.cmake_rust_target
             .clone()
-            .unwrap_or_else(|| env::var("TARGET").unwrap().to_string())
+            .unwrap_or_else(|| std::env::var("TARGET").unwrap().to_string())
     }
 }
