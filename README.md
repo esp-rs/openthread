@@ -1,6 +1,6 @@
 # openthread
 
-[![CI](https://github.com/esp-rs/openthread/actions/workflows/rust_ci.yml/badge.svg)](https://github.com/esp-rs/openthread/actions/workflows/rust_ci.yml)
+[![CI](https://github.com/esp-rs/openthread/actions/workflows/ci.yml/badge.svg)](https://github.com/esp-rs/openthread/actions/workflows/ci.yml)
 [![crates.io](https://img.shields.io/crates/v/openthread.svg)](https://crates.io/crates/openthread)
 [![Documentation](https://img.shields.io/badge/docs-esp--rs-brightgreen)](https://esp-rs.github.io/esp-rs/openthread/index.html)
 [![Matrix](https://img.shields.io/matrix/esp-rs:matrix.org?label=join%20matrix&color=BEC5C9&logo=matrix)](https://matrix.to/#/#esp-rs:matrix.org)

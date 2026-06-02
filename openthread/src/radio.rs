@@ -2,6 +2,8 @@
 //!
 //! `openthread` operates the radio in terms of this trait, which is implemented by the actual radio driver.
 
+#![allow(clippy::unnecessary_cast)]
+
 use core::cell::Cell;
 use core::fmt::Debug;
 use core::future::Future;

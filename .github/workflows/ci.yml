@@ -1,0 +1,293 @@
+# This CI builds the `openthread*` crates and their examples.
+#
+# If a change is detected within `openthread-sys/`, a rebuild is triggered and this CI will automatically
+# rebuild the libraries using the xtask. Then the tests are executed against the rebuilt libraries.
+#
+# If no rebuild occurs, the examples are built against the latest libraries present in the main branch.
+#
+# The libraries are pushed on either of these conditions:
+# 1. The PR is labelled with `rebuild-libs`.
+#    Then libraries will be forcefully rebuilt and then pushed onto the PR branch.
+# 2. The libraries are rebuilt on the main branch.
+#    When pushing a PR that would trigger a rebuild, the libraries get automatically
+#    pushed to the main branch after successful testing.
+
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - labeled
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# Cancel any currently running workflows from the same PR, branch, or
+# tag when a new workflow is triggered.
+#
+# https://stackoverflow.com/a/66336834
+concurrency:
+  cancel-in-progress: true
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+
+jobs:
+  build:
+    name: Build for host
+    runs-on: ubuntu-latest
+    permissions: read-all
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: openthread init
+        run: git submodule update --init --recursive
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          target: x86_64-unknown-linux-gnu
+          toolchain: stable
+          components: rust-src,rustfmt
+
+      # TODO: Double-check and uncomment
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     workspaces: |
+      #       ./
+      #       xtask
+
+      - name: Fmt Check
+        run: cargo fmt -- --check
+
+      - name: Clippy
+        run: cargo clippy -- -D warnings
+
+      - name: Build
+        run: cargo build
+
+  build-openthread:
+    name: Pre-build OpenThread native libs
+    runs-on: ubuntu-latest
+    permissions: read-all
+    needs: build
+    outputs:
+      upload-libs: ${{ steps.detect-changes.outputs.libs == 'true' }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: openthread init
+        run: git submodule update --init --recursive
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          target: x86_64-unknown-linux-gnu
+          toolchain: nightly
+          components: rust-src,rustfmt
+
+      # TODO: Double-check and uncomment
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     workspaces: |
+      #       ./
+      #       xtask
+
+      - name: Detect openthread-sys/ changes
+        uses: dorny/paths-filter@v3
+        id: detect-changes
+        with:
+          filters: |
+            libs:
+              - 'openthread-sys/**'
+
+      - name: Detect host target triple
+        run: |
+          export HOST_TARGET=$(rustup show | grep "Default host" | sed -e 's/.* //')
+          echo "HOST_TARGET=$HOST_TARGET" >> $GITHUB_ENV
+
+      - name: Build OpenThread libraries and bindings
+        if: |
+          steps.detect-changes.outputs.libs == 'true' ||
+          contains(github.event.pull_request.labels.*.name, 'rebuild-libs')
+        run: |
+          rm -rf openthread-sys/libs/*
+          cargo +stable xtask gen thumbv6m-none-eabi
+          cargo +stable xtask gen thumbv7em-none-eabi
+
+      - name: Install espup
+        run: |
+          curl -LO https://github.com/esp-rs/espup/releases/latest/download/espup-${{ env.HOST_TARGET }}.zip
+          unzip -o espup-${{ env.HOST_TARGET }}.zip -d "$HOME/.cargo/bin"
+          chmod +x "$HOME/.cargo/bin/espup"*
+          echo "ESPUP_EXPORT_FILE=$HOME/exports" >> $GITHUB_ENV
+
+      - name: Install espup toolchains (xtensa and riscv)
+        run: |
+          source "$HOME/.cargo/env"
+          "$HOME/.cargo/bin/espup" install -e -r
+          source "$HOME/exports"
+          echo "${LIBCLANG_PATH}/../bin:$PATH" >> "$GITHUB_PATH"
+          echo "LIBCLANG_PATH=${LIBCLANG_PATH}" >> "$GITHUB_ENV"
+          echo "CLANG_PATH=${CLANG_PATH}" >> "$GITHUB_ENV"
+
+# TODO: Remove the manual espup installation and run once the action below
+# supports the `-r` flag to install the Espressif RISCV GCC toolchain
+# See https://github.com/esp-rs/xtensa-toolchain/issues/45 for more info
+#      - name: Install Rust for Xtensa and Espressif LLVM installation (optional)
+#        uses: esp-rs/xtensa-toolchain@v1.6
+#        with:
+#          ldproxy: true
+#          override: false
+#          extended-llvm: ${{
+#            steps.detect-changes.outputs.libs == 'true' ||
+#            contains(github.event.pull_request.labels.*.name, 'rebuild-libs')
+#            }}
+
+      - name: Build OpenThread libraries and bindings (RISC-V)
+        if: |
+          steps.detect-changes.outputs.libs == 'true' ||
+          contains(github.event.pull_request.labels.*.name, 'rebuild-libs')
+        run: |
+          cargo +stable xtask gen riscv32imac-unknown-none-elf
+
+      - name: Upload libraries artifacts for commit
+        if: |
+          (steps.detect-changes.outputs.libs == 'true' &&
+          github.ref == 'refs/heads/main') ||
+          contains(github.event.pull_request.labels.*.name, 'rebuild-libs')
+        uses: actions/upload-artifact@v4
+        with:
+          name: openthread-sys
+          retention-days: 1
+          path: |
+            openthread-sys/libs
+            openthread-sys/src/include
+
+  build-mcu:
+    name: Build for MCUs
+    runs-on: ubuntu-latest
+    permissions: read-all
+    needs: build-openthread
+    strategy:
+      fail-fast: false
+      matrix:
+        mcu:
+          - [esp, esp32c6, riscv32imac-unknown-none-elf]
+          - [esp, esp32h2, riscv32imac-unknown-none-elf]
+          - [nrf, default, thumbv7em-none-eabi]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          target: x86_64-unknown-linux-gnu
+          toolchain: nightly
+          components: rust-src,rustfmt,clippy
+
+      - name: Install MCU target
+        if: startsWith(matrix.mcu[2], 'riscv32')
+        run: rustup target add ${{ matrix.mcu[2] }}
+
+      - name: Install Rust for Xtensa
+        if: startsWith(matrix.mcu[2], 'xtensa-')
+        uses: esp-rs/xtensa-toolchain@v1.6
+        with:
+          default: true
+          ldproxy: true
+
+      # TODO: Double-check and uncomment
+      # - uses: Swatinem/rust-cache@v2
+      #   with:
+      #     workspaces: |
+      #       ./
+      #       xtask
+
+      - name: Clippy
+        run: cargo clippy --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
+
+      - name: Build
+        run: cargo build --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+
+      - name: Fmt Check - Examples
+        run: cd examples/${{ matrix.mcu[0] }}; cargo fmt -- --check
+
+      - name: openthread init
+        run: git submodule update --init --recursive
+
+      - name: Detect host target triple
+        run: |
+          export HOST_TARGET=$(rustup show | grep "Default host" | sed -e 's/.* //')
+          echo "HOST_TARGET=$HOST_TARGET" >> $GITHUB_ENV
+
+      - name: Install espup
+        run: |
+          curl -LO https://github.com/esp-rs/espup/releases/latest/download/espup-${{ env.HOST_TARGET }}.zip
+          unzip -o espup-${{ env.HOST_TARGET }}.zip -d "$HOME/.cargo/bin"
+          chmod +x "$HOME/.cargo/bin/espup"*
+          echo "ESPUP_EXPORT_FILE=$HOME/exports" >> $GITHUB_ENV
+
+      - name: Install espup toolchains (xtensa and riscv)
+        run: |
+          source "$HOME/.cargo/env"
+          "$HOME/.cargo/bin/espup" install -e -r
+          source "$HOME/exports"
+          echo "${LIBCLANG_PATH}/../bin:$PATH" >> "$GITHUB_PATH"
+          echo "LIBCLANG_PATH=${LIBCLANG_PATH}" >> "$GITHUB_ENV"
+          echo "CLANG_PATH=${CLANG_PATH}" >> "$GITHUB_ENV"
+
+      - name: Clippy - Examples
+        run: cd examples/${{ matrix.mcu[0] }}; cargo clippy --no-default-features --features ${{ matrix.mcu[1] }} --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
+
+      - name: Build - Examples
+        run: cd examples/${{ matrix.mcu[0] }}; cargo build --no-default-features --features ${{ matrix.mcu[1] }} --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+
+  # If libraries are rebuilt and tests are successful, we upload them in a specific job
+  # that has write access to prevent security breaches, and unwanted use of the token
+  commit-libs:
+    name: Commit pre-built OpenThread native libs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    needs: build-mcu
+    # TODO: Currently GitHub doesn't allow pushing to a forked repo's branch when running an action on a PR to upstream.
+    if: |
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      ((needs.build-openthread.outputs.upload-libs &&
+      github.ref == 'refs/heads/main') ||
+      contains(github.event.pull_request.labels.*.name, 'rebuild-libs'))
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # In a pull request trigger, ref is required as GitHub Actions checks out in detached HEAD mode,
+          # meaning it doesn’t check out your branch by default.
+          ref: ${{ github.head_ref || github.ref_name }}
+          # When doing a pull request, we need to fetch the forked repository.
+          repository: ${{ github.event.pull_request.head.repo.full_name || github.repository }}
+
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: openthread-sys
+          # Required because else artifacts will be put into the base directory
+          path: openthread-sys/
+
+      - name: Commit and push libraries to ${{ github.head_ref || github.ref_name }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add openthread-sys/libs
+          git add openthread-sys/src
+          # Only commit and push when there are changes
+          git diff --cached --quiet || (
+            git commit -m "chore: auto-push built libraries"
+            git push
+          )
