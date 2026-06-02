@@ -202,8 +202,8 @@ impl OpenThreadBuilder {
             .define("OT_PING_SENDER", "ON")
             // Do not change from here below
             .define("OT_EXTERNAL_MBEDTLS", "mbedtls")
-            // TODO: We currently want OpenThread to override MbedTLS's memory
-            //       management functions to use OpenThread's allocator.
+            // For now, we want OpenThread to override MbedTLS's memory
+            // management functions to use OpenThread's allocator.
             .define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON")
             .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
             .define("OT_PLATFORM", "external")
