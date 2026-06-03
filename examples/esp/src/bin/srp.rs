@@ -62,6 +62,8 @@ const THREAD_DATASET: &str = if let Some(dataset) = option_env!("THREAD_DATASET"
 
 esp_bootloader_esp_idf::esp_app_desc!();
 
+openthread::mbedtls_define_zeroize!();
+
 #[esp_rtos::main]
 async fn main(spawner: Spawner) {
     esp_alloc::heap_allocator!(size: 1024);

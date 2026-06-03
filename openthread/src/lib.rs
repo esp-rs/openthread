@@ -6,7 +6,7 @@
 #![allow(clippy::uninlined_format_args)]
 
 use core::cell::{RefCell, RefMut};
-use core::ffi::{c_uchar, c_void};
+use core::ffi::c_void;
 use core::fmt::Display;
 use core::future::poll_fn;
 use core::marker::PhantomData;
@@ -27,6 +27,7 @@ use platform::{OT_ACTIVE_STATE, OT_REFCNT};
 
 use signal::Signal;
 
+pub use openthread_sys::mbedtls_define_zeroize;
 pub use rand_core::RngCore as OtRngCore;
 
 pub use dataset::*;
@@ -2016,12 +2017,5 @@ fn to_ot_addr(addr: &SocketAddrV6) -> crate::sys::otSockAddr {
             },
         },
         mPort: addr.port(),
-    }
-}
-
-#[no_mangle]
-unsafe extern "C" fn mbedtls_platform_zeroize(dst: *mut c_uchar, len: u32) {
-    for i in 0..len as isize {
-        dst.offset(i).write_volatile(0);
     }
 }

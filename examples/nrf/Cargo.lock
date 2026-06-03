@@ -1435,7 +1435,7 @@ checksum = "0ca88d725a0a943b096803bd34e73a4437208b6077654cc4ecb2947a5f91618d"
 [[package]]
 name = "mbedtls-rs-sys"
 version = "0.1.0"
-source = "git+https://github.com/esp-rs/mbedtls-rs?branch=rework-xtask#6d370affa9c717c574c6806774b2db4452bf8b50"
+source = "git+https://github.com/esp-rs/mbedtls-rs?branch=rework-xtask#75b322929acef70eb03caef601ed03e68a6e5b84"
 dependencies = [
  "anyhow",
  "bindgen 0.72.1",

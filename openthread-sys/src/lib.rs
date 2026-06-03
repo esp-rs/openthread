@@ -39,6 +39,8 @@ pub use self::bindings::*;
 // Make sure mbedtls-rs-sys is linked.
 use mbedtls_rs_sys as _;
 
+pub use mbedtls_rs_sys::define_zeroize as mbedtls_define_zeroize;
+
 #[allow(
     non_camel_case_types,
     non_snake_case,

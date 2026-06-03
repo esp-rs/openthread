@@ -75,6 +75,8 @@ const THREAD_DATASET: &str = if let Some(dataset) = option_env!("THREAD_DATASET"
 
 const NRF_RADIO_CAPS: otRadioCaps = NrfRadio::CAPS.bits();
 
+openthread::mbedtls_define_zeroize!();
+
 // Only needed for tinyrlibc's alloc functions which won't be called at runtime.
 //
 // If the firmware would not use or need heap allocation for other purposes, this could be replaced
