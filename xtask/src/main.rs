@@ -125,7 +125,11 @@ fn run_cargo(
     force_esp_riscv_gcc: bool,
     cargo_args: &[String],
 ) -> Result<(TempDir, PathBuf)> {
-    let mut features: Vec<&str> = vec!["force-generate-bindings"];
+    // Build the prebuilt artifacts with exactly the `prebuilt` (= `matter`)
+    // feature profile, decoupled from `default`, so the committed per-target
+    // `.a` libraries correspond to one explicit, named knob set. `openthread-sys`'s
+    // build script validates consumer builds against this same profile.
+    let mut features: Vec<&str> = vec!["prebuilt", "force-generate-bindings"];
     if use_gcc {
         features.push("use-gcc");
     }
@@ -158,6 +162,8 @@ fn run_cargo(
         .arg("openthread-sys")
         .arg("--target")
         .arg(target)
+        // Pin the feature profile to `prebuilt`; don't let `default` leak in.
+        .arg("--no-default-features")
         .arg("--features")
         .arg(&features_arg)
         // JSON on stdout for programmatic consumption; human-readable

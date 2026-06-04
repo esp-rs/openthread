@@ -245,6 +245,7 @@ jobs:
           echo "ESPUP_EXPORT_FILE=$HOME/exports" >> $GITHUB_ENV
 
       - name: Install espup toolchains (xtensa and riscv)
+        if: matrix.mcu[0] == 'esp'
         run: |
           source "$HOME/.cargo/env"
           "$HOME/.cargo/bin/espup" install -e -r

@@ -36,7 +36,41 @@ exclude = [
 ]
 
 [features]
-default = []
+# The default profile is `matter` (= the committed prebuilt `.a` config), so
+# existing consumers and the prebuilt libraries apply as-is. Select individual
+# feature knobs to compile in more OpenThread functionality (forces an
+# on-the-fly rebuild — `--gc-sections` cannot drop unused-but-enabled features
+# because `ot::Instance` aggregates them all). See `gen/features.rs`.
+default = ["matter", "mbedtls-rs-sys"]
+
+# Use the external MbedTLS provided by the `mbedtls-rs-sys` crate, rather than
+# OpenThread's own bundled MbedTLS. See `gen/builder.rs`.
+mbedtls-rs-sys = ["dep:mbedtls-rs-sys"]
+
+# ---------------------------------------------------------------------------
+# Device-type / radio-location selection. These pick WHICH static archives are
+# linked (all are always built); they do not change the shared
+# `OPENTHREAD_CONFIG_*` knobs. Additive: absence means the default.
+#
+#   - `ftd` off -> MTD (minimal end-device);  on -> FTD (router-capable)
+#   - `rcp`     -> the 802.15.4 radio is a SEPARATE chip (an OpenThread RCP)
+#                  reached over a UART/SPI transport (spinel); this MCU runs the
+#                  full stack and drives the remote radio via `RadioSpinel`.
+#                  Off (default) = the radio is local to this MCU (SoC mode),
+#                  driven through the `otPlatRadio*` / `Radio`-trait path.
+#
+# `rcp` links `openthread-{mtd,ftd}` + `openthread-radio-spinel` +
+# `openthread-spinel-rcp` + `openthread-hdlc` (cf. OpenThread's POSIX RCP host).
+#
+# NOTE: the *NCP* role (this MCU = radio + full stack, exposed over spinel to a
+# separate host that runs the app via OS sockets + a daemon) is intentionally
+# NOT supported: its host-side API is OS sockets / `ot-ctl`, not the OpenThread
+# Rust API this crate provides — so the `openthread-ncp-*` libraries are not
+# built. See `gen/features.rs`.
+# ---------------------------------------------------------------------------
+ftd = []
+rcp = []
+
 # Always generate the bindings during build, even if pre-built bindings for the build target are available
 force-generate-bindings = []
 # Force the use of the Espressif Riscv GCC toolchain, if the target is a `riscv32*-` target
@@ -46,8 +80,89 @@ force-esp-riscv-gcc = ["use-gcc"]
 # Use GCC instead of clang
 use-gcc = []
 
+# ---------------------------------------------------------------------------
+# Features controlling what OpenThread aspects get compiled in.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Consumer bundles (flat: each lists every leaf it needs).
+# ---------------------------------------------------------------------------
+
+# The exact profile the committed per-target prebuilt libraries are built with
+# (see `xtask`). It MUST equal `default` so the committed `.a` libraries match
+# what default consumers build.
+prebuilt = ["matter", "mbedtls-rs-sys"]
+
+# Barebones profile for Matter: SRP client (service registration), SLAAC
+# (address autoconfig), ECDSA, ping. No provisioning (joiner/commissioner),
+# CoAP, DNS server, TCP, etc. (UDP is core and always available.)
+matter = ["srp-client", "slaac", "ecdsa", "ping-sender"]
+
+# ---------------------------------------------------------------------------
+# OpenThread feature knobs. Each maps to one or more `OT_*` CMake options in
+# `gen/features.rs`. (Device type MTD/FTD and co-processor role NCP/RCP are NOT
+# features — those are separate `.a` archives, always built; the linker selects
+# which to pull.)
+# ---------------------------------------------------------------------------
+
+# Transport / application protocols
+tcp = []
+coap = []
+coap-block = []        # CoAP block-wise transfer (RFC 7959); implies coap
+coap-observe = []      # CoAP observe (RFC 7641); implies coap
+coaps = ["_ot-dtls"]   # secure CoAP (DTLS) — pulls the DTLS/J-PAKE mbedtls features
+# Service discovery / naming
+srp-client = []
+srp-server = []
+dns-client = []
+dnssd-server = []
+mdns = []
+service = []           # TMF network-data service
+netdata-publisher = []
+# IPv6 / addressing
+slaac = []
+dhcp6-client = []
+dhcp6-server = []
+nat64 = []             # NAT64 translator
+# Commissioning — DTLS-based (J-PAKE). Pull the matching mbedtls features.
+joiner = ["_ot-dtls"]
+commissioner = ["_ot-dtls"]
+
+# Internal: the mbedtls-rs-sys feature set OpenThread's DTLS secure transport
+# (MeshCoP / CoAPS / commissioning) needs ON TOP OF the `openthread` mbedtls
+# profile. OpenThread commissioning uses the J-PAKE ciphersuite
+# (`ECJPAKE_WITH_AES_128_CCM_8`) over DTLS 1.2, which needs no X.509 — so we add
+# the DTLS engine (client+server, cookies) plus J-PAKE, but NOT cert handling.
+# Cert-based DTLS (TCAT / ECDHE-ECDSA) is a separate, manual opt-in.
+_ot-dtls = [
+    "mbedtls-rs-sys/tls-engine",
+    "mbedtls-rs-sys/tls-client",
+    "mbedtls-rs-sys/tls-server",
+    "mbedtls-rs-sys/tls-proto-tls12",
+    "mbedtls-rs-sys/tls-proto-dtls",
+    "mbedtls-rs-sys/alg-ecjpake",
+    "mbedtls-rs-sys/kex-ecjpake",
+]
+# Border functionality
+border-router = []
+border-routing = []
+# Diagnostics / management
+ping-sender = []
+link-metrics-initiator = []
+link-metrics-subject = []
+mac-filter = []
+jam-detection = []
+child-supervision = []
+mesh-diag = []
+history-tracker = []
+dataset-updater = []
+# Misc
+ecdsa = []
+sntp-client = []
+trel = []              # Thread Radio Encapsulation Link (TREL)
+
 [dependencies]
-mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", branch = "rework-xtask", default-features = false }
+mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", branch = "control-what-gets-in", default-features = false, features = ["openthread"], optional = true }
 
 [build-dependencies]
 anyhow = "1"

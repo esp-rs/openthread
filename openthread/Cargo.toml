@@ -15,10 +15,27 @@ readme = "README.md"
 harness = false
 
 [features]
-default = []
+default = ["matter", "mbedtls-rs-sys"]
 edge-nal = ["udp", "dep:edge-nal"]
+# UDP is always available in OpenThread (core); this feature gates the Rust
+# UDP API surface.
 udp = []
-srp = ["udp"]
+# SRP client: gates the Rust SRP API and compiles in OpenThread's SRP client.
+srp = ["udp", "openthread-sys/srp-client"]
+# Device-type / radio-location selection (additive; absence = the default).
+#   ftd off -> MTD end-device (default);  ftd on -> FTD (router-capable)
+#   rcp     -> the 802.15.4 radio is a separate RCP chip reached over a UART/SPI
+#              (spinel) transport; this MCU runs the full stack and drives the
+#              remote radio. Off (default) = the radio is local to this MCU.
+#              NOTE: `rcp` changes the platform integration — instead of a local
+#              `Radio` implementation, the user supplies a spinel transport (see
+#              the crate docs / `OpenThread` RCP-host API).
+ftd = ["openthread-sys/ftd"]
+rcp = ["openthread-sys/rcp"]
+# Build OpenThread against the external MbedTLS (`mbedtls-rs-sys`) rather than
+# its own bundled MbedTLS. On by default; omit (with `default-features = false`)
+# to use the bundled MbedTLS and drop the `mbedtls-rs-sys` dependency.
+mbedtls-rs-sys = ["openthread-sys/mbedtls-rs-sys"]
 defmt = ["dep:defmt", "heapless/defmt-03", "embassy-time/defmt"]
 force-generate-bindings = ["openthread-sys/force-generate-bindings"]
 force-esp-riscv-gcc = ["openthread-sys/force-esp-riscv-gcc"]
@@ -26,8 +43,62 @@ force-esp-riscv-gcc = ["openthread-sys/force-esp-riscv-gcc"]
 use-gcc = ["openthread-sys/use-gcc"]
 isupper = [] # Provide internal implementation of the `isupper` C fn
 
+# ---------------------------------------------------------------------------
+# Features controlling what OpenThread aspects get compiled in.
+# ---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
+# Consumer bundles (flat: each lists every leaf it needs).
+# ---------------------------------------------------------------------------
+
+# Barebones profile for Matter
+matter = ["srp", "openthread-sys/matter"]
+
+# ---------------------------------------------------------------------------
+# OpenThread capability features. Each re-exports the corresponding
+# `openthread-sys` knob (compiling the feature into the C library) and is the
+# gate the high-level Rust API uses. `openthread` aims to wrap most of
+# OpenThread's capabilities, so these are surfaced here rather than requiring
+# the user to reach into `openthread-sys` directly.
+#
+# (Device type MTD/FTD and co-processor role NCP/RCP are not features — those
+# are separate `.a` archives selected at link time; see `openthread-sys`.)
+# ---------------------------------------------------------------------------
+
+srp-server = ["openthread-sys/srp-server"]
+dns-client = ["openthread-sys/dns-client"]
+dnssd-server = ["openthread-sys/dnssd-server"]
+mdns = ["openthread-sys/mdns"]
+service = ["openthread-sys/service"]
+netdata-publisher = ["openthread-sys/netdata-publisher"]
+coap = ["openthread-sys/coap"]
+coap-block = ["openthread-sys/coap-block"]
+coap-observe = ["openthread-sys/coap-observe"]
+coaps = ["openthread-sys/coaps"]
+tcp = ["openthread-sys/tcp"]
+slaac = ["openthread-sys/slaac"]
+dhcp6-client = ["openthread-sys/dhcp6-client"]
+dhcp6-server = ["openthread-sys/dhcp6-server"]
+nat64 = ["openthread-sys/nat64"]
+joiner = ["openthread-sys/joiner"]
+commissioner = ["openthread-sys/commissioner"]
+border-router = ["openthread-sys/border-router"]
+border-routing = ["openthread-sys/border-routing"]
+ping-sender = ["openthread-sys/ping-sender"]
+link-metrics-initiator = ["openthread-sys/link-metrics-initiator"]
+link-metrics-subject = ["openthread-sys/link-metrics-subject"]
+mac-filter = ["openthread-sys/mac-filter"]
+jam-detection = ["openthread-sys/jam-detection"]
+child-supervision = ["openthread-sys/child-supervision"]
+mesh-diag = ["openthread-sys/mesh-diag"]
+history-tracker = ["openthread-sys/history-tracker"]
+dataset-updater = ["openthread-sys/dataset-updater"]
+ecdsa = ["openthread-sys/ecdsa"]
+sntp-client = ["openthread-sys/sntp-client"]
+trel = ["openthread-sys/trel"]
+
 [dependencies]
-openthread-sys = { path = "../openthread-sys" }
+openthread-sys = { path = "../openthread-sys", default-features = false }
 log = { version = "0.4", default-features = false, optional = true }
 defmt = { version = "1.0", default-features = false, optional = true, features = ["ip_in_core"] }
 scopeguard = { version = "1", default-features = false }

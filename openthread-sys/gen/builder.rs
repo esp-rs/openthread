@@ -7,6 +7,9 @@ use anyhow::{anyhow, Result};
 use bindgen::Builder;
 use cmake::Config;
 
+#[path = "features.rs"]
+pub mod features;
+
 pub struct OpenThreadBuilder {
     crate_root_path: PathBuf,
     cmake_configurer: CMakeConfigurer,
@@ -161,6 +164,10 @@ impl OpenThreadBuilder {
     /// - `out_path`: Path to use as a build space
     /// - `copy_path`: Optional path to copy the generated libraries to
     pub fn compile(&self, out_path: &Path, copy_path: Option<&Path>) -> Result<PathBuf> {
+        // Whether to build OpenThread against the external MbedTLS from
+        // `mbedtls-rs-sys`
+        let use_external_mbedtls = std::env::var_os("CARGO_FEATURE_MBEDTLS_RS_SYS").is_some();
+
         let target_dir = out_path.join("openthread").join("build");
         std::fs::create_dir_all(&target_dir)?;
 
@@ -179,32 +186,38 @@ impl OpenThreadBuilder {
             .cflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128")
             .cxxflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128");
 
-        // Add the include directories for MbedTLS.
-        let mbedtls_include = std::env::var_os("DEP_MBEDTLS_INCLUDE")
-            .expect("mbedtls-rs-sys should set the 'include' metadata");
-        std::env::split_paths(&mbedtls_include).for_each(|include_dir| {
-            config.cflag(format!("-I{}", include_dir.display()));
-            config.cxxflag(format!("-I{}", include_dir.display()));
-        });
+        // When using the external MbedTLS provided by `mbedtls-rs-sys`, add its
+        // include directories so OpenThread compiles against that config. When
+        // the feature is off, OpenThread builds its own bundled MbedTLS (the
+        // `third_party/mbedtls` subtree) and needs no external includes.
+        if use_external_mbedtls {
+            let mbedtls_include = std::env::var_os("DEP_MBEDTLS_INCLUDE")
+                .expect("mbedtls-rs-sys should set the 'include' metadata");
+            std::env::split_paths(&mbedtls_include).for_each(|include_dir| {
+                config.cflag(format!("-I{}", include_dir.display()));
+                config.cxxflag(format!("-I{}", include_dir.display()));
+            });
+        }
 
         config
             .define("OT_THREAD_VERSION", "1.1")
             .define("OT_LOG_LEVEL", "NOTE")
-            .define("OT_FTD", "OFF")
+            // Build BOTH device types so the prebuilt cache covers MTD and FTD.
+            // The actual archives shipped/linked are chosen by the umbrella
+            // target in our wrapper `CMakeLists.txt` and the `ftd`/`rcp`/`tcp`
+            // features (see `gen/features.rs::device_link_libs`); the consumer's
+            // linker pulls only the archive(s) its firmware references, so unused
+            // archives cost zero bytes in the final image.
+            //
+            // OT_RCP here builds OpenThread's RCP *firmware* (radio-only image),
+            // which we don't ship. Remote-radio support on the *host* side is
+            // the separate `radio-spinel`/`hdlc` libraries (selected by the
+            // `rcp` feature), which build regardless of this flag. The NCP role
+            // (`openthread-ncp-*`) is omitted from the umbrella entirely.
+            .define("OT_FTD", "ON")
             .define("OT_MTD", "ON")
             .define("OT_RCP", "OFF")
-            .define("OT_TCP", "OFF")
-            .define("OT_BORDER_ROUTER", "OFF")
-            .define("OT_BORDER_ROUTING", "OFF")
-            .define("OT_SRP_CLIENT", "ON")
-            .define("OT_SLAAC", "ON")
-            .define("OT_ECDSA", "ON")
-            .define("OT_PING_SENDER", "ON")
             // Do not change from here below
-            .define("OT_EXTERNAL_MBEDTLS", "mbedtls")
-            // For now, we want OpenThread to override MbedTLS's memory
-            // management functions to use OpenThread's allocator.
-            .define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON")
             .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
             .define("OT_PLATFORM", "external")
             .define("OT_SETTINGS_RAM", "OFF")
@@ -216,13 +229,49 @@ impl OpenThreadBuilder {
             .define("CMAKE_POLICY_VERSION_MINIMUM", "3.5") // For MbedTLS
             .profile("MinSizeRel")
             .out_dir(&target_dir)
-            // The `cmake` crate defaults to running `cmake --build . --target install`.
-            // OpenThread's install target pulls in pkg-config / CMake helper files
-            // and 3rdparty install bits we don't need (we link `.a` files directly).
-            // Some host setups (notably rs-matter integration runners) also fail during
-            // that step. We harvest build outputs straight from `target_dir` via the
-            // CMAKE_*_OUTPUT_DIRECTORY defines, so the install target is unnecessary.
-            .no_build_target(true);
+            // Build only the `openthread-sys-libs` umbrella target (defined in
+            // our wrapper `CMakeLists.txt`), not CMake's default `ALL`. This
+            // both skips the install target — which pulls in pkg-config / CMake
+            // helper files and 3rdparty install bits we don't need, and fails on
+            // some host setups — AND avoids building OpenThread's CLI / RCP /
+            // radio example libraries (registered unconditionally upstream, and
+            // not buildable against our trimmed MbedTLS profile). We harvest the
+            // `.a` files straight from `target_dir` via the CMAKE_*_OUTPUT_DIRECTORY
+            // defines.
+            .build_target("openthread-sys-libs");
+
+        // MbedTLS backend selection (the `mbedtls-rs-sys` feature, on by
+        // default). When enabled, OpenThread is built against the external
+        // MbedTLS provided by `mbedtls-rs-sys` (whose includes were added
+        // above), and OpenThread overrides MbedTLS's memory management to use
+        // its own allocator. When disabled, OpenThread compiles its own bundled
+        // MbedTLS (the `third_party/mbedtls` subtree) — `OT_EXTERNAL_MBEDTLS` is
+        // simply not set, which is OpenThread's default.
+        if use_external_mbedtls {
+            config
+                .define("OT_EXTERNAL_MBEDTLS", "mbedtls")
+                .define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON");
+        }
+
+        // Apply the feature-driven `OT_*` knobs: every exposed knob is reset to
+        // `OFF` (overriding OpenThread's own, sometimes-`ON`, defaults), then
+        // turned `ON` per active cargo feature. See `gen/features.rs`.
+        for setting in features::active_knob_settings() {
+            config.define(setting.knob, if setting.on { "ON" } else { "OFF" });
+        }
+
+        // OpenThread's DTLS code (`secure_transport`) gates its key-export
+        // callback declaration on `#ifdef MBEDTLS_SSL_EXPORT_KEYS`, but invokes
+        // `mbedtls_ssl_set_export_keys_cb` unconditionally on MbedTLS >= 3.0
+        // (where the symbol is always available and the config option was
+        // removed). Define it for OpenThread's own compilation so the
+        // declaration matches, when a DTLS feature is active. Only relevant for
+        // the external MbedTLS (the bundled one is the matching upstream version).
+        if use_external_mbedtls && features::dtls_active() {
+            config
+                .cflag("-DMBEDTLS_SSL_EXPORT_KEYS")
+                .cxxflag("-DMBEDTLS_SSL_EXPORT_KEYS");
+        }
 
         config.build();
 

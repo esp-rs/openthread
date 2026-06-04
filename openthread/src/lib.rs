@@ -27,7 +27,6 @@ use platform::{OT_ACTIVE_STATE, OT_REFCNT};
 
 use signal::Signal;
 
-pub use openthread_sys::mbedtls_define_zeroize;
 pub use rand_core::RngCore as OtRngCore;
 
 pub use dataset::*;
@@ -59,6 +58,8 @@ mod netdata;
 pub mod nrf;
 mod platform;
 mod radio;
+#[cfg(feature = "rcp")]
+pub mod rcp;
 mod scan;
 mod settings;
 mod signal;
