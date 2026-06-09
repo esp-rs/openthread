@@ -162,7 +162,7 @@ sntp-client = []
 trel = []              # Thread Radio Encapsulation Link (TREL)
 
 [dependencies]
-mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", branch = "control-what-gets-in", default-features = false, features = ["openthread"], optional = true }
+mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", default-features = false, features = ["openthread"], optional = true }
 
 [build-dependencies]
 anyhow = "1"
