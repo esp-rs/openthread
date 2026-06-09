@@ -20,7 +20,16 @@ extern "C" {
 #define strstr __builtin_strstr
 
 #define memcmp __builtin_memcmp
-#define memset __builtin_memset
+
+// `memset` must be a real (inline) function rather than a `#define` to
+// `__builtin_memset`, because OpenThread's bundled MbedTLS takes its address
+// (`platform_util.c`: `memset_func = memset`). Clang rejects `&__builtin_memset`
+// ("builtin functions must be directly called"), but taking the address of this
+// inline wrapper is fine.
+static inline void *memset(void *s, int c, size_t n) {
+  return __builtin_memset(s, c, n);
+}
+
 #define memcpy __builtin_memcpy
 #define memmove __builtin_memmove
 
