@@ -26,6 +26,8 @@ on:
   push:
     branches:
       - main
+  schedule:
+    - cron: "30 7 * * *"
   workflow_dispatch:
 
 env:
