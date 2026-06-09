@@ -88,14 +88,15 @@ async fn main(spawner: Spawner) {
     let ot = OpenThread::new_with_udp(ieee_eui64, rng, ot_settings, ot_resources, ot_udp_resources)
         .unwrap();
 
-    spawner
-        .spawn(run_ot(
+    spawner.spawn(
+        run_ot(
             ot.clone(),
             EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
-        ))
-        .unwrap();
+        )
+        .unwrap(),
+    );
 
-    spawner.spawn(run_ot_ip_info(ot.clone())).unwrap();
+    spawner.spawn(run_ot_ip_info(ot.clone()).unwrap());
 
     info!("Dataset: {THREAD_DATASET}");
 

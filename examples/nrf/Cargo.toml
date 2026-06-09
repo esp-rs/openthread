@@ -33,15 +33,15 @@ cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-sing
 cortex-m-rt = "0.7.0"
 rtt-target = { version = "0.6", features = ["defmt"] }
 panic-rtt-target = "0.2"
-embassy-executor = { version = "0.9", features = ["arch-cortex-m", "executor-thread", "executor-interrupt", "defmt"] }
-embassy-sync = { version = "0.7", features = ["defmt"] }
+embassy-executor = { version = "0.10", features = ["platform-cortex-m", "executor-thread", "executor-interrupt", "defmt"] }
+embassy-sync = { version = "0.8", features = ["defmt"] }
 embassy-futures = "0.1"
 embassy-time = { version = "0.5", features = ["defmt"] }
 embassy-net = { version = "0.7", features = ["defmt", "proto-ipv6", "medium-ip", "udp"] }
-embassy-nrf = { version = "0.9", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time"] }
+embassy-nrf = { version = "0.10", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time"] }
 defmt = "0.3"
-heapless = "0.8"
-critical-section = "1.1"
+heapless = "0.8" # 0.8 for embassy-net 0.7
+critical-section = "1.2"
 rand_core = "0.9"
 static_cell = "2.1"
 

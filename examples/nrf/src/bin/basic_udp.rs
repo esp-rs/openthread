@@ -120,17 +120,15 @@ async fn main(spawner: Spawner) {
     interrupt::EGU0_SWI0.set_priority(Priority::P7);
 
     let spawner_high = EXECUTOR_HIGH.start(interrupt::EGU0_SWI0);
-    spawner_high
-        .spawn(run_radio(phy_radio_runner, radio))
-        .unwrap();
+    spawner_high.spawn(run_radio(phy_radio_runner, radio).unwrap());
 
     info!("Radio created");
 
-    spawner.spawn(run_ot(ot.clone(), proxy_radio)).unwrap();
+    spawner.spawn(run_ot(ot.clone(), proxy_radio).unwrap());
 
     info!("About to spawn OT IP info");
 
-    spawner.spawn(run_ot_ip_info(ot.clone())).unwrap();
+    spawner.spawn(run_ot_ip_info(ot.clone()).unwrap());
 
     info!("Dataset: {}", THREAD_DATASET);
 

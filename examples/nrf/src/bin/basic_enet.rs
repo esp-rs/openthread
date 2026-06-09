@@ -131,22 +131,18 @@ async fn main(spawner: Spawner) {
     interrupt::EGU0_SWI0.set_priority(Priority::P7);
 
     let spawner_high = EXECUTOR_HIGH.start(interrupt::EGU0_SWI0);
-    spawner_high
-        .spawn(run_radio(phy_radio_runner, radio))
-        .unwrap();
+    spawner_high.spawn(run_radio(phy_radio_runner, radio).unwrap());
 
     info!("Radio created");
 
-    spawner
-        .spawn(run_enet_driver(enet_driver_runner, proxy_radio))
-        .unwrap();
+    spawner.spawn(run_enet_driver(enet_driver_runner, proxy_radio).unwrap());
 
     let enet_resources = mk_static!(StackResources<ENET_MAX_SOCKETS>, StackResources::new());
 
     let (stack, enet_runner) =
         embassy_net::new(enet_driver, Config::default(), enet_resources, enet_seed);
 
-    spawner.spawn(run_enet(enet_runner)).unwrap();
+    spawner.spawn(run_enet(enet_runner).unwrap());
 
     info!("Dataset: {}", THREAD_DATASET);
 

@@ -97,19 +97,20 @@ async fn main(spawner: Spawner) {
     let (_enet_controller, enet_driver_runner, enet_driver) =
         enet::new(ot.clone(), enet_driver_state);
 
-    spawner
-        .spawn(run_enet_driver(
+    spawner.spawn(
+        run_enet_driver(
             enet_driver_runner,
             EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
-        ))
-        .unwrap();
+        )
+        .unwrap(),
+    );
 
     let enet_resources = mk_static!(StackResources<ENET_MAX_SOCKETS>, StackResources::new());
 
     let (stack, enet_runner) =
         embassy_net::new(enet_driver, Config::default(), enet_resources, enet_seed);
 
-    spawner.spawn(run_enet(enet_runner)).unwrap();
+    spawner.spawn(run_enet(enet_runner).unwrap());
 
     info!("Dataset: {THREAD_DATASET}");
 

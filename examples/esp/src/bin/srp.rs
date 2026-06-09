@@ -107,14 +107,15 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-    spawner
-        .spawn(run_ot(
+    spawner.spawn(
+        run_ot(
             ot.clone(),
             EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
-        ))
-        .unwrap();
+        )
+        .unwrap(),
+    );
 
-    spawner.spawn(run_ot_info(ot.clone())).unwrap();
+    spawner.spawn(run_ot_info(ot.clone()).unwrap());
 
     info!("Dataset: {THREAD_DATASET}");
 

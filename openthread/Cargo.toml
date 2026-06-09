@@ -36,7 +36,7 @@ rcp = ["openthread-sys/rcp"]
 # its own bundled MbedTLS. On by default; omit (with `default-features = false`)
 # to use the bundled MbedTLS and drop the `mbedtls-rs-sys` dependency.
 mbedtls-rs-sys = ["openthread-sys/mbedtls-rs-sys"]
-defmt = ["dep:defmt", "heapless/defmt-03", "embassy-time/defmt"]
+defmt = ["dep:defmt", "heapless/defmt", "embassy-time/defmt"]
 force-generate-bindings = ["openthread-sys/force-generate-bindings"]
 force-esp-riscv-gcc = ["openthread-sys/force-esp-riscv-gcc"]
 # Use GCC instead of clang
@@ -103,13 +103,13 @@ log = { version = "0.4", default-features = false, optional = true }
 defmt = { version = "1.0", default-features = false, optional = true, features = ["ip_in_core"] }
 scopeguard = { version = "1", default-features = false }
 rand_core = "0.9"
-embassy-sync = "0.7"
+embassy-sync = "0.8"
 embassy-time = "0.5"
 embassy-futures = "0.1"
-heapless = "0.8"
+heapless = "0.9"
 bitflags = "2.5"
 embassy-net-driver-channel = { version = "0.3", optional = true }
 edge-nal = { version = "0.6", optional = true }
-esp-radio = { version = "0.17", features = ["unstable", "ieee802154"], optional = true }
-embassy-nrf = { version = "0.9", optional = true }
+esp-radio = { version = "0.18", features = ["unstable", "ieee802154"], optional = true }
+embassy-nrf = { version = "0.10", optional = true }
 portable-atomic = "1"
