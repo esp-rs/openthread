@@ -20,19 +20,7 @@ extern "C" {
 #define strstr __builtin_strstr
 
 #define memcmp __builtin_memcmp
-
-// HACK:
-// We need memset to be a function rather than a macro because mbedtls
-// assigns it to a static variable. Clang doesn't allow built-in functions
-// to be called through a function pointer, so we have to wrap it.
-//
-// This can be changed to the macro version once we compile against
-// mbedtls-rs-sys instead of the vendored version included in OpenThread.
-// See: <https://github.com/esp-rs/openthread/issues/61>
-inline void* memset(void* s, int c, size_t n) {
-  return __builtin_memset(s, c, n);
-}
-
+#define memset __builtin_memset
 #define memcpy __builtin_memcpy
 #define memmove __builtin_memmove
 

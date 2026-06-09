@@ -42,7 +42,12 @@ force-generate-bindings = []
 # Force the use of the Espressif Riscv GCC toolchain, if the target is a `riscv32*-` target
 # If this feature is not enabled, the build will assume and use the "official" RiscV GCC toolchain:
 # https://github.com/riscv-collab/riscv-gnu-toolchain
-force-esp-riscv-toolchain = []
+force-esp-riscv-gcc = ["use-gcc"]
+# Use GCC instead of clang
+use-gcc = []
+
+[dependencies]
+mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", branch = "rework-xtask", default-features = false }
 
 [build-dependencies]
 anyhow = "1"

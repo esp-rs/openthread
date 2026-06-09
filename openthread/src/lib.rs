@@ -27,6 +27,7 @@ use platform::{OT_ACTIVE_STATE, OT_REFCNT};
 
 use signal::Signal;
 
+pub use openthread_sys::mbedtls_define_zeroize;
 pub use rand_core::RngCore as OtRngCore;
 
 pub use dataset::*;

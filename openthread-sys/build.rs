@@ -11,16 +11,16 @@ fn main() -> Result<()> {
     builder::OpenThreadBuilder::track(&crate_root_path.join("gen"));
     builder::OpenThreadBuilder::track(&crate_root_path.join("openthread"));
 
-    // If `custom` is enabled, we need to re-build the bindings on-the-fly even if there are
-    // pre-generated bindings for the target triple
-
     let host = env::var("HOST").unwrap();
     let target = env::var("TARGET").unwrap();
 
     let use_gcc = env::var("CARGO_FEATURE_USE_GCC").is_ok();
-    let force_esp_riscv_toolchain = env::var("CARGO_FEATURE_FORCE_ESP_RISCV_TOOLCHAIN").is_ok();
+    let force_esp_riscv_gcc = env::var("CARGO_FEATURE_FORCE_ESP_RISCV_GCC").is_ok();
 
+    // If `force-generate-bindings` is enabled, we need to re-build the bindings on-the-fly even if there are
+    // pre-generated bindings for the target triple
     let pregen_bindings = env::var("CARGO_FEATURE_FORCE_GENERATE_BINDINGS").is_err();
+
     let pregen_bindings_rs_file = crate_root_path
         .join("src")
         .join("include")
@@ -54,7 +54,7 @@ fn main() -> Result<()> {
             None,
             clang_sysroot,
             None,
-            force_esp_riscv_toolchain,
+            force_esp_riscv_gcc,
         );
 
         let libs_dir = builder.compile(&out, None)?;

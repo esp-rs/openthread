@@ -27,7 +27,7 @@ impl OpenThreadBuilder {
     ///   and the system compiler (likely GCC) would be used for building the OpenThread C/C++ code itself
     /// - `clang_sysroot_path`: Optional path to the compiler sysroot directory. If not specified, the host sysroot will be used
     /// - `clang_target`: Optional target for Clang when generating bindings. If not specified, the "TARGET" env variable target will be used
-    /// - `force_esp_riscv_toolchain`: If true, and if the target is a riscv32 target, force the use of the Espressif RISCV GCC toolchain
+    /// - `force_esp_riscv_gcc`: If true, and if the target is a riscv32 target, force the use of the Espressif RISCV GCC toolchain
     ///   (`riscv32-esp-elf-gcc`) rather than the derived `riscv32-unknown-elf-gcc` toolchain which is the "official" RISC-V one
     ///   (https://github.com/riscv-collab/riscv-gnu-toolchain)
     #[allow(clippy::too_many_arguments)]
@@ -39,7 +39,7 @@ impl OpenThreadBuilder {
         clang_path: Option<PathBuf>,
         clang_sysroot_path: Option<PathBuf>,
         clang_target: Option<String>,
-        force_esp_riscv_toolchain: bool,
+        force_esp_riscv_gcc: bool,
     ) -> Self {
         Self {
             cmake_configurer: CMakeConfigurer::new(
@@ -48,7 +48,7 @@ impl OpenThreadBuilder {
                 crate_root_path.clone(),
                 cmake_rust_target,
                 cmake_host_rust_target,
-                force_esp_riscv_toolchain,
+                force_esp_riscv_gcc,
                 crate_root_path.join("gen").join("toolchain.cmake"),
             ),
             crate_root_path,
@@ -179,6 +179,14 @@ impl OpenThreadBuilder {
             .cflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128")
             .cxxflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128");
 
+        // Add the include directories for MbedTLS.
+        let mbedtls_include = std::env::var_os("DEP_MBEDTLS_INCLUDE")
+            .expect("mbedtls-rs-sys should set the 'include' metadata");
+        std::env::split_paths(&mbedtls_include).for_each(|include_dir| {
+            config.cflag(format!("-I{}", include_dir.display()));
+            config.cxxflag(format!("-I{}", include_dir.display()));
+        });
+
         config
             .define("OT_THREAD_VERSION", "1.1")
             .define("OT_LOG_LEVEL", "NOTE")
@@ -193,6 +201,10 @@ impl OpenThreadBuilder {
             .define("OT_ECDSA", "ON")
             .define("OT_PING_SENDER", "ON")
             // Do not change from here below
+            .define("OT_EXTERNAL_MBEDTLS", "mbedtls")
+            // For now, we want OpenThread to override MbedTLS's memory
+            // management functions to use OpenThread's allocator.
+            .define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON")
             .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
             .define("OT_PLATFORM", "external")
             .define("OT_SETTINGS_RAM", "OFF")
@@ -243,7 +255,7 @@ pub struct CMakeConfigurer {
     pub project_path: PathBuf,
     pub cmake_rust_target: Option<String>,
     pub cmake_host_rust_target: Option<String>,
-    pub force_esp_riscv_toolchain: bool,
+    pub force_esp_riscv_gcc: bool,
     pub empty_toolchain_file: PathBuf,
 }
 
@@ -256,7 +268,7 @@ impl CMakeConfigurer {
     /// - `project_path`: Path to the root of the CMake project
     /// - `cmake_rust_target`: Optional target for CMake when building Openthread, with Rust target-triple syntax. If not specified, the "TARGET" env variable will be used
     /// - `cmake_host_rust_target`: Optional host target for the build
-    /// - `force_esp_riscv_toolchain`: If true, and if the target is a riscv32 target, force the use of the Espressif RISCV GCC toolchain
+    /// - `force_esp_riscv_gcc`: If true, and if the target is a riscv32 target, force the use of the Espressif RISCV GCC toolchain
     ///   (`riscv32-esp-elf-gcc`) rather than the derived `riscv32-unknown-elf-gcc` toolchain which is the "official" RISC-V one
     ///   (https://github.com/riscv-collab/riscv-gnu-toolchain)
     pub const fn new(
@@ -265,7 +277,7 @@ impl CMakeConfigurer {
         project_path: PathBuf,
         cmake_rust_target: Option<String>,
         cmake_host_rust_target: Option<String>,
-        force_esp_riscv_toolchain: bool,
+        force_esp_riscv_gcc: bool,
         empty_toolchain_file: PathBuf,
     ) -> Self {
         Self {
@@ -274,7 +286,7 @@ impl CMakeConfigurer {
             project_path,
             cmake_rust_target,
             cmake_host_rust_target,
-            force_esp_riscv_toolchain,
+            force_esp_riscv_gcc,
             empty_toolchain_file,
         }
     }
@@ -415,9 +427,18 @@ impl CMakeConfigurer {
                 // lib  ->  <prefix>
                 {
                     if let Some(triple) = self.derive_gcc_target_triple() {
-                        let candidate = prefix.join(triple);
-                        if candidate.join("include").join("stdio.h").exists() {
-                            return Some(candidate);
+                        // Two common layouts:
+                        //   - crosstool-NG / PlatformIO (ESP toolchains):
+                        //       `<prefix>/<triple>/include/`
+                        //   - Debian / Ubuntu native packaging of
+                        //     `gcc-arm-none-eabi`:
+                        //       `<prefix>/lib/<triple>/include/`
+                        // Probe each in turn, accept the first whose
+                        // `include/stdio.h` exists.
+                        for candidate in [prefix.join(triple), prefix.join("lib").join(triple)] {
+                            if candidate.join("include").join("stdio.h").exists() {
+                                return Some(candidate);
+                            }
                         }
                     }
                 }
@@ -444,10 +465,20 @@ impl CMakeConfigurer {
             | "riscv32imac-esp-espidf"
             | "riscv32imafc-unknown-none-elf"
             | "riscv32imafc-esp-espidf"
-                if self.force_esp_riscv_toolchain =>
+                if self.force_esp_riscv_gcc =>
             {
                 Some("riscv32-esp-elf")
             }
+            // ARM bare-metal Rust targets all map to the same `arm-none-eabi`
+            // GCC cross-toolchain (Cortex-M architecture is selected via
+            // `-mcpu` / `-march` flags, not via separate compilers).
+            "thumbv6m-none-eabi"
+            | "thumbv7m-none-eabi"
+            | "thumbv7em-none-eabi"
+            | "thumbv7em-none-eabihf"
+            | "thumbv8m.base-none-eabi"
+            | "thumbv8m.main-none-eabi"
+            | "thumbv8m.main-none-eabihf" => Some("arm-none-eabi"),
             _ => None,
         }
     }
@@ -493,7 +524,7 @@ impl CMakeConfigurer {
                 | "riscv32imac-esp-espidf"
                 | "riscv32imafc-unknown-none-elf"
                 | "riscv32imafc-esp-espidf" => {
-                    if self.force_esp_riscv_toolchain {
+                    if self.force_esp_riscv_gcc {
                         Some((PathBuf::from("riscv32-esp-elf-gcc"), true))
                     } else {
                         None
