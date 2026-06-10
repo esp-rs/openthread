@@ -36,6 +36,20 @@ rcp = ["openthread-sys/rcp"]
 # its own bundled MbedTLS. On by default; omit (with `default-features = false`)
 # to use the bundled MbedTLS and drop the `mbedtls-rs-sys` dependency.
 mbedtls-rs-sys = ["openthread-sys/mbedtls-rs-sys"]
+# MbedTLS memory management (see `openthread-sys`). By default OpenThread rewires
+# MbedTLS to its own small, fixed-size internal heap buffer; these features
+# override that. Additive: `mbedtls-mem-ext` wins, else the largest active
+# `mbedtls-mem-int-<N>`. Only effective with `mbedtls-rs-sys`.
+#   - `mbedtls-mem-ext`: route MbedTLS allocations through the global allocator
+#     (the firmware's `calloc`/`free`) instead of the private fixed buffer — the
+#     fix when the fixed buffer is too small (e.g. Matter + Thread coexistence).
+#   - `mbedtls-mem-int-<N>`: keep the internal buffer but resize it to N bytes.
+mbedtls-mem-ext = ["openthread-sys/mbedtls-mem-ext"]
+mbedtls-mem-int-4096 = ["openthread-sys/mbedtls-mem-int-4096"]
+mbedtls-mem-int-8192 = ["openthread-sys/mbedtls-mem-int-8192"]
+mbedtls-mem-int-16384 = ["openthread-sys/mbedtls-mem-int-16384"]
+mbedtls-mem-int-32768 = ["openthread-sys/mbedtls-mem-int-32768"]
+mbedtls-mem-int-65536 = ["openthread-sys/mbedtls-mem-int-65536"]
 defmt = ["dep:defmt", "heapless/defmt", "embassy-time/defmt"]
 force-generate-bindings = ["openthread-sys/force-generate-bindings"]
 force-esp-riscv-gcc = ["openthread-sys/force-esp-riscv-gcc"]

@@ -243,14 +243,67 @@ impl OpenThreadBuilder {
         // MbedTLS backend selection (the `mbedtls-rs-sys` feature, on by
         // default). When enabled, OpenThread is built against the external
         // MbedTLS provided by `mbedtls-rs-sys` (whose includes were added
-        // above), and OpenThread overrides MbedTLS's memory management to use
-        // its own allocator. When disabled, OpenThread compiles its own bundled
-        // MbedTLS (the `third_party/mbedtls` subtree) — `OT_EXTERNAL_MBEDTLS` is
-        // simply not set, which is OpenThread's default.
+        // above). When disabled, OpenThread compiles its own bundled MbedTLS
+        // (the `third_party/mbedtls` subtree) — `OT_EXTERNAL_MBEDTLS` is simply
+        // not set, which is OpenThread's default.
+        //
+        // MbedTLS memory management (the `mbedtls-mem-*` features; see
+        // `features::MbedTlsMem`):
+        //  - default (`BuiltinDefault`) / sized (`BuiltinSized`): OpenThread
+        //    takes over MbedTLS's allocator, rewiring `mbedtls_calloc`/`free` to
+        //    its own fixed-size internal `Heap` buffer
+        //    (`OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE[_NO_DTLS]`). `BuiltinSized`
+        //    resizes that buffer.
+        //  - external (`External`): builtin management OFF, so MbedTLS allocates
+        //    through the global `calloc`/`free` (the firmware's global allocator,
+        //    e.g. `esp-alloc`) instead of a private fixed buffer — the escape
+        //    hatch when the fixed buffer is too small (e.g. Matter + Thread
+        //    coexistence sharing MbedTLS).
+        //
+        // Note: with the external MbedTLS, OpenThread's own default for
+        // `OT_BUILTIN_MBEDTLS_MANAGEMENT` would be OFF (it tracks
+        // `OPENTHREAD_CONFIG_ENABLE_BUILTIN_MBEDTLS`, which is 0 for external),
+        // so the builtin cases must request `ON` explicitly.
         if use_external_mbedtls {
-            config
-                .define("OT_EXTERNAL_MBEDTLS", "mbedtls")
-                .define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON");
+            config.define("OT_EXTERNAL_MBEDTLS", "mbedtls");
+
+            match features::mbedtls_mem() {
+                features::MbedTlsMem::External => {
+                    config.define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "OFF");
+                }
+                features::MbedTlsMem::BuiltinDefault => {
+                    config.define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON");
+                }
+                features::MbedTlsMem::BuiltinSized(size) => {
+                    config.define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON");
+                    // Override both the DTLS and non-DTLS internal heap sizes.
+                    // OpenThread picks one or the other depending on whether a
+                    // DTLS feature is compiled in; set both so the selected size
+                    // applies regardless.
+                    for define in [
+                        "OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE",
+                        "OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE_NO_DTLS",
+                    ] {
+                        config
+                            .cflag(format!("-D{define}={size}"))
+                            .cxxflag(format!("-D{define}={size}"));
+                    }
+                }
+            }
+        } else if !matches!(
+            features::mbedtls_mem(),
+            features::MbedTlsMem::BuiltinDefault
+        ) {
+            // The `mbedtls-mem-*` features only take effect with the external
+            // MbedTLS (`mbedtls-rs-sys`). The bundled-MbedTLS path is not
+            // exercised here and `mbedtls-mem-ext` there would route MbedTLS to
+            // global `calloc`/`free` symbols the consumer may not provide. Warn
+            // rather than silently ignore the selection.
+            println!(
+                "cargo::warning=openthread-sys: the `mbedtls-mem-*` features are ignored \
+                 without the `mbedtls-rs-sys` feature (external MbedTLS); using OpenThread's \
+                 bundled MbedTLS with its default memory management."
+            );
         }
 
         // Apply the feature-driven `OT_*` knobs: every exposed knob is reset to

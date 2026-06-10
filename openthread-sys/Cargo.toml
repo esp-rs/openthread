@@ -48,6 +48,36 @@ default = ["matter", "mbedtls-rs-sys"]
 mbedtls-rs-sys = ["dep:mbedtls-rs-sys"]
 
 # ---------------------------------------------------------------------------
+# MbedTLS memory management (`gen/features.rs::MbedTlsMem`, `gen/builder.rs`).
+#
+# By default OpenThread takes over MbedTLS's allocator, rewiring
+# `mbedtls_calloc`/`free` to its own fixed-size internal `Heap` buffer
+# (`OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE[_NO_DTLS]`). That buffer is small and
+# non-growable, so memory-hungry scenarios (e.g. Matter + Thread coexistence,
+# where MbedTLS is shared with `rs-matter`) can run it out of memory.
+#
+# These features override that. They are additive: `mbedtls-mem-ext` wins over
+# everything, otherwise the largest active `mbedtls-mem-int-<N>` wins. They only
+# take effect with the external MbedTLS (`mbedtls-rs-sys`). Enabling any of them
+# forces an on-the-fly OpenThread rebuild (the committed prebuilt libraries are
+# built with the default management).
+# ---------------------------------------------------------------------------
+
+# Turn OpenThread's builtin MbedTLS memory management OFF: MbedTLS allocates via
+# the plain `calloc`/`free` symbols — i.e. the firmware's global allocator
+# (`esp-alloc`, etc.) — sharing one heap instead of a private fixed buffer.
+mbedtls-mem-ext = []
+
+# Keep builtin management but resize the internal MbedTLS heap buffer to N bytes
+# (both the DTLS and non-DTLS variants). Keep this list in sync with
+# `features::MBEDTLS_MEM_INT_SIZES`.
+mbedtls-mem-int-4096 = []
+mbedtls-mem-int-8192 = []
+mbedtls-mem-int-16384 = []
+mbedtls-mem-int-32768 = []
+mbedtls-mem-int-65536 = []
+
+# ---------------------------------------------------------------------------
 # Device-type / radio-location selection. These pick WHICH static archives are
 # linked (all are always built); they do not change the shared
 # `OPENTHREAD_CONFIG_*` knobs. Additive: absence means the default.

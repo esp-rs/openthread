@@ -185,6 +185,68 @@ pub fn use_external_mbedtls() -> bool {
     std::env::var_os("CARGO_FEATURE_MBEDTLS_RS_SYS").is_some()
 }
 
+/// How OpenThread should manage the memory MbedTLS allocates.
+///
+/// By default OpenThread takes over MbedTLS's allocator
+/// (`OT_BUILTIN_MBEDTLS_MANAGEMENT=ON`): it rewires `mbedtls_calloc`/`free` to
+/// its *own* `ot::Heap`, which is a single fixed-size buffer baked into the
+/// firmware (`OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE[_NO_DTLS]`). That buffer is
+/// small and non-growable, so in memory-hungry scenarios (e.g. Matter + Thread
+/// coexistence, where MbedTLS is shared between `rs-matter` and OpenThread)
+/// MbedTLS runs out of room.
+///
+/// These cargo features let the consumer override that:
+///
+///  - `mbedtls-mem-ext`: turn the builtin management OFF, so MbedTLS allocates
+///    via the plain `calloc`/`free` symbols (i.e. the global allocator the
+///    firmware already provides — `esp-alloc` on ESP, etc.), sharing one heap
+///    instead of a private fixed buffer.
+///  - `mbedtls-mem-int-<N>`: keep the builtin management but resize the internal
+///    buffer to `<N>` bytes (both the DTLS and NO_DTLS variants).
+///
+/// These are additive (cargo features are unioned across the dependency graph,
+/// so they cannot be made mutually exclusive). The selection rules:
+///  - `mbedtls-mem-ext` overrides everything — if it is active, MbedTLS goes to
+///    the global allocator and any `mbedtls-mem-int-<N>` is disregarded.
+///  - otherwise, if one or more `mbedtls-mem-int-<N>` are active, the *largest*
+///    size wins.
+pub enum MbedTlsMem {
+    /// Builtin management with OpenThread's own default buffer size (the
+    /// historical behaviour). No `mbedtls-mem-*` feature active.
+    BuiltinDefault,
+    /// Builtin management, internal buffer resized to this many bytes
+    /// (`mbedtls-mem-int-<N>`).
+    BuiltinSized(u32),
+    /// Builtin management OFF — MbedTLS uses the global `calloc`/`free`
+    /// (`mbedtls-mem-ext`).
+    External,
+}
+
+/// The internal-buffer sizes (in bytes) exposed as `mbedtls-mem-int-<N>` cargo
+/// features. Keep in sync with the `mbedtls-mem-int-*` features in `Cargo.toml`
+/// (the build script's guard enforces it).
+pub const MBEDTLS_MEM_INT_SIZES: &[u32] = &[4096, 8192, 16384, 32768, 65536];
+
+/// Resolve the active `mbedtls-mem-*` selection from the `CARGO_FEATURE_*`
+/// environment, applying the additive override rules (see [`MbedTlsMem`]):
+/// `mbedtls-mem-ext` wins over everything; otherwise the largest active
+/// `mbedtls-mem-int-<N>` wins. Must only be called from within the build script.
+pub fn mbedtls_mem() -> MbedTlsMem {
+    if std::env::var_os("CARGO_FEATURE_MBEDTLS_MEM_EXT").is_some() {
+        return MbedTlsMem::External;
+    }
+
+    match MBEDTLS_MEM_INT_SIZES
+        .iter()
+        .copied()
+        .filter(|n| std::env::var_os(format!("CARGO_FEATURE_MBEDTLS_MEM_INT_{n}")).is_some())
+        .max()
+    {
+        Some(n) => MbedTlsMem::BuiltinSized(n),
+        None => MbedTlsMem::BuiltinDefault,
+    }
+}
+
 /// The OpenThread static libraries to link, selected by the device-type
 /// (`ftd`) and radio-location (`rcp`) features. All archives are always *built*;
 /// this picks the subset the firmware actually links so the core-stack archives
@@ -267,6 +329,16 @@ pub fn prebuilt_validity() -> Result<(), String> {
     // compilation and must not reuse it.
     if !use_external_mbedtls() {
         parts.push("-mbedtls-rs-sys (bundled MbedTLS)".to_string());
+    }
+
+    // The prebuilt is built with OpenThread's default MbedTLS memory management
+    // (`MbedTlsMem::BuiltinDefault`). Any `mbedtls-mem-*` override changes the
+    // compiled `.a` (the allocator wiring and/or the internal heap size), so it
+    // must force an on-the-fly rebuild.
+    match mbedtls_mem() {
+        MbedTlsMem::BuiltinDefault => {}
+        MbedTlsMem::BuiltinSized(n) => parts.push(format!("+mbedtls-mem-int-{n}")),
+        MbedTlsMem::External => parts.push("+mbedtls-mem-ext".to_string()),
     }
 
     if parts.is_empty() {
