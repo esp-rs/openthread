@@ -185,6 +185,67 @@ pub fn use_external_mbedtls() -> bool {
     std::env::var_os("CARGO_FEATURE_MBEDTLS_RS_SYS").is_some()
 }
 
+/// OpenThread keeps ONE general-purpose heap: a single fixed-size buffer baked
+/// into the firmware (`Instance::sHeap`, sized by
+/// `OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE[_NO_DTLS]`), with OpenThread's own block
+/// allocator on top. Two consumers draw from it:
+///
+///  - OpenThread itself (`HeapData`/`HeapString`, SRP tables, network data, …),
+///    via `ot::Heap::CAlloc`.
+///  - MbedTLS, *if* OpenThread takes over MbedTLS's allocator
+///    (`OT_BUILTIN_MBEDTLS_MANAGEMENT=ON`, the default), which rewires
+///    `mbedtls_calloc`/`free` to that same `ot::Heap`.
+///
+/// So the buffer is small, non-growable, and SHARED. In memory-hungry scenarios
+/// (e.g. Matter + Thread coexistence, where MbedTLS is shared between
+/// `rs-matter` and OpenThread, and ECDSA scratch competes with OpenThread's own
+/// allocations) it runs out of room.
+///
+/// Three independent feature axes tune this (see the accessors below). They are
+/// orthogonal: each ext toggle redirects ONE consumer away from the internal
+/// buffer to the global allocator, and the size knob sizes the internal buffer
+/// for whoever still uses it. None overrides another.
+pub struct HeapConfig {
+    /// `heap-ext-ot`: redirect OpenThread's *own* heap usage to the global
+    /// allocator (`OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE=1`). The consumer must
+    /// then provide `otPlatCAlloc`/`otPlatFree` (forwarding to whatever global
+    /// allocator the firmware has), exactly like MbedTLS's `calloc`/`free`
+    /// contract.
+    pub ext_ot: bool,
+    /// `heap-ext-mbedtls`: turn OpenThread's builtin MbedTLS management OFF
+    /// (`OT_BUILTIN_MBEDTLS_MANAGEMENT=OFF`), so MbedTLS allocates via the plain
+    /// `calloc`/`free` symbols (the firmware's global allocator) rather than
+    /// OpenThread's internal buffer. Only meaningful with the external MbedTLS.
+    pub ext_mbedtls: bool,
+    /// `heap-int-<N>`: resize the internal buffer to `Some(N)` bytes (both the
+    /// DTLS and NO_DTLS variants), or `None` to keep OpenThread's own default.
+    /// Applies whenever set, independently of the ext toggles, since the
+    /// internal buffer may still be used by whichever consumer is NOT redirected
+    /// to the global allocator.
+    pub int_size: Option<u32>,
+}
+
+/// The internal-buffer sizes (in bytes) exposed as `heap-int-<N>` cargo
+/// features. Keep in sync with the `heap-int-*` features in `Cargo.toml`.
+pub const HEAP_INT_SIZES: &[u32] = &[4096, 6144, 8192, 12288, 16384, 32768, 49152, 65536];
+
+/// Resolve the active heap configuration from the `CARGO_FEATURE_*` environment.
+/// The three axes are independent (see [`HeapConfig`]); the only "additive"
+/// rule is that, among multiple `heap-int-<N>`, the *largest* size wins (cargo
+/// features union across the dependency graph and cannot be made exclusive).
+/// Must only be called from within the build script.
+pub fn heap_config() -> HeapConfig {
+    HeapConfig {
+        ext_ot: std::env::var_os("CARGO_FEATURE_HEAP_EXT_OT").is_some(),
+        ext_mbedtls: std::env::var_os("CARGO_FEATURE_HEAP_EXT_MBEDTLS").is_some(),
+        int_size: HEAP_INT_SIZES
+            .iter()
+            .copied()
+            .filter(|n| std::env::var_os(format!("CARGO_FEATURE_HEAP_INT_{n}")).is_some())
+            .max(),
+    }
+}
+
 /// The OpenThread static libraries to link, selected by the device-type
 /// (`ftd`) and radio-location (`rcp`) features. All archives are always *built*;
 /// this picks the subset the firmware actually links so the core-stack archives
@@ -267,6 +328,21 @@ pub fn prebuilt_validity() -> Result<(), String> {
     // compilation and must not reuse it.
     if !use_external_mbedtls() {
         parts.push("-mbedtls-rs-sys (bundled MbedTLS)".to_string());
+    }
+
+    // The prebuilt is built with OpenThread's default heap configuration (no
+    // `heap-*` feature). Any override changes the compiled `.a` (the allocator
+    // wiring and/or the internal heap size), so it must force an on-the-fly
+    // rebuild.
+    let heap = heap_config();
+    if heap.ext_ot {
+        parts.push("+heap-ext-ot".to_string());
+    }
+    if heap.ext_mbedtls {
+        parts.push("+heap-ext-mbedtls".to_string());
+    }
+    if let Some(n) = heap.int_size {
+        parts.push(format!("+heap-int-{n}"));
     }
 
     if parts.is_empty() {

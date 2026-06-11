@@ -48,6 +48,47 @@ default = ["matter", "mbedtls-rs-sys"]
 mbedtls-rs-sys = ["dep:mbedtls-rs-sys"]
 
 # ---------------------------------------------------------------------------
+# Heap configuration (`gen/features.rs::HeapConfig`, `gen/builder.rs`).
+#
+# OpenThread keeps ONE fixed-size internal heap buffer
+# (`OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE[_NO_DTLS]`), shared by OpenThread's own
+# code AND — when builtin MbedTLS management is on (the default) — by MbedTLS.
+# That buffer is small and non-growable, so memory-hungry scenarios (e.g. Matter
+# + Thread coexistence, where MbedTLS is shared with `rs-matter`) can run it out
+# of memory.
+#
+# Three independent axes tune this. Enabling any of them forces an on-the-fly
+# OpenThread rebuild (the committed prebuilt libraries use the default heap
+# config). The `heap-int-*` set is additive: the largest active size wins.
+# ---------------------------------------------------------------------------
+
+# Redirect OpenThread's OWN heap usage to the global allocator
+# (`OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE=1`). The consumer MUST then provide
+# the `otPlatCAlloc`/`otPlatFree` symbols (forwarding to the firmware's global
+# allocator), exactly like the `calloc`/`free` MbedTLS needs — this crate does
+# not supply them. Independent of the MbedTLS backend.
+heap-ext-ot = []
+
+# Turn OpenThread's builtin MbedTLS management OFF: MbedTLS allocates via the
+# plain `calloc`/`free` symbols — i.e. the firmware's global allocator
+# (`esp-alloc`, etc.) — instead of OpenThread's internal buffer. Only effective
+# with the external MbedTLS (`mbedtls-rs-sys`).
+heap-ext-mbedtls = []
+
+# Resize OpenThread's internal heap buffer to N bytes (both the DTLS and
+# non-DTLS variants). Independent of the ext toggles — the internal buffer may
+# still be used by whichever consumer is not redirected to the global allocator.
+# Keep this list in sync with `features::HEAP_INT_SIZES`.
+heap-int-4096 = []
+heap-int-6144 = []
+heap-int-8192 = []
+heap-int-12288 = []
+heap-int-16384 = []
+heap-int-32768 = []
+heap-int-49152 = []
+heap-int-65536 = []
+
+# ---------------------------------------------------------------------------
 # Device-type / radio-location selection. These pick WHICH static archives are
 # linked (all are always built); they do not change the shared
 # `OPENTHREAD_CONFIG_*` knobs. Additive: absence means the default.
