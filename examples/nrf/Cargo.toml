@@ -45,7 +45,7 @@ critical-section = "1.2"
 rand_core = "0.9"
 static_cell = "2.1"
 
-openthread = { path = "../../openthread", features = ["udp", "srp", "embassy-net-driver-channel", "embassy-nrf", "defmt"] }
+openthread = { path = "../../openthread", features = ["udp", "srp", "dns-client", "embassy-net-driver-channel", "embassy-nrf", "defmt"] }
 tinyrlibc = { version = "0.5", default-features = false, features = ["alloc", "strstr", "strcmp", "isupper", "utoa", "strtoul"] }
 embedded-alloc = "0.7.0"
 
@@ -65,4 +65,10 @@ harness = false
 path = "./src/bin/srp.rs"
 name = "srp"
 #required-features=["srp"]
+harness = false
+
+[[bin]]
+path = "./src/bin/dns.rs"
+name = "dns"
+#required-features=["dns-client"]
 harness = false
