@@ -246,61 +246,66 @@ impl OpenThreadBuilder {
         // above). When disabled, OpenThread compiles its own bundled MbedTLS
         // (the `third_party/mbedtls` subtree) — `OT_EXTERNAL_MBEDTLS` is simply
         // not set, which is OpenThread's default.
-        //
-        // MbedTLS memory management (the `mbedtls-mem-*` features; see
-        // `features::MbedTlsMem`):
-        //  - default (`BuiltinDefault`) / sized (`BuiltinSized`): OpenThread
-        //    takes over MbedTLS's allocator, rewiring `mbedtls_calloc`/`free` to
-        //    its own fixed-size internal `Heap` buffer
-        //    (`OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE[_NO_DTLS]`). `BuiltinSized`
-        //    resizes that buffer.
-        //  - external (`External`): builtin management OFF, so MbedTLS allocates
-        //    through the global `calloc`/`free` (the firmware's global allocator,
-        //    e.g. `esp-alloc`) instead of a private fixed buffer — the escape
-        //    hatch when the fixed buffer is too small (e.g. Matter + Thread
-        //    coexistence sharing MbedTLS).
-        //
-        // Note: with the external MbedTLS, OpenThread's own default for
-        // `OT_BUILTIN_MBEDTLS_MANAGEMENT` would be OFF (it tracks
-        // `OPENTHREAD_CONFIG_ENABLE_BUILTIN_MBEDTLS`, which is 0 for external),
-        // so the builtin cases must request `ON` explicitly.
         if use_external_mbedtls {
             config.define("OT_EXTERNAL_MBEDTLS", "mbedtls");
+        }
 
-            match features::mbedtls_mem() {
-                features::MbedTlsMem::External => {
-                    config.define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "OFF");
-                }
-                features::MbedTlsMem::BuiltinDefault => {
-                    config.define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON");
-                }
-                features::MbedTlsMem::BuiltinSized(size) => {
-                    config.define("OT_BUILTIN_MBEDTLS_MANAGEMENT", "ON");
-                    // Override both the DTLS and non-DTLS internal heap sizes.
-                    // OpenThread picks one or the other depending on whether a
-                    // DTLS feature is compiled in; set both so the selected size
-                    // applies regardless.
-                    for define in [
-                        "OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE",
-                        "OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE_NO_DTLS",
-                    ] {
-                        config
-                            .cflag(format!("-D{define}={size}"))
-                            .cxxflag(format!("-D{define}={size}"));
-                    }
-                }
+        // Heap configuration (the `heap-*` features; see `features::HeapConfig`).
+        // OpenThread has ONE fixed-size internal buffer shared by its own code
+        // and — when builtin MbedTLS management is on — by MbedTLS. The three
+        // axes below are independent: each ext toggle redirects one consumer to
+        // the global allocator, and the size knob sizes the internal buffer for
+        // whoever still uses it.
+        let heap = features::heap_config();
+
+        // `heap-int-<N>`: resize the internal buffer. Override both the DTLS and
+        // non-DTLS sizes (OpenThread picks one or the other depending on whether
+        // a DTLS feature is compiled in) so the selected size applies regardless.
+        // Applied whenever set, independently of the ext toggles.
+        if let Some(size) = heap.int_size {
+            for define in [
+                "OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE",
+                "OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE_NO_DTLS",
+            ] {
+                config
+                    .cflag(format!("-D{define}={size}"))
+                    .cxxflag(format!("-D{define}={size}"));
             }
-        } else if !matches!(
-            features::mbedtls_mem(),
-            features::MbedTlsMem::BuiltinDefault
-        ) {
-            // The `mbedtls-mem-*` features only take effect with the external
-            // MbedTLS (`mbedtls-rs-sys`). The bundled-MbedTLS path is not
-            // exercised here and `mbedtls-mem-ext` there would route MbedTLS to
-            // global `calloc`/`free` symbols the consumer may not provide. Warn
-            // rather than silently ignore the selection.
+        }
+
+        // `heap-ext-ot`: redirect OpenThread's *own* heap usage to the global
+        // allocator (`OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE=1`). This is a core
+        // OpenThread knob, independent of the MbedTLS backend. The consumer must
+        // provide `otPlatCAlloc`/`otPlatFree` at link time (forwarding to the
+        // firmware's global allocator), exactly like MbedTLS's `calloc`/`free`
+        // contract — the crate does not supply them.
+        if heap.ext_ot {
+            config
+                .cflag("-DOPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE=1")
+                .cxxflag("-DOPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE=1");
+        }
+
+        // `heap-ext-mbedtls`: turn OpenThread's builtin MbedTLS management off
+        // (`OT_BUILTIN_MBEDTLS_MANAGEMENT=OFF`) so MbedTLS allocates through the
+        // global `calloc`/`free` rather than the internal buffer. Only meaningful
+        // with the external MbedTLS.
+        //
+        // Note: with the external MbedTLS, OpenThread's own default for
+        // `OT_BUILTIN_MBEDTLS_MANAGEMENT` is already OFF (it tracks
+        // `OPENTHREAD_CONFIG_ENABLE_BUILTIN_MBEDTLS`, which is 0 for external), so
+        // when the feature is NOT set we must request `ON` explicitly to keep the
+        // historical shared-buffer behaviour.
+        if use_external_mbedtls {
+            config.define(
+                "OT_BUILTIN_MBEDTLS_MANAGEMENT",
+                if heap.ext_mbedtls { "OFF" } else { "ON" },
+            );
+        } else if heap.ext_mbedtls {
+            // The bundled-MbedTLS path is not exercised here and would route
+            // MbedTLS to global `calloc`/`free` symbols the consumer may not
+            // provide. Warn rather than silently ignore the selection.
             println!(
-                "cargo::warning=openthread-sys: the `mbedtls-mem-*` features are ignored \
+                "cargo::warning=openthread-sys: the `heap-ext-mbedtls` feature is ignored \
                  without the `mbedtls-rs-sys` feature (external MbedTLS); using OpenThread's \
                  bundled MbedTLS with its default memory management."
             );

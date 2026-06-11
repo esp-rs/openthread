@@ -36,20 +36,26 @@ rcp = ["openthread-sys/rcp"]
 # its own bundled MbedTLS. On by default; omit (with `default-features = false`)
 # to use the bundled MbedTLS and drop the `mbedtls-rs-sys` dependency.
 mbedtls-rs-sys = ["openthread-sys/mbedtls-rs-sys"]
-# MbedTLS memory management (see `openthread-sys`). By default OpenThread rewires
-# MbedTLS to its own small, fixed-size internal heap buffer; these features
-# override that. Additive: `mbedtls-mem-ext` wins, else the largest active
-# `mbedtls-mem-int-<N>`. Only effective with `mbedtls-rs-sys`.
-#   - `mbedtls-mem-ext`: route MbedTLS allocations through the global allocator
-#     (the firmware's `calloc`/`free`) instead of the private fixed buffer — the
-#     fix when the fixed buffer is too small (e.g. Matter + Thread coexistence).
-#   - `mbedtls-mem-int-<N>`: keep the internal buffer but resize it to N bytes.
-mbedtls-mem-ext = ["openthread-sys/mbedtls-mem-ext"]
-mbedtls-mem-int-4096 = ["openthread-sys/mbedtls-mem-int-4096"]
-mbedtls-mem-int-8192 = ["openthread-sys/mbedtls-mem-int-8192"]
-mbedtls-mem-int-16384 = ["openthread-sys/mbedtls-mem-int-16384"]
-mbedtls-mem-int-32768 = ["openthread-sys/mbedtls-mem-int-32768"]
-mbedtls-mem-int-65536 = ["openthread-sys/mbedtls-mem-int-65536"]
+# Heap configuration (see `openthread-sys`). OpenThread keeps one fixed-size
+# internal heap buffer, shared by its own code and (by default) MbedTLS. Three
+# independent axes tune it:
+#   - `heap-ext-ot`: redirect OpenThread's OWN heap to the global allocator
+#     (`HEAP_EXTERNAL_ENABLE`). The consumer must provide `otPlatCAlloc`/
+#     `otPlatFree`, just as it provides `calloc`/`free` for MbedTLS.
+#   - `heap-ext-mbedtls`: redirect MbedTLS to the global `calloc`/`free` instead
+#     of the internal buffer. Only effective with `mbedtls-rs-sys`.
+#   - `heap-int-<N>`: resize the internal buffer to N bytes (largest wins). The
+#     internal buffer may still be used by whichever consumer is not redirected.
+heap-ext-ot = ["openthread-sys/heap-ext-ot"]
+heap-ext-mbedtls = ["openthread-sys/heap-ext-mbedtls"]
+heap-int-4096 = ["openthread-sys/heap-int-4096"]
+heap-int-6144 = ["openthread-sys/heap-int-6144"]
+heap-int-8192 = ["openthread-sys/heap-int-8192"]
+heap-int-12288 = ["openthread-sys/heap-int-12288"]
+heap-int-16384 = ["openthread-sys/heap-int-16384"]
+heap-int-32768 = ["openthread-sys/heap-int-32768"]
+heap-int-49152 = ["openthread-sys/heap-int-49152"]
+heap-int-65536 = ["openthread-sys/heap-int-65536"]
 defmt = ["dep:defmt", "heapless/defmt", "embassy-time/defmt"]
 force-generate-bindings = ["openthread-sys/force-generate-bindings"]
 force-esp-riscv-gcc = ["openthread-sys/force-esp-riscv-gcc"]

@@ -185,65 +185,64 @@ pub fn use_external_mbedtls() -> bool {
     std::env::var_os("CARGO_FEATURE_MBEDTLS_RS_SYS").is_some()
 }
 
-/// How OpenThread should manage the memory MbedTLS allocates.
+/// OpenThread keeps ONE general-purpose heap: a single fixed-size buffer baked
+/// into the firmware (`Instance::sHeap`, sized by
+/// `OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE[_NO_DTLS]`), with OpenThread's own block
+/// allocator on top. Two consumers draw from it:
 ///
-/// By default OpenThread takes over MbedTLS's allocator
-/// (`OT_BUILTIN_MBEDTLS_MANAGEMENT=ON`): it rewires `mbedtls_calloc`/`free` to
-/// its *own* `ot::Heap`, which is a single fixed-size buffer baked into the
-/// firmware (`OPENTHREAD_CONFIG_HEAP_INTERNAL_SIZE[_NO_DTLS]`). That buffer is
-/// small and non-growable, so in memory-hungry scenarios (e.g. Matter + Thread
-/// coexistence, where MbedTLS is shared between `rs-matter` and OpenThread)
-/// MbedTLS runs out of room.
+///  - OpenThread itself (`HeapData`/`HeapString`, SRP tables, network data, …),
+///    via `ot::Heap::CAlloc`.
+///  - MbedTLS, *if* OpenThread takes over MbedTLS's allocator
+///    (`OT_BUILTIN_MBEDTLS_MANAGEMENT=ON`, the default), which rewires
+///    `mbedtls_calloc`/`free` to that same `ot::Heap`.
 ///
-/// These cargo features let the consumer override that:
+/// So the buffer is small, non-growable, and SHARED. In memory-hungry scenarios
+/// (e.g. Matter + Thread coexistence, where MbedTLS is shared between
+/// `rs-matter` and OpenThread, and ECDSA scratch competes with OpenThread's own
+/// allocations) it runs out of room.
 ///
-///  - `mbedtls-mem-ext`: turn the builtin management OFF, so MbedTLS allocates
-///    via the plain `calloc`/`free` symbols (i.e. the global allocator the
-///    firmware already provides — `esp-alloc` on ESP, etc.), sharing one heap
-///    instead of a private fixed buffer.
-///  - `mbedtls-mem-int-<N>`: keep the builtin management but resize the internal
-///    buffer to `<N>` bytes (both the DTLS and NO_DTLS variants).
-///
-/// These are additive (cargo features are unioned across the dependency graph,
-/// so they cannot be made mutually exclusive). The selection rules:
-///  - `mbedtls-mem-ext` overrides everything — if it is active, MbedTLS goes to
-///    the global allocator and any `mbedtls-mem-int-<N>` is disregarded.
-///  - otherwise, if one or more `mbedtls-mem-int-<N>` are active, the *largest*
-///    size wins.
-pub enum MbedTlsMem {
-    /// Builtin management with OpenThread's own default buffer size (the
-    /// historical behaviour). No `mbedtls-mem-*` feature active.
-    BuiltinDefault,
-    /// Builtin management, internal buffer resized to this many bytes
-    /// (`mbedtls-mem-int-<N>`).
-    BuiltinSized(u32),
-    /// Builtin management OFF — MbedTLS uses the global `calloc`/`free`
-    /// (`mbedtls-mem-ext`).
-    External,
+/// Three independent feature axes tune this (see the accessors below). They are
+/// orthogonal: each ext toggle redirects ONE consumer away from the internal
+/// buffer to the global allocator, and the size knob sizes the internal buffer
+/// for whoever still uses it. None overrides another.
+pub struct HeapConfig {
+    /// `heap-ext-ot`: redirect OpenThread's *own* heap usage to the global
+    /// allocator (`OPENTHREAD_CONFIG_HEAP_EXTERNAL_ENABLE=1`). The consumer must
+    /// then provide `otPlatCAlloc`/`otPlatFree` (forwarding to whatever global
+    /// allocator the firmware has), exactly like MbedTLS's `calloc`/`free`
+    /// contract.
+    pub ext_ot: bool,
+    /// `heap-ext-mbedtls`: turn OpenThread's builtin MbedTLS management OFF
+    /// (`OT_BUILTIN_MBEDTLS_MANAGEMENT=OFF`), so MbedTLS allocates via the plain
+    /// `calloc`/`free` symbols (the firmware's global allocator) rather than
+    /// OpenThread's internal buffer. Only meaningful with the external MbedTLS.
+    pub ext_mbedtls: bool,
+    /// `heap-int-<N>`: resize the internal buffer to `Some(N)` bytes (both the
+    /// DTLS and NO_DTLS variants), or `None` to keep OpenThread's own default.
+    /// Applies whenever set, independently of the ext toggles, since the
+    /// internal buffer may still be used by whichever consumer is NOT redirected
+    /// to the global allocator.
+    pub int_size: Option<u32>,
 }
 
-/// The internal-buffer sizes (in bytes) exposed as `mbedtls-mem-int-<N>` cargo
-/// features. Keep in sync with the `mbedtls-mem-int-*` features in `Cargo.toml`
-/// (the build script's guard enforces it).
-pub const MBEDTLS_MEM_INT_SIZES: &[u32] = &[4096, 8192, 16384, 32768, 65536];
+/// The internal-buffer sizes (in bytes) exposed as `heap-int-<N>` cargo
+/// features. Keep in sync with the `heap-int-*` features in `Cargo.toml`.
+pub const HEAP_INT_SIZES: &[u32] = &[4096, 6144, 8192, 12288, 16384, 32768, 49152, 65536];
 
-/// Resolve the active `mbedtls-mem-*` selection from the `CARGO_FEATURE_*`
-/// environment, applying the additive override rules (see [`MbedTlsMem`]):
-/// `mbedtls-mem-ext` wins over everything; otherwise the largest active
-/// `mbedtls-mem-int-<N>` wins. Must only be called from within the build script.
-pub fn mbedtls_mem() -> MbedTlsMem {
-    if std::env::var_os("CARGO_FEATURE_MBEDTLS_MEM_EXT").is_some() {
-        return MbedTlsMem::External;
-    }
-
-    match MBEDTLS_MEM_INT_SIZES
-        .iter()
-        .copied()
-        .filter(|n| std::env::var_os(format!("CARGO_FEATURE_MBEDTLS_MEM_INT_{n}")).is_some())
-        .max()
-    {
-        Some(n) => MbedTlsMem::BuiltinSized(n),
-        None => MbedTlsMem::BuiltinDefault,
+/// Resolve the active heap configuration from the `CARGO_FEATURE_*` environment.
+/// The three axes are independent (see [`HeapConfig`]); the only "additive"
+/// rule is that, among multiple `heap-int-<N>`, the *largest* size wins (cargo
+/// features union across the dependency graph and cannot be made exclusive).
+/// Must only be called from within the build script.
+pub fn heap_config() -> HeapConfig {
+    HeapConfig {
+        ext_ot: std::env::var_os("CARGO_FEATURE_HEAP_EXT_OT").is_some(),
+        ext_mbedtls: std::env::var_os("CARGO_FEATURE_HEAP_EXT_MBEDTLS").is_some(),
+        int_size: HEAP_INT_SIZES
+            .iter()
+            .copied()
+            .filter(|n| std::env::var_os(format!("CARGO_FEATURE_HEAP_INT_{n}")).is_some())
+            .max(),
     }
 }
 
@@ -331,14 +330,19 @@ pub fn prebuilt_validity() -> Result<(), String> {
         parts.push("-mbedtls-rs-sys (bundled MbedTLS)".to_string());
     }
 
-    // The prebuilt is built with OpenThread's default MbedTLS memory management
-    // (`MbedTlsMem::BuiltinDefault`). Any `mbedtls-mem-*` override changes the
-    // compiled `.a` (the allocator wiring and/or the internal heap size), so it
-    // must force an on-the-fly rebuild.
-    match mbedtls_mem() {
-        MbedTlsMem::BuiltinDefault => {}
-        MbedTlsMem::BuiltinSized(n) => parts.push(format!("+mbedtls-mem-int-{n}")),
-        MbedTlsMem::External => parts.push("+mbedtls-mem-ext".to_string()),
+    // The prebuilt is built with OpenThread's default heap configuration (no
+    // `heap-*` feature). Any override changes the compiled `.a` (the allocator
+    // wiring and/or the internal heap size), so it must force an on-the-fly
+    // rebuild.
+    let heap = heap_config();
+    if heap.ext_ot {
+        parts.push("+heap-ext-ot".to_string());
+    }
+    if heap.ext_mbedtls {
+        parts.push("+heap-ext-mbedtls".to_string());
+    }
+    if let Some(n) = heap.int_size {
+        parts.push(format!("+heap-int-{n}"));
     }
 
     if parts.is_empty() {
