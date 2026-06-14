@@ -178,6 +178,12 @@ impl OpenThreadBuilder {
             .cflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128")
             .cxxflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128");
 
+        if std::env::var("CARGO_FEATURE_COAP").is_ok() {
+            config
+                .define("OT_COAP", "ON")
+                .define("OT_COAP_OBSERVE", "ON");
+        }
+
         config
             .define("OT_THREAD_VERSION", "1.1")
             .define("OT_LOG_LEVEL", "NOTE")
@@ -191,8 +197,6 @@ impl OpenThreadBuilder {
             .define("OT_SLAAC", "ON")
             .define("OT_ECDSA", "ON")
             .define("OT_PING_SENDER", "ON")
-            .define("OT_COAP", "ON")
-            .define("OT_COAP_OBSERVE", "ON")
             // Do not change from here below
             .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
             .define("OT_PLATFORM", "external")
