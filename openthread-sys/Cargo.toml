@@ -19,6 +19,8 @@ force-generate-bindings = []
 # If this feature is not enabled, the build will assume and use the "official" RiscV GCC toolchain:
 # https://github.com/riscv-collab/riscv-gnu-toolchain
 force-esp-riscv-toolchain = []
+# Enable coap in the openthread cmake build and expose coap functionality to rust
+coap = []
 
 [build-dependencies]
 anyhow = "1"
