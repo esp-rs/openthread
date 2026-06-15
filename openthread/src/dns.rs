@@ -22,6 +22,12 @@
 //!
 //! Only one DNS query may be in flight at a time per `OpenThread` instance;
 //! starting another while one is pending returns [`otError`] `BUSY`.
+//!
+//! NOTE: Like [`OpenThread::scan`], the futures returned by these query methods
+//! are currently NOT `core::mem::forget`-safe. They install a lifetime-erased
+//! reference to the user closure in shared state, relying on their `Drop` to
+//! clear it; calling `core::mem::forget` on a pending DNS query future would
+//! leave a dangling callback pointer behind. Do not `mem::forget` them.
 
 use core::ffi::{c_void, CStr};
 use core::future::poll_fn;
@@ -221,12 +227,11 @@ where
 
     ot!(getter(&mut info))?;
 
-    let host_name = (!info.mHostNameBuffer.is_null())
-        .then(|| {
-            unsafe { CStr::from_ptr(info.mHostNameBuffer) }
-                .to_str()
-                .ok()
-        })
+    // The host name (if any) was written into `host_buf`; parse it back within
+    // that slice rather than via `CStr::from_ptr` on the raw pointer, to keep the
+    // read in bounds even if a terminator is somehow missing.
+    let host_name = (!info.mHostNameBuffer.is_null() && !host_buf.is_empty())
+        .then(|| cstr_from_buf(host_buf).ok())
         .flatten();
 
     let host_octets = unsafe { info.mHostAddress.mFields.m8 };
@@ -250,16 +255,32 @@ where
 }
 
 /// Read a name via an OpenThread `...GetName`/`...GetServiceName` getter into
-/// `buf`, returning it as a `&str`. The getter must null-terminate.
+/// `buf`, returning it as a `&str`.
+///
+/// OpenThread null-terminates the name within `buf`, but we parse it back with
+/// the length-bounded [`CStr::from_bytes_until_nul`] rather than `from_ptr` so a
+/// missing terminator yields a parse error instead of reading out of bounds.
 fn read_name<F>(buf: &mut [u8], getter: F) -> Result<&str, OtError>
 where
     F: FnOnce(*mut core::ffi::c_char, u16) -> otError,
 {
+    if buf.is_empty() {
+        return Err(OtError::new(crate::sys::otError_OT_ERROR_INVALID_ARGS));
+    }
+
     ot!(getter(buf.as_mut_ptr() as *mut _, buf.len() as u16))?;
 
-    let cstr = unsafe { CStr::from_ptr(buf.as_ptr() as *const _) };
-    cstr.to_str()
-        .map_err(|_| OtError::new(crate::sys::otError_OT_ERROR_PARSE))
+    cstr_from_buf(buf)
+}
+
+/// Parse a NUL-terminated C string written by OpenThread into one of our
+/// caller-supplied buffers, keeping the read bounded to the buffer (so a missing
+/// terminator is a parse error rather than out-of-bounds UB).
+fn cstr_from_buf(buf: &[u8]) -> Result<&str, OtError> {
+    CStr::from_bytes_until_nul(buf)
+        .ok()
+        .and_then(|cstr| cstr.to_str().ok())
+        .ok_or_else(|| OtError::new(crate::sys::otError_OT_ERROR_PARSE))
 }
 
 /// Read an index-based IPv6 address getter (`...GetAddress`/`...GetHostAddress`).
@@ -305,20 +326,18 @@ impl DnsBrowseResponse {
         index: u16,
         buf: &'a mut [u8],
     ) -> Result<Option<&'a str>, OtError> {
+        if buf.is_empty() {
+            return Err(OtError::new(crate::sys::otError_OT_ERROR_INVALID_ARGS));
+        }
+
+        // The OT getter takes a `uint8_t` capacity; a service instance label is
+        // at most 63 bytes, so clamp rather than silently truncate a large `buf`.
+        let cap = buf.len().min(u8::MAX as usize) as u8;
+
         match unsafe {
-            otDnsBrowseResponseGetServiceInstance(
-                self.0,
-                index,
-                buf.as_mut_ptr() as *mut _,
-                buf.len() as u8,
-            )
+            otDnsBrowseResponseGetServiceInstance(self.0, index, buf.as_mut_ptr() as *mut _, cap)
         } {
-            otError_OT_ERROR_NONE => {
-                let cstr = unsafe { CStr::from_ptr(buf.as_ptr() as *const _) };
-                Ok(Some(cstr.to_str().map_err(|_| {
-                    OtError::new(crate::sys::otError_OT_ERROR_PARSE)
-                })?))
-            }
+            otError_OT_ERROR_NONE => Ok(Some(cstr_from_buf(buf)?)),
             otError_OT_ERROR_NOT_FOUND => Ok(None),
             err => Err(OtError::new(err)),
         }
@@ -368,8 +387,14 @@ impl DnsServiceResponse {
         label_buf: &'a mut [u8],
         name_buf: &mut [u8],
     ) -> Result<&'a str, OtError> {
+        if label_buf.is_empty() {
+            return Err(OtError::new(crate::sys::otError_OT_ERROR_INVALID_ARGS));
+        }
+
         let label_ptr = label_buf.as_mut_ptr() as *mut core::ffi::c_char;
-        let label_cap = label_buf.len() as u8;
+        // The OT getter takes a `uint8_t` label capacity; a DNS label is at most
+        // 63 bytes, so clamp rather than silently truncate a large `label_buf`.
+        let label_cap = label_buf.len().min(u8::MAX as usize) as u8;
         let (name_ptr, name_cap) = if name_buf.is_empty() {
             (core::ptr::null_mut(), 0)
         } else {
@@ -383,9 +408,7 @@ impl DnsServiceResponse {
             otDnsServiceResponseGetServiceName(self.0, label_ptr, label_cap, name_ptr, name_cap)
         })?;
 
-        let cstr = unsafe { CStr::from_ptr(label_buf.as_ptr() as *const _) };
-        cstr.to_str()
-            .map_err(|_| OtError::new(crate::sys::otError_OT_ERROR_PARSE))
+        cstr_from_buf(label_buf)
     }
 
     /// Service info (SRV/TXT, plus AAAA when provided) from the response.
@@ -598,6 +621,12 @@ impl<'a> OpenThread<'a> {
                 return Err(OtError::new(otError_OT_ERROR_BUSY));
             }
 
+            // Clear any stale completion left over from a prior query whose future
+            // was dropped after the callback signalled but before `poll_wait`
+            // consumed it - otherwise this query would complete immediately with
+            // the previous transaction's error.
+            state.ot.dns_done.reset();
+
             let instance = state.ot.instance;
 
             // Install the (lifetime-erased) user closure. Same pattern and the
@@ -700,7 +729,9 @@ impl CName {
     const CAP: usize = 256; // 255 max name + NUL
 
     fn new(name: &str) -> Result<Self, OtError> {
-        if name.len() + 1 > Self::CAP {
+        // Reject interior NUL bytes: they would truncate the name at the C
+        // boundary, silently targeting a different name than the caller intended.
+        if name.len() + 1 > Self::CAP || name.as_bytes().contains(&0) {
             return Err(OtError::new(crate::sys::otError_OT_ERROR_INVALID_ARGS));
         }
 
