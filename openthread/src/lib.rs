@@ -2027,7 +2027,12 @@ fn to_sock_addr(addr: &otIp6Address, port: u16, netif: u32) -> SocketAddrV6 {
 }
 
 /// Convert a `SocketAddrV6` to an `otSockAddr`.
-#[cfg(any(feature = "udp", feature = "srp"))]
+///
+/// Always compiled (it only uses unconditionally-available `sys` types) rather
+/// than feature-gated, so any consumer (`udp`, `srp`, `dns-client`, ...) can use
+/// it without the `cfg` needing to enumerate every feature. Mirrors the
+/// always-available `to_sock_addr` sibling above.
+#[allow(unused)]
 fn to_ot_addr(addr: &SocketAddrV6) -> crate::sys::otSockAddr {
     crate::sys::otSockAddr {
         mAddress: otIp6Address {
