@@ -30,6 +30,8 @@ use signal::Signal;
 pub use rand_core::RngCore as OtRngCore;
 
 pub use dataset::*;
+#[cfg(feature = "dns-client")]
+pub use dns::*;
 pub use fmt::Bytes as BytesFmt;
 pub use nat64::*;
 pub use netdata::*;
@@ -46,6 +48,8 @@ pub use udp::*;
 pub(crate) mod fmt;
 
 mod dataset;
+#[cfg(feature = "dns-client")]
+mod dns;
 #[cfg(all(feature = "edge-nal", feature = "udp"))]
 pub mod enal;
 #[cfg(feature = "embassy-net-driver-channel")]
@@ -1139,6 +1143,10 @@ impl OtResources {
             settings,
             scan_callback: None,
             scan_done: Signal::new(),
+            #[cfg(feature = "dns-client")]
+            dns_callback: None,
+            #[cfg(feature = "dns-client")]
+            dns_done: Signal::new(),
             radio_resources,
             dataset_resources,
             instance: core::ptr::null_mut(),
@@ -1863,6 +1871,16 @@ struct OtState<'a> {
     scan_callback: Option<&'a mut dyn FnMut(Option<&ScanResult>)>,
     /// Indicate that scanning has completed
     scan_done: Signal<()>,
+    /// The callback to invoke from a DNS client browse/resolve response.
+    /// Holds a lifetime-erased reference to the user closure for the duration of
+    /// the in-flight query (cleared when the query completes). See `dns.rs`.
+    #[cfg(feature = "dns-client")]
+    #[allow(clippy::type_complexity)]
+    dns_callback: Option<&'a mut dyn FnMut(&crate::dns::DnsResponse)>,
+    /// Carries the terminal `otError` of an in-flight DNS query back to the
+    /// awaiting future (signaled from the DNS response C callback).
+    #[cfg(feature = "dns-client")]
+    dns_done: Signal<crate::sys::otError>,
     /// Whether to egress IPv6 packets from OpenThread
     /// If not necessary, this should be disabled, because otherwise the signal below
     /// will be filled with a packet that is not consumed, and the packets of OpenThread
@@ -2009,7 +2027,12 @@ fn to_sock_addr(addr: &otIp6Address, port: u16, netif: u32) -> SocketAddrV6 {
 }
 
 /// Convert a `SocketAddrV6` to an `otSockAddr`.
-#[cfg(any(feature = "udp", feature = "srp"))]
+///
+/// Always compiled (it only uses unconditionally-available `sys` types) rather
+/// than feature-gated, so any consumer (`udp`, `srp`, `dns-client`, ...) can use
+/// it without the `cfg` needing to enumerate every feature. Mirrors the
+/// always-available `to_sock_addr` sibling above.
+#[allow(unused)]
 fn to_ot_addr(addr: &SocketAddrV6) -> crate::sys::otSockAddr {
     crate::sys::otSockAddr {
         mAddress: otIp6Address {

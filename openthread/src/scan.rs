@@ -140,6 +140,11 @@ impl<'a> OpenThread<'a> {
                 return Err(OtError::new(otError_OT_ERROR_BUSY));
             }
 
+            // Clear any stale completion left over from a prior scan whose future
+            // was dropped after the callback signalled but before `poll_wait`
+            // consumed it - otherwise this scan would complete immediately.
+            state.ot.scan_done.reset();
+
             {
                 let f: &mut dyn FnMut(Option<&ScanResult>) = &mut f;
 
