@@ -137,6 +137,8 @@ prebuilt = ["matter", "mbedtls-rs-sys"]
 # Barebones profile for Matter: SRP client (service registration), SLAAC
 # (address autoconfig), ECDSA, ping. No provisioning (joiner/commissioner),
 # CoAP, DNS server, TCP, etc. (UDP is core and always available.)
+# (`srp-client` already pulls in `ecdsa`, but it is listed explicitly here too
+# for clarity, since Matter requires ECDSA for operational certificates.)
 matter = ["srp-client", "slaac", "ecdsa", "ping-sender"]
 
 # ---------------------------------------------------------------------------
@@ -153,7 +155,11 @@ coap-block = []        # CoAP block-wise transfer (RFC 7959); implies coap
 coap-observe = []      # CoAP observe (RFC 7641); implies coap
 coaps = ["_ot-dtls"]   # secure CoAP (DTLS) — pulls the DTLS/J-PAKE mbedtls features
 # Service discovery / naming
-srp-client = []
+# The SRP client persists its host key as an ECDSA P-256 keypair
+# (`Crypto::Ecdsa::P256::KeyPair` in `settings.hpp`), so `OT_SRP_CLIENT` does not
+# compile without `OT_ECDSA`. OpenThread does not enforce this coupling itself,
+# so we express it here.
+srp-client = ["ecdsa"]
 srp-server = []
 dns-client = []
 dnssd-server = []
