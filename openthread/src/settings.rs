@@ -337,7 +337,7 @@ where
 
         if let Some(setting) = setting {
             let len = setting.1.len().min(buf.len());
-            buf[..len].copy_from_slice(setting.1);
+            buf[..len].copy_from_slice(&setting.1[..len]);
 
             trace!(
                 "Got key: {}, index: {}, value: {}",
