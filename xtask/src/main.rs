@@ -4,7 +4,7 @@ use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 
 use clap::{Parser, Subcommand};
 
@@ -92,7 +92,26 @@ fn main() -> Result<()> {
         cargo_args,
     }) = args.command
     {
-        let libs_dst = sys_crate_root_path.join("libs").join(&target);
+        // Validate before constructing `libs/<target>` and
+        // `src/include/<target>.rs`; `libs_dst` is later passed to
+        // `fs::remove_dir_all`. The `ensure!` below is defense-in-depth and
+        // survives release builds (unlike `debug_assert!`).
+        validate_target_triple(&target).context("validating --target argument")?;
+
+        let libs_root = sys_crate_root_path.join("libs");
+        fs::create_dir_all(&libs_root)
+            .with_context(|| format!("creating {}", libs_root.display()))?;
+        let canonical_libs_root = libs_root
+            .canonicalize()
+            .with_context(|| format!("canonicalizing {}", libs_root.display()))?;
+        let libs_dst = canonical_libs_root.join(&target);
+        ensure!(
+            libs_dst.starts_with(&canonical_libs_root),
+            "BUG: {} escaped {}",
+            libs_dst.display(),
+            canonical_libs_root.display(),
+        );
+
         let bindings_dst = sys_crate_root_path
             .join("src")
             .join("include")
@@ -289,4 +308,103 @@ fn harvest(out_dir: &Path, libs_dst: &Path, bindings_dst: &Path) -> Result<()> {
     info!("Copied bindings to {}", bindings_dst.display());
 
     Ok(())
+}
+
+/// Validates that `target` is a well-formed Rust target triple. Each `-`
+/// separated segment must match `[a-z0-9_.]+` and start with `[a-z0-9_]`
+/// (no leading dot); `..` is rejected anywhere; at least one `-`.
+///
+/// `libs/<target>` is later fed to `remove_dir_all`, so an unvalidated
+/// `target` containing `/`, `\`, an absolute prefix, or `..` could escape
+/// the `openthread-sys/libs/` root. Real targets that must pass include
+/// `x86_64-unknown-linux-gnu`, `riscv32imac-unknown-none-elf`,
+/// `thumbv6m-none-eabi`, and `thumbv7em-none-eabi`.
+fn validate_target_triple(target: &str) -> Result<()> {
+    if target.is_empty() {
+        bail!("target triple is empty");
+    }
+    if target.len() > 64 {
+        bail!(
+            "target triple {target:?} too long ({} chars, max 64)",
+            target.len()
+        );
+    }
+    if target.contains("..") {
+        bail!("invalid target triple {target:?}: contains `..`");
+    }
+
+    let segs: Vec<&str> = target.split('-').collect();
+    if segs.len() < 2 {
+        bail!("invalid target triple {target:?}: must contain at least one `-`");
+    }
+    for seg in &segs {
+        if seg.is_empty() {
+            bail!("invalid target triple {target:?}: empty segment");
+        }
+        let bytes = seg.as_bytes();
+        let first = bytes[0];
+        if !(first.is_ascii_lowercase() || first.is_ascii_digit() || first == b'_') {
+            bail!("invalid target triple {target:?}: segment {seg:?} must start with [a-z0-9_]");
+        }
+        if !bytes.iter().all(|&b| is_target_byte(b)) {
+            bail!("invalid target triple {target:?}: segment {seg:?} must match [a-z0-9_.]+");
+        }
+    }
+    Ok(())
+}
+
+#[inline]
+fn is_target_byte(b: u8) -> bool {
+    b.is_ascii_lowercase() || b.is_ascii_digit() || b == b'_' || b == b'.'
+}
+
+#[cfg(test)]
+mod tests {
+    use super::validate_target_triple;
+
+    #[test]
+    fn accepts_real_targets() {
+        for t in [
+            "x86_64-unknown-linux-gnu",
+            "thumbv6m-none-eabi",
+            "thumbv7em-none-eabi",
+            "riscv32imac-unknown-none-elf",
+        ] {
+            assert!(
+                validate_target_triple(t).is_ok(),
+                "rejected legit target {t:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn rejects_path_traversal_and_malformed() {
+        let too_long = "a-".repeat(40);
+        for bad in [
+            "../etc",
+            "../../etc/passwd",
+            "/etc/passwd",
+            ".",
+            "..",
+            "foo..bar",
+            ".foo-bar",
+            "foo-.bar",
+            "foo/bar",
+            "foo\\bar",
+            "FOO-BAR",
+            "foo bar",
+            "foo\nbar",
+            "-leading-dash",
+            "trailing-",
+            "single",
+            "",
+            "c:/tmp",
+            too_long.as_str(),
+        ] {
+            assert!(
+                validate_target_triple(bad).is_err(),
+                "accepted malicious target {bad:?}"
+            );
+        }
+    }
 }
