@@ -50,8 +50,6 @@ pub(crate) mod fmt;
 mod dataset;
 #[cfg(feature = "dns-client")]
 mod dns;
-#[cfg(all(feature = "edge-nal", feature = "udp"))]
-pub mod enal;
 #[cfg(feature = "embassy-net-driver-channel")]
 pub mod enet;
 #[cfg(feature = "esp-radio")]
