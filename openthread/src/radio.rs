@@ -1264,7 +1264,7 @@ mod mac {
 
                     self.pan_id = u16::from_le_bytes(unwrap!(psdu[3..5].try_into()));
                     // See platform.rs, `otPlatRadioSetExtendedAddress` impl
-                    self.dst_ext_addr = u64::from_be_bytes(unwrap!(psdu[5..13].try_into()));
+                    self.dst_ext_addr = u64::from_le_bytes(unwrap!(psdu[5..13].try_into()));
                     self.dst_short_addr = Self::BROADCAST_SHORT_ADDR;
                 }
             }
