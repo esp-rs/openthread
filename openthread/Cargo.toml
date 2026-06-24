@@ -117,17 +117,17 @@ sntp-client = ["openthread-sys/sntp-client"]
 trel = ["openthread-sys/trel"]
 
 [dependencies]
-openthread-sys = { path = "../openthread-sys", default-features = false }
-log = { version = "0.4", default-features = false, optional = true }
-defmt = { version = "1.0", default-features = false, optional = true, features = ["ip_in_core"] }
-scopeguard = { version = "1", default-features = false }
-rand_core = "0.9"
-embassy-sync = "0.8"
-embassy-time = "0.5"
-embassy-futures = "0.1"
-heapless = "0.9"
-bitflags = "2.5"
-embassy-net-driver-channel = { version = "0.3", optional = true }
-esp-radio = { version = "0.18", features = ["unstable", "ieee802154"], optional = true }
-embassy-nrf = { version = "0.10", optional = true }
-portable-atomic = "1"
+openthread-sys = { workspace = true, default-features = false }
+log = { workspace = true, default-features = false, optional = true }
+defmt = { workspace = true, default-features = false, optional = true, features = ["ip_in_core"] }
+scopeguard = { workspace = true, default-features = false }
+rand_core = { workspace = true, default-features = false }
+embassy-sync = { workspace = true, default-features = false }
+embassy-time = { workspace = true, default-features = false }
+embassy-futures = { workspace = true, default-features = false }
+heapless = { workspace = true, default-features = false }
+bitflags = { workspace = true, default-features = false }
+embassy-net-driver-channel = { workspace = true, default-features = false, optional = true }
+esp-radio = { workspace = true, default-features = false, features = ["unstable", "ieee802154"], optional = true }
+embassy-nrf = { workspace = true, default-features = false, optional = true }
+portable-atomic = { workspace = true, default-features = false }

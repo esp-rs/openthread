@@ -209,14 +209,14 @@ sntp-client = []
 trel = []              # Thread Radio Encapsulation Link (TREL)
 
 [dependencies]
-mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", default-features = false, features = ["openthread"], optional = true }
+mbedtls-rs-sys = { workspace = true, default-features = false, features = ["openthread"], optional = true }
 
 [build-dependencies]
-anyhow = "1"
-bindgen = "0.72"
-env_logger = "0.11"
-log = "0.4"
-cmake = "0.1.52"
-cc = "1.1"
-fs_extra = "1.3"
-embuild = "0.33"
+anyhow = { workspace = true, default-features = true }
+bindgen = { workspace = true, default-features = true }
+env_logger = { workspace = true, default-features = true }
+log = { workspace = true, default-features = true }
+cmake = { workspace = true, default-features = true }
+cc = { workspace = true, default-features = true }
+fs_extra = { workspace = true, default-features = true }
+embuild = { workspace = true, default-features = true }
