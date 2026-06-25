@@ -1,6 +1,6 @@
 [package]
 name = "openthread-sys"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2021"
 links = "openthread"
 license = "MIT OR Apache-2.0"
@@ -18,9 +18,13 @@ exclude = [
     "openthread/script",
     # The vendored mbedtls subtree ships its own tests, programs, docs and IDE
     # project files. We only need the library sources + headers + CMakeLists.
+    # NOTE: do NOT add `.../mbedtls/repo/framework` here. mbedtls's top-level
+    # CMakeLists unconditionally `add_subdirectory(framework)` and FATAL_ERRORs
+    # if it is missing, so the bundled-mbedtls build path — taken whenever the
+    # `mbedtls-rs-sys` feature is OFF requires it. 
+    # It is tiny (a near-empty placeholder CMakeLists), so shipping it costs almost nothing.
     "openthread/third_party/mbedtls/repo/tests",
     "openthread/third_party/mbedtls/repo/programs",
-    "openthread/third_party/mbedtls/repo/framework",
     "openthread/third_party/mbedtls/repo/docs",
     "openthread/third_party/mbedtls/repo/visualc",
     # OpenThread's own `tests/CMakeLists.txt` is unconditionally `add_subdirectory`'d
