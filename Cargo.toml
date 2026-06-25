@@ -22,7 +22,7 @@ esp-radio = { version = "0.18", default-features = false }
 embassy-nrf = { version = "0.10", default-features = false }
 portable-atomic = { version = "1", default-features = false }
 
-mbedtls-rs-sys = { version = "0.1", git = "https://github.com/esp-rs/mbedtls-rs", default-features = false }
+mbedtls-rs-sys = { version = "0.1", default-features = false }
 openthread-sys = { version = "0.1", path = "openthread-sys", default-features = false }
 
 # build dependencies
