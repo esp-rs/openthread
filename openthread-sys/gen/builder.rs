@@ -407,6 +407,12 @@ impl CMakeConfigurer {
         let mut config = Config::new(&self.project_path);
 
         config
+            // OpenThread's own CMake doesn't run Python, but the bundled MbedTLS
+            // (built when the `mbedtls-rs-sys` feature is OFF) does, and Python
+            // would drop `__pycache__/*.pyc` caches into the crate source tree.
+            // `cargo publish` aborts when build.rs modifies the extracted source,
+            // so disable bytecode caching to keep a bundled-MbedTLS publish clean.
+            .env("PYTHONDONTWRITEBYTECODE", "1")
             // ... or else the build would fail with `arm-none-eabi-gcc` when testing the compiler
             .define("CMAKE_TRY_COMPILE_TARGET_TYPE", "STATIC_LIBRARY")
             .define("CMAKE_EXPORT_COMPILE_COMMANDS", "ON")
