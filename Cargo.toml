@@ -23,7 +23,7 @@ embassy-nrf = { version = "0.10", default-features = false }
 portable-atomic = { version = "1", default-features = false }
 
 mbedtls-rs-sys = { version = "0.1", default-features = false }
-openthread-sys = { version = "0.1", path = "openthread-sys", default-features = false }
+openthread-sys = { version = "0.2", path = "openthread-sys", default-features = false }
 
 # build dependencies
 anyhow = { version = "1", default-features = false }
