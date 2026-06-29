@@ -572,6 +572,72 @@ impl<'a> OpenThread<'a> {
         }
     }
 
+    /// Iterate over the entries of this node's Thread route table, invoking the
+    /// provided closure once per entry.
+    ///
+    /// The behavior depends on the device type:
+    /// - On a Full Thread Device (`ftd` feature), this iterates the full router
+    ///   table via `otThreadGetMaxRouterId` + `otThreadGetRouterInfo`.
+    /// - On a Minimal Thread Device (the default), the route table reduces to
+    ///   this node's parent (`otThreadGetParentInfo`); the closure is invoked
+    ///   once if a parent exists, otherwise not at all.
+    ///
+    /// This mirrors how the Matter Thread Network Diagnostics cluster is
+    /// populated by the connectedhomeip reference implementation.
+    pub fn route_table<F>(&self, mut f: F)
+    where
+        F: FnMut(&RouteInfo),
+    {
+        let mut ot = self.activate();
+        let state = ot.state();
+        let instance = state.ot.instance;
+
+        #[cfg(feature = "ftd")]
+        {
+            let max_router_id = unsafe { sys::otThreadGetMaxRouterId(instance) };
+            let mut info = MaybeUninit::<sys::otRouterInfo>::uninit();
+
+            for router_id in 0..=max_router_id {
+                // SAFETY: `info` is fully written whenever `otThreadGetRouterInfo`
+                // returns `OT_ERROR_NONE` (i.e. the router id is in use).
+                let err = unsafe {
+                    sys::otThreadGetRouterInfo(instance, router_id as u16, info.as_mut_ptr())
+                };
+
+                if err == otError_OT_ERROR_NONE {
+                    let raw = unsafe { info.assume_init_ref() };
+                    f(&RouteInfo::load_raw(raw));
+                }
+            }
+        }
+
+        #[cfg(not(feature = "ftd"))]
+        {
+            let mut info = MaybeUninit::<sys::otRouterInfo>::uninit();
+
+            // SAFETY: `info` is fully written whenever `otThreadGetParentInfo`
+            // returns `OT_ERROR_NONE` (i.e. this node currently has a parent).
+            let err = unsafe { sys::otThreadGetParentInfo(instance, info.as_mut_ptr()) };
+
+            if err == otError_OT_ERROR_NONE {
+                let raw = unsafe { info.assume_init_ref() };
+                f(&RouteInfo::load_raw(raw));
+            }
+        }
+    }
+
+    /// Return whether this node is router-eligible (`otThreadIsRouterEligible`).
+    ///
+    /// Only available on a Full Thread Device (`ftd` feature); a Minimal Thread
+    /// Device is never router-eligible.
+    #[cfg(feature = "ftd")]
+    pub fn router_eligible(&self) -> bool {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadIsRouterEligible(state.ot.instance) }
+    }
+
     /// Return statistics of the OpenThread message-buffer pool
     /// (`otMessageGetBufferInfo`).
     ///
@@ -1412,6 +1478,54 @@ pub struct NeighborInfo {
     pub full_network_data: bool,
     /// Whether the neighbor is a child of this node.
     pub is_child: bool,
+}
+
+/// Diagnostic information about a single entry of the Thread route table,
+/// as reported by [`OpenThread::route_table`] (`otRouterInfo`).
+///
+/// Each entry describes a router-capable node for which a route is known, as
+/// seen by this node.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct RouteInfo {
+    /// IEEE 802.15.4 extended (EUI-64) address of the router, big-endian.
+    pub ext_address: u64,
+    /// RLOC16 of the router.
+    pub rloc16: u16,
+    /// Router ID of the router.
+    pub router_id: u8,
+    /// Router ID of the next hop towards the router.
+    pub next_hop: u8,
+    /// Path cost to the router.
+    pub path_cost: u8,
+    /// Link Quality In for messages from the router (0..=3).
+    pub lqi_in: u8,
+    /// Link Quality Out for messages to the router (0..=3).
+    pub lqi_out: u8,
+    /// Seconds since a frame was last received from the router.
+    pub age: u8,
+    /// Whether the router ID is allocated.
+    pub allocated: bool,
+    /// Whether a link is established with the router.
+    pub link_established: bool,
+}
+
+impl RouteInfo {
+    /// Load a `RouteInfo` from the raw `otRouterInfo` struct.
+    fn load_raw(raw: &sys::otRouterInfo) -> Self {
+        Self {
+            ext_address: u64::from_be_bytes(raw.mExtAddress.m8),
+            rloc16: raw.mRloc16,
+            router_id: raw.mRouterId,
+            next_hop: raw.mNextHop,
+            path_cost: raw.mPathCost,
+            lqi_in: raw.mLinkQualityIn,
+            lqi_out: raw.mLinkQualityOut,
+            age: raw.mAge,
+            allocated: raw.mAllocated(),
+            link_established: raw.mLinkEstablished(),
+        }
+    }
 }
 
 impl NeighborInfo {

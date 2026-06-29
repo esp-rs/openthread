@@ -15,6 +15,8 @@ use embedded_alloc::LlffHeap as Heap;
 use embassy_executor::InterruptExecutor;
 use embassy_executor::Spawner;
 
+use embassy_time::{Duration, Timer};
+
 use embassy_nrf::interrupt;
 use embassy_nrf::interrupt::{InterruptExt, Priority};
 use embassy_nrf::mode::Blocking;
@@ -128,6 +130,10 @@ async fn main(spawner: Spawner) {
 
     spawner.spawn(run_ot_ip_info(ot.clone()).unwrap());
 
+    info!("About to spawn OT diagnostics");
+
+    spawner.spawn(run_ot_diagnostics(ot.clone()).unwrap());
+
     info!("Dataset: {}", THREAD_DATASET);
 
     ot.set_active_dataset_tlv_hexstr(THREAD_DATASET).unwrap();
@@ -196,5 +202,50 @@ async fn run_ot_ip_info(ot: OpenThread<'static>) -> ! {
         }
 
         ot.wait_changed().await;
+    }
+}
+
+/// Periodically dump the Thread network diagnostics and the message-buffer
+/// statistics gathered via the `openthread` crate's diagnostic getters.
+#[embassy_executor::task]
+async fn run_ot_diagnostics(ot: OpenThread<'static>) -> ! {
+    loop {
+        Timer::after(Duration::from_secs(1)).await;
+
+        info!("=== OpenThread diagnostics ===");
+        info!(
+            "commissioned={} role={} channel={} pan_id={=u16:#06x} rloc16={=u16:#06x}",
+            ot.is_commissioned(),
+            ot.device_role(),
+            ot.channel(),
+            ot.pan_id(),
+            ot.rloc16(),
+        );
+        info!(
+            "ext_address={=u64:#018x} partition_id={=u32:#x} leader_weight={} leader_router_id={}",
+            ot.ext_address(),
+            ot.partition_id(),
+            ot.leader_weight(),
+            ot.leader_router_id(),
+        );
+        info!(
+            "net_data_version={} stable_data_version={} mesh_local_prefix={=[u8]:#04x}",
+            ot.net_data_version(),
+            ot.net_data_stable_version(),
+            ot.mesh_local_prefix(),
+        );
+        ot.network_name(|name| info!("network_name={}", name));
+
+        let bi = ot.buffer_info();
+        info!(
+            "buffers: total={} free={} max_used={} reassembly_msgs={} reassembly_bufs={}",
+            bi.total, bi.free, bi.max_used, bi.reassembly_messages, bi.reassembly_buffers,
+        );
+
+        info!("-- neighbor table --");
+        ot.neighbor_table(|n| info!("  neighbor {}", n));
+
+        info!("-- route table --");
+        ot.route_table(|r| info!("  route {}", r));
     }
 }
