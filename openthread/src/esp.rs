@@ -14,16 +14,25 @@ pub use esp_radio::ieee802154::Ieee802154;
 pub struct EspRadio<'a> {
     driver: Ieee802154<'a>,
     config: Config,
+    rx_queue_size: usize,
 }
 
 impl<'a> EspRadio<'a> {
     const DEFAULT_CONFIG: Config = Config::new();
+
+    /// Default esp-radio receive-queue depth (frames buffered before drops).
+    ///
+    /// esp-radio's own default of 10 is too small for OpenThread's RX bursts; 50
+    /// is a safer baseline. Bursty Matter commissioning/SRP may need more — see
+    /// [`EspRadio::with_rx_queue_size`].
+    pub const DEFAULT_RX_QUEUE_SIZE: usize = 50;
 
     /// Create a new `EspRadio` instance.
     pub fn new(ieee802154: Ieee802154<'a>) -> Self {
         let mut this = Self {
             driver: ieee802154,
             config: Self::DEFAULT_CONFIG,
+            rx_queue_size: Self::DEFAULT_RX_QUEUE_SIZE,
         };
 
         this.driver.set_rx_available_callback_fn(Self::rx_callback);
@@ -34,6 +43,21 @@ impl<'a> EspRadio<'a> {
         this.update_driver_config();
 
         this
+    }
+
+    /// Set the esp-radio receive-queue depth: frames buffered before further
+    /// incoming frames are dropped (logged as `Receive queue full`).
+    ///
+    /// Raising the default ([`Self::DEFAULT_RX_QUEUE_SIZE`], e.g. to 200) gives
+    /// headroom when the OpenThread consumer stalls under bursty load (e.g.
+    /// crypto during commissioning). Each queued frame is a heap buffer of
+    /// ~130 bytes, allocated on demand and not freed until reset, so the depth
+    /// caps the worst-case RX heap (e.g. 200 ≈ 26 KB).
+    #[must_use]
+    pub fn with_rx_queue_size(mut self, rx_queue_size: usize) -> Self {
+        self.rx_queue_size = rx_queue_size;
+        self.update_driver_config();
+        self
     }
 
     fn update_driver_config(&mut self) {
@@ -63,10 +87,7 @@ impl<'a> EspRadio<'a> {
             pan_id: config.pan_id,
             short_addr: config.short_addr,
             ext_addr: config.ext_addr,
-            // The default of 10 is too small for OpenThread,
-            // which can have bursts of incoming frames, so we increase it to 50.
-            // TODO: See if we can get by with a smaller number to save memory.
-            rx_queue_size: 50,
+            rx_queue_size: self.rx_queue_size,
             ..Default::default()
         };
 
