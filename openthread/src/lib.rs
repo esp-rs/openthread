@@ -404,6 +404,174 @@ impl<'a> OpenThread<'a> {
         }
     }
 
+    /// Return whether the stack currently has a committed Active Operational
+    /// Dataset (i.e. the node is commissioned onto a Thread network).
+    ///
+    /// Wraps `otDatasetIsCommissioned`.
+    pub fn is_commissioned(&self) -> bool {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otDatasetIsCommissioned(state.ot.instance) }
+    }
+
+    /// Return the current 802.15.4 channel of the Thread interface
+    /// (`otLinkGetChannel`).
+    pub fn channel(&self) -> u8 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otLinkGetChannel(state.ot.instance) }
+    }
+
+    /// Return the routing role of this node within the Thread network
+    /// (`otThreadGetDeviceRole`).
+    pub fn device_role(&self) -> DeviceRole {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { otThreadGetDeviceRole(state.ot.instance) }.into()
+    }
+
+    /// Return whether this node keeps its receiver on when idle, i.e. is not a
+    /// Sleepy End Device (the `mRxOnWhenIdle` bit of `otThreadGetLinkMode`).
+    pub fn rx_on_when_idle(&self) -> bool {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadGetLinkMode(state.ot.instance) }.mRxOnWhenIdle()
+    }
+
+    /// Invoke the provided closure with the human-readable Thread network name
+    /// (`otThreadGetNetworkName`). The string borrow is only valid for the
+    /// duration of the call.
+    pub fn network_name<R>(&self, f: impl FnOnce(&str) -> R) -> R {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let ptr = unsafe { sys::otThreadGetNetworkName(state.ot.instance) };
+        // SAFETY: `otThreadGetNetworkName` always returns a pointer to a valid,
+        // NUL-terminated C string owned by the stack.
+        let name = unsafe { core::ffi::CStr::from_ptr(ptr) };
+
+        f(name.to_str().unwrap_or(""))
+    }
+
+    /// Return the 16-bit PAN ID of this node (`otLinkGetPanId`).
+    pub fn pan_id(&self) -> u16 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otLinkGetPanId(state.ot.instance) }
+    }
+
+    /// Return the mesh-local IPv6 /64 prefix (`otThreadGetMeshLocalPrefix`).
+    pub fn mesh_local_prefix(&self) -> [u8; 8] {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let ptr = unsafe { sys::otThreadGetMeshLocalPrefix(state.ot.instance) };
+        // SAFETY: the returned pointer is always valid for the lifetime of the stack.
+        unsafe { (*ptr).m8 }
+    }
+
+    /// Return the Thread Leader Partition ID (`otThreadGetPartitionId`).
+    pub fn partition_id(&self) -> u32 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadGetPartitionId(state.ot.instance) }
+    }
+
+    /// Return the Thread Leader Weight (`otThreadGetLeaderWeight`).
+    pub fn leader_weight(&self) -> u8 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadGetLeaderWeight(state.ot.instance) }
+    }
+
+    /// Return the full Network Data version (`otNetDataGetVersion`).
+    pub fn net_data_version(&self) -> u8 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otNetDataGetVersion(state.ot.instance) }
+    }
+
+    /// Return the stable Network Data version (`otNetDataGetStableVersion`).
+    pub fn net_data_stable_version(&self) -> u8 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otNetDataGetStableVersion(state.ot.instance) }
+    }
+
+    /// Return the Leader Router ID (`otThreadGetLeaderRouterId`).
+    pub fn leader_router_id(&self) -> u8 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadGetLeaderRouterId(state.ot.instance) }
+    }
+
+    /// Return this node's own IEEE 802.15.4 extended (EUI-64) address as a
+    /// big-endian integer (`otLinkGetExtendedAddress`).
+    pub fn ext_address(&self) -> u64 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let ptr = unsafe { sys::otLinkGetExtendedAddress(state.ot.instance) };
+        // SAFETY: the returned pointer is always valid for the lifetime of the stack.
+        u64::from_be_bytes(unsafe { (*ptr).m8 })
+    }
+
+    /// Return this node's own RLOC16 (`otThreadGetRloc16`).
+    pub fn rloc16(&self) -> u16 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadGetRloc16(state.ot.instance) }
+    }
+
+    /// Return the radio's supported channel mask (`otLinkGetSupportedChannelMask`),
+    /// a bitmask where bit `n` indicates support for channel `n`.
+    pub fn supported_channel_mask(&self) -> u32 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otLinkGetSupportedChannelMask(state.ot.instance) }
+    }
+
+    /// Iterate over the entries of this node's Thread neighbor table,
+    /// invoking the provided closure once per neighbor
+    /// (`otThreadGetNextNeighborInfo`).
+    pub fn neighbor_table<F>(&self, mut f: F)
+    where
+        F: FnMut(&NeighborInfo),
+    {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let mut iter: sys::otNeighborInfoIterator = sys::OT_NEIGHBOR_INFO_ITERATOR_INIT as _;
+        let mut info = MaybeUninit::<sys::otNeighborInfo>::uninit();
+
+        loop {
+            // SAFETY: `info` is fully written by `otThreadGetNextNeighborInfo`
+            // whenever it returns `OT_ERROR_NONE`.
+            let err = unsafe {
+                sys::otThreadGetNextNeighborInfo(state.ot.instance, &mut iter, info.as_mut_ptr())
+            };
+
+            if err != otError_OT_ERROR_NONE {
+                break;
+            }
+
+            let raw = unsafe { info.assume_init_ref() };
+            f(&NeighborInfo::load_raw(raw));
+        }
+    }
+
     /// Return statistics of the OpenThread message-buffer pool
     /// (`otMessageGetBufferInfo`).
     ///
@@ -1206,6 +1374,73 @@ pub struct NetStatus {
     pub ext_pan_id: Option<u64>,
     /// Whether the IPv6 interface is enabled.
     pub ip6_enabled: bool,
+}
+
+/// Diagnostic information about a single entry of the Thread neighbor table,
+/// as reported by [`OpenThread::neighbor_table`] (`otNeighborInfo`).
+///
+/// All fields describe the *neighboring* node as observed by this node (e.g.
+/// link quality is measured locally), not this node itself.
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct NeighborInfo {
+    /// IEEE 802.15.4 extended (EUI-64) address of the neighbor, big-endian.
+    pub ext_address: u64,
+    /// Seconds since a frame was last received from the neighbor.
+    pub age: u32,
+    /// RLOC16 of the neighbor.
+    pub rloc16: u16,
+    /// Last received MAC frame counter of the neighbor.
+    pub link_frame_counter: u32,
+    /// Last received MLE frame counter of the neighbor.
+    pub mle_frame_counter: u32,
+    /// Link Quality In for messages from the neighbor (0..=3).
+    pub link_quality_in: u8,
+    /// Average RSSI (dBm) of frames from the neighbor; `None` if not available.
+    pub average_rssi: Option<i8>,
+    /// RSSI (dBm) of the last frame from the neighbor; `None` if not available.
+    pub last_rssi: Option<i8>,
+    /// Frame error rate as a percentage (0..=100).
+    pub frame_error_rate: u8,
+    /// Message error rate as a percentage (0..=100).
+    pub message_error_rate: u8,
+    /// Whether the neighbor keeps its receiver on when idle.
+    pub rx_on_when_idle: bool,
+    /// Whether the neighbor is a Full Thread Device.
+    pub full_thread_device: bool,
+    /// Whether the neighbor requests the full Network Data.
+    pub full_network_data: bool,
+    /// Whether the neighbor is a child of this node.
+    pub is_child: bool,
+}
+
+impl NeighborInfo {
+    /// Load a `NeighborInfo` from the raw `otNeighborInfo` struct, applying the
+    /// same transformations the Matter Thread Network Diagnostics cluster uses.
+    fn load_raw(raw: &sys::otNeighborInfo) -> Self {
+        // OpenThread reports error rates as a fraction of 0xffff; Matter wants 0..=100.
+        let to_percent = |rate: u16| ((rate as u32 * 100) / 0xffff) as u8;
+        // RSSI is `i8` with a sentinel for "invalid".
+        let rssi = |v: i8| (v != sys::OT_RADIO_RSSI_INVALID as i8).then_some(v);
+
+        Self {
+            ext_address: u64::from_be_bytes(raw.mExtAddress.m8),
+            age: raw.mAge,
+            rloc16: raw.mRloc16,
+            link_frame_counter: raw.mLinkFrameCounter,
+            mle_frame_counter: raw.mMleFrameCounter,
+            link_quality_in: raw.mLinkQualityIn,
+            average_rssi: rssi(raw.mAverageRssi),
+            // Per the Matter mapping, the last RSSI is additionally clamped to <= 0.
+            last_rssi: rssi(raw.mLastRssi).map(|v| v.min(0)),
+            frame_error_rate: to_percent(raw.mFrameErrorRate),
+            message_error_rate: to_percent(raw.mMessageErrorRate),
+            rx_on_when_idle: raw.mRxOnWhenIdle(),
+            full_thread_device: raw.mFullThreadDevice(),
+            full_network_data: raw.mFullNetworkData(),
+            is_child: raw.mIsChild(),
+        }
+    }
 }
 
 /// Statistics of the OpenThread message-buffer pool (`otMessageGetBufferInfo`).

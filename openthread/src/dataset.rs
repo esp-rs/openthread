@@ -3,10 +3,10 @@
 //! Basically, a way to configure the Thread network settings.
 
 use crate::sys::{
-    otDatasetParseTlvs, otDatasetSetActive, otDatasetSetActiveTlvs, otDatasetSetPending,
-    otDatasetSetPendingTlvs, otError_OT_ERROR_INVALID_ARGS, otError_OT_ERROR_NO_BUFS,
-    otExtendedPanId, otMeshLocalPrefix, otNetworkKey, otOperationalDataset,
-    otOperationalDatasetTlvs, otPskc, otTimestamp,
+    otDatasetGetActive, otDatasetParseTlvs, otDatasetSetActive, otDatasetSetActiveTlvs,
+    otDatasetSetPending, otDatasetSetPendingTlvs, otError_OT_ERROR_INVALID_ARGS,
+    otError_OT_ERROR_NO_BUFS, otExtendedPanId, otMeshLocalPrefix, otNetworkKey,
+    otOperationalDataset, otOperationalDatasetTlvs, otPskc, otTimestamp,
 };
 use crate::{ot, OpenThread, OtActiveState, OtError};
 
@@ -241,6 +241,95 @@ pub struct SecurityPolicy {
     pub version_threshold_for_routing: u8,
 }
 
+impl SecurityPolicy {
+    /// Load the security policy from the raw `otSecurityPolicy` struct.
+    pub(crate) fn load_raw(raw: &crate::sys::otSecurityPolicy) -> Self {
+        Self {
+            rotation_time: raw.mRotationTime,
+            autonomous_enrollment_enabled: raw.mAutonomousEnrollmentEnabled(),
+            commercial_commissioning_enabled: raw.mCommercialCommissioningEnabled(),
+            external_commissioning_enabled: raw.mExternalCommissioningEnabled(),
+            native_commissioning_enabled: raw.mNativeCommissioningEnabled(),
+            network_key_provisioning_enabled: raw.mNetworkKeyProvisioningEnabled(),
+            non_ccm_routers_enabled: raw.mNonCcmRoutersEnabled(),
+            obtain_network_key_enabled: raw.mObtainNetworkKeyEnabled(),
+            routers_enabled: raw.mRoutersEnabled(),
+            toble_link_enabled: raw.mTobleLinkEnabled(),
+            version_threshold_for_routing: raw.mVersionThresholdForRouting(),
+        }
+    }
+}
+
+/// Indicates which components are present in an Operational Dataset.
+///
+/// Each flag corresponds to one optional field of [`OperationalDataset`] and is
+/// `true` when that field is present in the dataset currently held by the stack.
+#[derive(Debug, Copy, Clone, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct OperationalDatasetComponents {
+    /// The Active Timestamp is present.
+    pub active_timestamp_present: bool,
+    /// The Pending Timestamp is present.
+    pub pending_timestamp_present: bool,
+    /// The Network Key is present.
+    pub network_key_present: bool,
+    /// The Network Name is present.
+    pub network_name_present: bool,
+    /// The Extended PAN ID is present.
+    pub extended_pan_id_present: bool,
+    /// The Mesh-Local Prefix is present.
+    pub mesh_local_prefix_present: bool,
+    /// The Delay Timer is present.
+    pub delay_present: bool,
+    /// The PAN ID is present.
+    pub pan_id_present: bool,
+    /// The Channel is present.
+    pub channel_present: bool,
+    /// The PSKc is present.
+    pub pskc_present: bool,
+    /// The Security Policy is present.
+    pub security_policy_present: bool,
+    /// The Channel Mask is present.
+    pub channel_mask_present: bool,
+}
+
+impl OperationalDatasetComponents {
+    /// Load the component-presence flags from the raw
+    /// `otOperationalDatasetComponents` struct.
+    pub(crate) fn load_raw(raw: &crate::sys::otOperationalDatasetComponents) -> Self {
+        Self {
+            active_timestamp_present: raw.mIsActiveTimestampPresent,
+            pending_timestamp_present: raw.mIsPendingTimestampPresent,
+            network_key_present: raw.mIsNetworkKeyPresent,
+            network_name_present: raw.mIsNetworkNamePresent,
+            extended_pan_id_present: raw.mIsExtendedPanIdPresent,
+            mesh_local_prefix_present: raw.mIsMeshLocalPrefixPresent,
+            delay_present: raw.mIsDelayPresent,
+            pan_id_present: raw.mIsPanIdPresent,
+            channel_present: raw.mIsChannelPresent,
+            pskc_present: raw.mIsPskcPresent,
+            security_policy_present: raw.mIsSecurityPolicyPresent,
+            channel_mask_present: raw.mIsChannelMaskPresent,
+        }
+    }
+}
+
+/// A snapshot of the diagnostic-relevant parts of the Active Operational Dataset.
+///
+/// Returned by [`OpenThread::active_dataset_diag`]. Unlike [`OperationalDataset`],
+/// this type is owned (borrows nothing) so it can be returned by value, and it
+/// only carries the fields needed by the Thread Network Diagnostics cluster.
+#[derive(Debug, Clone, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct ActiveDatasetDiag {
+    /// The Security Policy, if present in the active dataset.
+    pub security_policy: Option<SecurityPolicy>,
+    /// The Channel Mask (page 0), if present in the active dataset.
+    pub channel_mask: Option<u32>,
+    /// Which components are present in the active dataset.
+    pub components: OperationalDatasetComponents,
+}
+
 /// Thread Dataset timestamp
 // TODO: Do we need both "seconds" and "ticks"? Revisit this later.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -267,6 +356,37 @@ impl OpenThread<'_> {
         OperationalDataset::parse_tlv(tlv, &mut resources.dataset_tlv, &mut resources.dataset)?;
 
         Ok(OperationalDataset::get_pan_ids(&resources.dataset))
+    }
+
+    /// Return the diagnostic-relevant parts (security policy, channel mask and
+    /// component-presence flags) of the Active Operational Dataset.
+    ///
+    /// Returns `None` if the stack does not currently have a committed active
+    /// dataset (i.e. the node is not commissioned onto a Thread network).
+    ///
+    /// This is a read-only counterpart to [`OpenThread::set_active_dataset`],
+    /// tailored to what the Matter Thread Network Diagnostics cluster needs.
+    pub fn active_dataset_diag(&self) -> Option<ActiveDatasetDiag> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let instance = state.ot.instance;
+        let dataset = &mut state.ot.dataset_resources.dataset;
+
+        // SAFETY: `otDatasetGetActive` fully populates `dataset` on success.
+        ot!(unsafe { otDatasetGetActive(instance, dataset) }).ok()?;
+
+        let components = OperationalDatasetComponents::load_raw(&dataset.mComponents);
+
+        Some(ActiveDatasetDiag {
+            security_policy: components
+                .security_policy_present
+                .then(|| SecurityPolicy::load_raw(&dataset.mSecurityPolicy)),
+            channel_mask: components
+                .channel_mask_present
+                .then_some(dataset.mChannelMask),
+            components,
+        })
     }
 
     /// Set a new active dataset in the OpenThread stack.
