@@ -71,7 +71,7 @@ mod srp;
 mod udp;
 
 use sys::{
-    otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
+    otBufferInfo, otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
     otDeviceRole_OT_DEVICE_ROLE_DETACHED, otDeviceRole_OT_DEVICE_ROLE_DISABLED,
     otDeviceRole_OT_DEVICE_ROLE_LEADER, otDeviceRole_OT_DEVICE_ROLE_ROUTER, otError,
     otError_OT_ERROR_ABORT, otError_OT_ERROR_CHANNEL_ACCESS_FAILURE, otError_OT_ERROR_DROP,
@@ -79,11 +79,11 @@ use sys::{
     otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize, otInstanceInitSingle, otIp6Address,
     otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
     otIp6SetEnabled, otIp6SetReceiveCallback, otLinkModeConfig, otMessage, otMessageFree,
-    otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings,
-    otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone,
-    otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback,
-    otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled,
-    otThreadSetLinkMode, OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT,
+    otMessageGetBufferInfo, otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead,
+    otMessageSettings, otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired,
+    otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame,
+    otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId,
+    otThreadSetEnabled, otThreadSetLinkMode, OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT,
     OT_RADIO_FRAME_MAX_SIZE,
 };
 
@@ -401,6 +401,31 @@ impl<'a> OpenThread<'a> {
             role: device_role,
             ext_pan_id: ext_pan_id.map(|id| u64::from_be_bytes(id.m8)),
             ip6_enabled: unsafe { otIp6IsEnabled(state.ot.instance) },
+        }
+    }
+
+    /// Return statistics of the OpenThread message-buffer pool
+    /// (`otMessageGetBufferInfo`).
+    ///
+    /// The pool is fixed-size. When `free` reaches 0 the stack can no longer
+    /// allocate buffers for incoming or outgoing messages, which surfaces as
+    /// silent congestion — forwarded packets are dropped and the device can
+    /// appear unreachable without any role change. The `reassembly_*` counters
+    /// reflect the 6LoWPAN reassembly queue: incomplete datagrams awaiting
+    /// missing fragments, which pin buffers until they time out.
+    pub fn buffer_info(&self) -> BufferInfo {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let mut info: otBufferInfo = unsafe { core::mem::zeroed() };
+        unsafe { otMessageGetBufferInfo(state.ot.instance, &mut info) };
+
+        BufferInfo {
+            total: info.mTotalBuffers,
+            free: info.mFreeBuffers,
+            max_used: info.mMaxUsedBuffers,
+            reassembly_messages: info.m6loReassemblyQueue.mNumMessages,
+            reassembly_buffers: info.m6loReassemblyQueue.mNumBuffers,
         }
     }
 
@@ -1181,6 +1206,23 @@ pub struct NetStatus {
     pub ext_pan_id: Option<u64>,
     /// Whether the IPv6 interface is enabled.
     pub ip6_enabled: bool,
+}
+
+/// Statistics of the OpenThread message-buffer pool (`otMessageGetBufferInfo`).
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct BufferInfo {
+    /// Total number of buffers in the message pool (`0xffff` if unknown).
+    pub total: u16,
+    /// Number of currently free buffers (`0xffff` if unknown).
+    pub free: u16,
+    /// High-water mark of buffers used at once since stack init.
+    pub max_used: u16,
+    /// Messages currently held in the 6LoWPAN reassembly queue (incomplete
+    /// datagrams awaiting missing fragments).
+    pub reassembly_messages: u16,
+    /// Buffers currently held by the 6LoWPAN reassembly queue.
+    pub reassembly_buffers: u16,
 }
 
 /// The device role in the OpenThread network.

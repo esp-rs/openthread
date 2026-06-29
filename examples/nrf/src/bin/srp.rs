@@ -5,8 +5,6 @@
 //!
 //! The example also registers the MTD device under the hostname `srp-example` and should thus be pingable as `srp-example.local`
 //! from your Wifi/Ethernet network, as long as you are running the other thread peer as a Thread Border Router (see below).
-//!
-//! See README.md for instructions on how to configure the other Thread peer (a FTD), using another Esp device.
 
 #![no_std]
 #![no_main]
@@ -77,7 +75,7 @@ const SRP_MAX_SERVICES: usize = 2;
 const THREAD_DATASET: &str = if let Some(dataset) = option_env!("THREAD_DATASET") {
     dataset
 } else {
-    "0e080000000000010000000300000b35060004001fffe002083a90e3a319a904940708fd1fa298dbd1e3290510fe0458f7db96354eaa6041b880ea9c0f030f4f70656e5468726561642d35386431010258d10410888f813c61972446ab616ee3c556a5910c0402a0f7f8"
+    "000300001901020fd80208b566147d38e384200e080000639c5d67a3bd0510c490f58d4be0d5eaeb0f09b395d1ae17030d4e4553542d50414e2d304644380708fd7d4f8232cb00000410a7e08419ae47c177fb91bcfcec789aa50c0402a0f77835060004001fffe0"
 };
 
 const NRF_RADIO_CAPS: otRadioCaps = NrfRadio::CAPS.bits();
