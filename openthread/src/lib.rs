@@ -770,45 +770,6 @@ impl<'a> OpenThread<'a> {
         poll_fn(move |cx| self.activate().state().ot.changes.poll_wait(cx)).await;
     }
 
-    /// Check if rx_when_idle is enabled in the radio config.
-    ///
-    /// When `rx_when_idle` is true, the device can receive unsolicited messages
-    /// (like SRP server responses). This is essential for Matter-over-Thread.
-    pub fn get_rx_when_idle(&self) -> bool {
-        self.activate().state().ot.radio_conf.rx_when_idle
-    }
-
-    /// Wait until rx_when_idle becomes true.
-    ///
-    /// This is used by mDNS/SRP to wait for the link mode to be properly set
-    /// before registering services. Without rx_when_idle=true, the device
-    /// cannot receive SRP server responses, causing RESPONSE_TIMEOUT.
-    ///
-    /// Uses `wait_changed()` polling since there's no dedicated signal for
-    /// link mode changes.
-    ///
-    /// # Waker contention
-    ///
-    /// This method shares the single waker in `wait_changed()`. If called
-    /// concurrently with `run()`, both futures will compete over the same
-    /// waker registration, causing spurious wake-ups and busy polling.
-    /// Call this method **before** starting `run()`, or use
-    /// `embassy_futures::select::select` to combine it with `run()` in a
-    /// single task.
-    pub async fn wait_rx_when_idle(&self) {
-        loop {
-            if self.get_rx_when_idle() {
-                return;
-            }
-            // Wait for any state change, then check again
-            embassy_futures::select::select(
-                self.wait_changed(),
-                embassy_time::Timer::after(embassy_time::Duration::from_millis(100)),
-            )
-            .await;
-        }
-    }
-
     /// Run the OpenThread stack with the provided radio implementation.
     ///
     /// Arguments:
