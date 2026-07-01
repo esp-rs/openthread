@@ -20,7 +20,8 @@ default = ["matter", "mbedtls-rs-sys"]
 # UDP API surface.
 udp = []
 # SRP client: gates the Rust SRP API and compiles in OpenThread's SRP client.
-srp = ["udp", "openthread-sys/srp-client"]
+srp-client = ["udp", "openthread-sys/srp-client"]
+srp = ["srp-client"] # For backwards compatibility
 # Device-type / radio-location selection (additive; absence = the default).
 #   ftd off -> MTD end-device (default);  ftd on -> FTD (router-capable)
 #   rcp     -> the 802.15.4 radio is a separate RCP chip reached over a UART/SPI
@@ -71,7 +72,7 @@ isupper = [] # Provide internal implementation of the `isupper` C fn
 # ---------------------------------------------------------------------------
 
 # Barebones profile for Matter
-matter = ["srp", "dns-client", "openthread-sys/matter"]
+matter = ["srp-client", "dns-client", "openthread-sys/matter"]
 
 # ---------------------------------------------------------------------------
 # OpenThread capability features. Each re-exports the corresponding

@@ -39,7 +39,7 @@ pub use openthread_sys as sys;
 pub use radio::*;
 pub use scan::*;
 pub use settings::*;
-#[cfg(feature = "srp")]
+#[cfg(feature = "srp-client")]
 pub use srp::*;
 #[cfg(feature = "udp")]
 pub use udp::*;
@@ -65,7 +65,7 @@ pub mod rcp;
 mod scan;
 mod settings;
 mod signal;
-#[cfg(feature = "srp")]
+#[cfg(feature = "srp-client")]
 mod srp;
 #[cfg(feature = "udp")]
 mod udp;
@@ -154,7 +154,7 @@ pub struct OpenThread<'a> {
     state: &'a RefCell<OtState<'a>>,
     #[cfg(feature = "udp")]
     udp_state: Option<&'a RefCell<OtUdpState<'a>>>,
-    #[cfg(feature = "srp")]
+    #[cfg(feature = "srp-client")]
     srp_state: Option<&'a RefCell<OtSrpState<'a>>>,
 }
 
@@ -202,7 +202,7 @@ impl<'a> OpenThread<'a> {
             state,
             #[cfg(feature = "udp")]
             udp_state: None,
-            #[cfg(feature = "srp")]
+            #[cfg(feature = "srp-client")]
             srp_state: None,
         };
 
@@ -254,7 +254,7 @@ impl<'a> OpenThread<'a> {
         let mut this = Self {
             state,
             udp_state: Some(udp_state),
-            #[cfg(feature = "srp")]
+            #[cfg(feature = "srp-client")]
             srp_state: None,
         };
 
@@ -273,7 +273,7 @@ impl<'a> OpenThread<'a> {
     ///
     /// Returns:
     /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
-    #[cfg(feature = "srp")]
+    #[cfg(feature = "srp-client")]
     pub fn new_with_srp<const SRP_SVCS: usize, const SRP_BUF_SZ: usize>(
         ieee_eui64: [u8; 8],
         rng: &'a mut dyn OtRngCore,
@@ -326,7 +326,7 @@ impl<'a> OpenThread<'a> {
     ///
     /// Returns:
     /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
-    #[cfg(all(feature = "udp", feature = "srp"))]
+    #[cfg(all(feature = "udp", feature = "srp-client"))]
     pub fn new_with_udp_srp<
         const UDP_SOCKETS: usize,
         const UDP_RX_SZ: usize,
@@ -896,7 +896,7 @@ impl<'a> OpenThread<'a> {
                 )
             }
 
-            #[cfg(feature = "srp")]
+            #[cfg(feature = "srp-client")]
             unsafe {
                 crate::sys::otSrpClientSetCallback(
                     state.ot.instance,
@@ -1309,7 +1309,7 @@ impl Clone for OpenThread<'_> {
             state: self.state,
             #[cfg(feature = "udp")]
             udp_state: self.udp_state,
-            #[cfg(feature = "srp")]
+            #[cfg(feature = "srp-client")]
             srp_state: self.srp_state,
         }
     }
@@ -1603,7 +1603,7 @@ struct OtActiveState<'a> {
     #[cfg(feature = "udp")]
     udp: Option<RefMut<'a, OtUdpState<'a>>>,
     /// The activated `OtSrpState` instance.
-    #[cfg(feature = "srp")]
+    #[cfg(feature = "srp-client")]
     srp: Option<RefMut<'a, OtSrpState<'a>>>,
 }
 
@@ -1627,7 +1627,7 @@ impl<'a> OtActiveState<'a> {
     ///
     /// This method will return an error if the `OpenThread` instance was not
     /// initialized with SRP resources.
-    #[cfg(feature = "srp")]
+    #[cfg(feature = "srp-client")]
     pub(crate) fn srp(&mut self) -> Result<&mut OtSrpState<'a>, OtError> {
         let srp = self
             .srp
@@ -1682,7 +1682,7 @@ impl<'a> OtContext<'a> {
             ot: ot.state.borrow_mut(),
             #[cfg(feature = "udp")]
             udp: ot.udp_state.map(|u| u.borrow_mut()),
-            #[cfg(feature = "srp")]
+            #[cfg(feature = "srp-client")]
             srp: ot.srp_state.map(|s| s.borrow_mut()),
         };
 
@@ -1783,7 +1783,7 @@ impl<'a> OtContext<'a> {
         Self::callback(instance).plat_ipv6_received(msg);
     }
 
-    #[cfg(feature = "srp")]
+    #[cfg(feature = "srp-client")]
     unsafe extern "C" fn plat_c_srp_state_change_callback(
         error: otError,
         host_info: *const crate::sys::otSrpClientHostInfo,
@@ -1813,7 +1813,7 @@ impl<'a> OtContext<'a> {
         );
     }
 
-    #[cfg(feature = "srp")]
+    #[cfg(feature = "srp-client")]
     unsafe extern "C" fn plat_c_srp_auto_start_callback(
         _server_sock_addr: *const crate::sys::otSockAddr,
         context: *mut c_void,
