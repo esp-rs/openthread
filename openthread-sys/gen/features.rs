@@ -120,7 +120,8 @@ pub const FEATURE_DEFINES: &[(&str, &[&str])] = &[
 /// i.e. the exact knob set the committed per-target `.a` libraries are built
 /// with (see `xtask`). Mirrors the `matter` bundle in `Cargo.toml`; keep in
 /// sync (the build script's desync guard enforces this).
-pub const PREBUILT_FEATURES: &[&str] = &["SRP_CLIENT", "SLAAC", "ECDSA", "PING_SENDER"];
+pub const PREBUILT_FEATURES: &[&str] =
+    &["SRP_CLIENT", "SLAAC", "ECDSA", "PING_SENDER", "DNS_CLIENT"];
 
 /// An OpenThread knob and its on/off state, ready to be passed to CMake.
 pub struct KnobSetting {
