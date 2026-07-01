@@ -41,7 +41,6 @@ pub use scan::*;
 pub use settings::*;
 #[cfg(feature = "srp-client")]
 pub use srp::*;
-#[cfg(feature = "udp")]
 pub use udp::*;
 
 // This mod MUST go first, so that the others see its macros.
@@ -67,7 +66,6 @@ mod settings;
 mod signal;
 #[cfg(feature = "srp-client")]
 mod srp;
-#[cfg(feature = "udp")]
 mod udp;
 
 use sys::{
@@ -152,7 +150,6 @@ impl IntoOtCode for Result<(), OtError> {
 /// A type representing one OpenThread instance.
 pub struct OpenThread<'a> {
     state: &'a RefCell<OtState<'a>>,
-    #[cfg(feature = "udp")]
     udp_state: Option<&'a RefCell<OtUdpState<'a>>>,
     #[cfg(feature = "srp-client")]
     srp_state: Option<&'a RefCell<OtSrpState<'a>>>,
@@ -200,7 +197,6 @@ impl<'a> OpenThread<'a> {
 
         let mut this = Self {
             state,
-            #[cfg(feature = "udp")]
             udp_state: None,
             #[cfg(feature = "srp-client")]
             srp_state: None,
@@ -221,7 +217,6 @@ impl<'a> OpenThread<'a> {
     ///
     /// Returns:
     /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
-    #[cfg(feature = "udp")]
     pub fn new_with_udp<const UDP_SOCKETS: usize, const UDP_RX_SZ: usize>(
         ieee_eui64: [u8; 8],
         rng: &'a mut dyn OtRngCore,
@@ -305,7 +300,6 @@ impl<'a> OpenThread<'a> {
 
         let mut this = Self {
             state,
-            #[cfg(feature = "udp")]
             udp_state: None,
             srp_state: Some(srp_state),
         };
@@ -326,7 +320,7 @@ impl<'a> OpenThread<'a> {
     ///
     /// Returns:
     /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
-    #[cfg(all(feature = "udp", feature = "srp-client"))]
+    #[cfg(feature = "srp-client")]
     pub fn new_with_udp_srp<
         const UDP_SOCKETS: usize,
         const UDP_RX_SZ: usize,
@@ -1307,7 +1301,6 @@ impl Clone for OpenThread<'_> {
 
         Self {
             state: self.state,
-            #[cfg(feature = "udp")]
             udp_state: self.udp_state,
             #[cfg(feature = "srp-client")]
             srp_state: self.srp_state,
@@ -1600,7 +1593,6 @@ struct OtActiveState<'a> {
     /// The activated `OtState` instance.
     ot: RefMut<'a, OtState<'a>>,
     /// The activated `OtUdpState` instance.
-    #[cfg(feature = "udp")]
     udp: Option<RefMut<'a, OtUdpState<'a>>>,
     /// The activated `OtSrpState` instance.
     #[cfg(feature = "srp-client")]
@@ -1613,7 +1605,6 @@ impl<'a> OtActiveState<'a> {
     ///
     /// This method will return an error if the `OpenThread` instance was not
     /// initialized with UDP resources.
-    #[cfg(feature = "udp")]
     pub(crate) fn udp(&mut self) -> Result<&mut OtUdpState<'a>, OtError> {
         let udp = self
             .udp
@@ -1680,7 +1671,6 @@ impl<'a> OtContext<'a> {
 
         let active = OtActiveState {
             ot: ot.state.borrow_mut(),
-            #[cfg(feature = "udp")]
             udp: ot.udp_state.map(|u| u.borrow_mut()),
             #[cfg(feature = "srp-client")]
             srp: ot.srp_state.map(|s| s.borrow_mut()),
