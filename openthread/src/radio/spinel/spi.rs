@@ -6,6 +6,13 @@
 //! HDLC (see [`super::uart`] for the UART/HDLC path). SPI is also
 //! controller-driven and full-duplex-per-transfer, which is why this transport
 //! additionally needs an interrupt line — see [`SpiSpinelTransport`].
+//!
+//! **⚠️ Not yet hardware-tested** — this code path is compile-checked only; it
+//! has not been run against a real `ot-rcp` over SPI. It also implements the
+//! spec's *baseline* only: no optional on-SPI CRC, no receive-alignment
+//! allowance, and a simple "retry until accepted" loop rather than the
+//! reference's backoff/rate-limiting. Treat as experimental. See the [`super`]
+//! module docs.
 
 use super::{SpinelTransport, MAX_SPINEL_FRAME};
 

@@ -2,6 +2,16 @@
 //! radio lives on a *separate* chip (an OpenThread **RCP** — Radio Co-Processor)
 //! reached over a UART/SPI link using the **spinel** protocol.
 //!
+//! # ⚠️ Not yet hardware-tested
+//!
+//! **This entire module is unverified against real hardware.** [`SpinelRadio`]
+//! and both transports ([`UartSpinelTransport`] and [`SpiSpinelTransport`]) have
+//! so far only been *compile*-checked — no exchange with an actual `ot-rcp` has
+//! been run. The spinel/HDLC/SPI framing is implemented to the OpenThread
+//! reference, but timing, flow-control edge cases, and the startup handshake may
+//! not behave correctly on a physical link. Treat this as experimental until
+//! validated end-to-end with an RCP dongle.
+//!
 //! # Design
 //!
 //! Unlike OpenThread's POSIX host — which drives the radio with the C++

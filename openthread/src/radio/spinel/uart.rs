@@ -5,6 +5,10 @@
 //! FCS) and runs an incremental HDLC decoder on the way in — exactly OpenThread's
 //! POSIX `hdlc_interface`. (SPI does its own framing and needs no HDLC — see
 //! [`super::spi`].)
+//!
+//! **⚠️ Not yet hardware-tested** — this code path is compile-checked only; it
+//! has not been run against a real `ot-rcp` over a UART. See the [`super`]
+//! module docs.
 
 use super::{SpinelTransport, MAX_SPINEL_FRAME};
 
