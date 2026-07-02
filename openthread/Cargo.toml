@@ -29,7 +29,7 @@ srp-client = ["openthread-sys/srp-client"]
 #              `Radio` implementation, the user supplies a spinel transport (see
 #              the crate docs / `OpenThread` RCP-host API).
 ftd = ["openthread-sys/ftd"]
-rcp = ["openthread-sys/rcp", "dep:embedded-io-async", "dep:embedded-hal-async"]
+rcp = ["openthread-sys/rcp", "dep:embedded-io-async", "dep:embedded-hal", "dep:embedded-hal-async"]
 # Build OpenThread against the external MbedTLS (`mbedtls-rs-sys`) rather than
 # its own bundled MbedTLS. On by default; omit (with `default-features = false`)
 # to use the bundled MbedTLS and drop the `mbedtls-rs-sys` dependency.
@@ -129,8 +129,10 @@ bitflags = { workspace = true, default-features = false }
 embassy-net-driver-channel = { workspace = true, default-features = false, optional = true }
 # Used by the `rcp` feature's provided transports (`UartSpinelTransport` over an
 # `embedded-io-async` byte stream; `SpiSpinelTransport` over an
-# `embedded-hal-async` SPI device + interrupt pin).
+# `embedded-hal-async` SPI device + interrupt pin — the pin's level is also polled
+# via `embedded-hal`'s `InputPin`).
 embedded-io-async = { workspace = true, default-features = false, optional = true }
+embedded-hal = { workspace = true, default-features = false, optional = true }
 embedded-hal-async = { workspace = true, default-features = false, optional = true }
 esp-radio = { workspace = true, default-features = false, features = ["unstable", "ieee802154"], optional = true }
 embassy-nrf = { workspace = true, default-features = false, optional = true }

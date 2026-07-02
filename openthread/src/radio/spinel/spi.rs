@@ -8,11 +8,18 @@
 //! additionally needs an interrupt line — see [`SpiSpinelTransport`].
 //!
 //! **⚠️ Not yet hardware-tested** — this code path is compile-checked only; it
-//! has not been run against a real `ot-rcp` over SPI. It also implements the
-//! spec's *baseline* only: no optional on-SPI CRC, no receive-alignment
-//! allowance, and a simple "retry until accepted" loop rather than the
-//! reference's backoff/rate-limiting. Treat as experimental. See the [`super`]
-//! module docs.
+//! has not been run against a real `ot-rcp` over SPI. See the [`super`] module
+//! docs. The interrupt handling is written defensively — the line *level* is
+//! polled (via [`InputPin`](embedded_hal::digital::InputPin)) before awaiting an
+//! edge, so a missed edge alone will not wedge `recv`, and the asserted polarity
+//! is a constructor parameter ([`IntPolarity`]) rather than a baked-in
+//! assumption. What remains unvalidated is real-link behaviour: the full-duplex
+//! `accept_len`/`data_len` negotiation is implemented to spec but only reasoned
+//! about, not observed under a slow / back-pressuring RCP.
+//!
+//! It also implements the spec's *baseline* only (no optional on-SPI CRC, no
+//! receive-alignment allowance, a plain retry-until-accepted loop rather than the
+//! reference's backoff) — deliberate scope cuts, not correctness gaps.
 
 use super::{SpinelTransport, MAX_SPINEL_FRAME};
 
@@ -29,6 +36,20 @@ const SPI_FLAG_PATTERN_MASK: u8 = 0x03;
 /// picked up in a single transaction even before we know its length.
 const SPI_SMALL_PACKET_SIZE: usize = 32;
 
+/// The electrical polarity of the RCP's interrupt (`INT`) line — i.e. which
+/// level means "the RCP has a frame for the host". OpenThread's reference RCPs
+/// drive it [`ActiveLow`](IntPolarity::ActiveLow), but this is board-dependent,
+/// so [`SpiSpinelTransport::new`] takes it explicitly.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum IntPolarity {
+    /// `INT` is asserted (RCP has data) when the line is **low**. The reference
+    /// polarity for a stock `ot-rcp`.
+    ActiveLow,
+    /// `INT` is asserted (RCP has data) when the line is **high**.
+    ActiveHigh,
+}
+
 /// A [`SpinelTransport`] over SPI, using OpenThread's SPI framing protocol
 /// (`spi_frame.hpp` / the POSIX `spi_interface`), against a stock `ot-rcp` built
 /// with the SPI HDLC-less spinel interface.
@@ -39,10 +60,12 @@ const SPI_SMALL_PACKET_SIZE: usize = 32;
 /// *peripheral*) cannot start a transfer, and every clocked byte shifts one out
 /// *and* one in. So two extra mechanisms are layered on the bus:
 ///
-/// - **An interrupt line** (`int`, active-low): the RCP asserts it to say "I have
-///   a frame for you, please clock a transfer". This is the peripheral-initiated
-///   channel raw SPI lacks. This transport [`Wait`](embedded_hal_async::digital::Wait)s
-///   on it before reading.
+/// - **An interrupt line** (`int`): the RCP asserts it to say "I have a frame for
+///   you, please clock a transfer". This is the peripheral-initiated channel raw
+///   SPI lacks. This transport [`Wait`](embedded_hal_async::digital::Wait)s on it
+///   before reading, and polls its level to avoid missing an edge. Its asserted
+///   polarity (active-low for a stock `ot-rcp`, but board-dependent) is passed to
+///   [`new`](SpiSpinelTransport::new) as an [`IntPolarity`].
 /// - **A 5-byte SPI frame header** on every transfer:
 ///   `flag(1) | accept_len(2, LE) | data_len(2, LE)`. `accept_len` is how many
 ///   payload bytes *this* side can receive; `data_len` is how many it is sending.
@@ -55,12 +78,16 @@ const SPI_SMALL_PACKET_SIZE: usize = 32;
 /// own framing via `data_len`, so (unlike UART) there is no HDLC.
 ///
 /// ```ignore
-/// // `spi: embedded_hal_async::spi::SpiDevice`, `int: embedded_hal_async::digital::Wait`
-/// let radio = SpinelRadio::new(SpiSpinelTransport::new(spi, int));
+/// // `spi: embedded_hal_async::spi::SpiDevice`,
+/// // `int: embedded_hal_async::digital::Wait + embedded_hal::digital::InputPin`
+/// let transport = SpiSpinelTransport::new(spi, int, IntPolarity::ActiveLow);
+/// let radio = SpinelRadio::new(transport);
 /// ```
 pub struct SpiSpinelTransport<S, I> {
     spi: S,
     int: I,
+    /// Which `int` level means "the RCP has a frame for us".
+    int_polarity: IntPolarity,
     /// Full SPI transfer buffers (header + payload), reused every transaction.
     tx_buf: [u8; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
     rx_buf: [u8; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
@@ -80,11 +107,14 @@ pub struct SpiSpinelTransport<S, I> {
 
 impl<S, I> SpiSpinelTransport<S, I> {
     /// Create an SPI spinel transport over SPI device `spi` and interrupt line
-    /// `int` (active-low: asserted low when the RCP has data to send).
-    pub const fn new(spi: S, int: I) -> Self {
+    /// `int`, whose asserted polarity (which level means "the RCP has a frame for
+    /// us") is given by `int_polarity` — [`IntPolarity::ActiveLow`] for a stock
+    /// `ot-rcp`.
+    pub const fn new(spi: S, int: I, int_polarity: IntPolarity) -> Self {
         Self {
             spi,
             int,
+            int_polarity,
             tx_buf: [0; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
             rx_buf: [0; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
             tx_pending: None,
@@ -99,7 +129,7 @@ impl<S, I> SpiSpinelTransport<S, I> {
 impl<S, I> SpiSpinelTransport<S, I>
 where
     S: embedded_hal_async::spi::SpiDevice,
-    I: embedded_hal_async::digital::Wait,
+    I: embedded_hal_async::digital::Wait + embedded_hal::digital::InputPin,
 {
     /// Perform one SPI transaction, honoring flow control in both directions:
     /// advertise how much we can receive, send our queued frame (if any), and
@@ -189,7 +219,7 @@ where
 impl<S, I> SpinelTransport for SpiSpinelTransport<S, I>
 where
     S: embedded_hal_async::spi::SpiDevice,
-    I: embedded_hal_async::digital::Wait,
+    I: embedded_hal_async::digital::Wait + embedded_hal::digital::InputPin,
 {
     type Error = SpiTransportError<S::Error, I::Error>;
 
@@ -220,14 +250,30 @@ where
                 return Ok(len);
             }
 
-            // If the RCP has not yet told us it has data, wait for its interrupt.
-            // (If a prior header already announced a pending frame, go straight to
-            // a transfer to fetch it.)
-            if self.rcp_data_len == 0 {
-                self.int
-                    .wait_for_low()
-                    .await
-                    .map_err(SpiTransportError::Int)?;
+            // Decide whether to transfer now or block on the interrupt. We must
+            // *poll the INT level* — not just await an edge — to avoid missing a
+            // wakeup: the RCP may assert INT for a new frame in the window
+            // between our last transfer and this wait, and an edge-only `Wait`
+            // impl would then block forever. This mirrors OpenThread's POSIX
+            // `spi_interface`, which services the bus when `CheckInterrupt()`
+            // (a level read) is asserted and only otherwise waits on the edge.
+            //
+            // A transfer is due if a prior header already announced a pending
+            // frame (`rcp_data_len != 0`) or the INT line is currently asserted.
+            // Otherwise, block until the next asserting edge, then re-loop and
+            // re-check the level. "Asserted" is per the configured polarity.
+            let asserted = match self.int_polarity {
+                IntPolarity::ActiveLow => self.int.is_low(),
+                IntPolarity::ActiveHigh => self.int.is_high(),
+            }
+            .map_err(SpiTransportError::Int)?;
+
+            if self.rcp_data_len == 0 && !asserted {
+                match self.int_polarity {
+                    IntPolarity::ActiveLow => self.int.wait_for_low().await,
+                    IntPolarity::ActiveHigh => self.int.wait_for_high().await,
+                }
+                .map_err(SpiTransportError::Int)?;
             }
 
             self.push_pull().await?;

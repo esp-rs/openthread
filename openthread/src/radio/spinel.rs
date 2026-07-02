@@ -181,7 +181,7 @@ const MAX_SPINEL_FRAME: usize = OT_RADIO_FRAME_MAX_SIZE as usize + 128;
 pub mod spi;
 pub mod uart;
 
-pub use spi::{SpiSpinelTransport, SpiTransportError};
+pub use spi::{IntPolarity, SpiSpinelTransport, SpiTransportError};
 pub use uart::{UartSpinelTransport, UartTransportError};
 
 // ---------------------------------------------------------------------------
