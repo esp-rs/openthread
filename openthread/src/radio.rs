@@ -30,6 +30,21 @@ use crate::sys::{
     OT_RADIO_CAPS_TRANSMIT_SEC, OT_RADIO_CAPS_TRANSMIT_TIMING, OT_RADIO_FRAME_MAX_SIZE,
 };
 
+// Concrete [`Radio`] implementations for the supported radio hardware /
+// deployments. Each is gated on the feature that enables it.
+//
+// - `esp` / `nrf`: the 802.15.4 radio is local to this MCU (SoC deployment).
+// - `spinel`: the radio lives on a *separate* chip (an OpenThread RCP) reached
+//   over a UART/SPI spinel link — an RCP-host deployment. (The feature is named
+//   `rcp` after that deployment role; the module is named `spinel` after the
+//   wire protocol it speaks.)
+#[cfg(feature = "esp-radio")]
+pub mod esp;
+#[cfg(feature = "embassy-nrf")]
+pub mod nrf;
+#[cfg(feature = "rcp")]
+pub mod spinel;
+
 /// The error kind for radio errors.
 // TODO: Fill in with extra variants
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]

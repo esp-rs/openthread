@@ -51,16 +51,10 @@ mod dataset;
 mod dns;
 #[cfg(feature = "embassy-net-driver-channel")]
 pub mod enet;
-#[cfg(feature = "esp-radio")]
-pub mod esp;
 mod nat64;
 mod netdata;
-#[cfg(feature = "embassy-nrf")]
-pub mod nrf;
 mod platform;
 mod radio;
-#[cfg(feature = "rcp")]
-pub mod rcp;
 mod scan;
 mod settings;
 mod signal;
