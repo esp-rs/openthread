@@ -335,6 +335,35 @@ fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
     Some((tid, cmd, prop, off))
 }
 
+/// A tiny set of outstanding spinel transaction ids (1..=15), stored as a
+/// bitmask. Used to drain the acknowledgements of a pipelined burst of
+/// `PROP_VALUE_SET`s, matching each ack to its request by TID regardless of
+/// arrival order.
+#[derive(Clone, Copy, Default)]
+struct TidSet(u16);
+
+impl TidSet {
+    const fn new() -> Self {
+        Self(0)
+    }
+
+    fn insert(&mut self, tid: u8) {
+        self.0 |= 1 << (tid & 0x0f);
+    }
+
+    fn remove(&mut self, tid: u8) {
+        self.0 &= !(1 << (tid & 0x0f));
+    }
+
+    fn contains(&self, tid: u8) -> bool {
+        self.0 & (1 << (tid & 0x0f)) != 0
+    }
+
+    fn is_empty(&self) -> bool {
+        self.0 == 0
+    }
+}
+
 // ---------------------------------------------------------------------------
 // SpinelRadio: a `Radio` over a spinel transport.
 // ---------------------------------------------------------------------------
@@ -476,6 +505,74 @@ where
         self.await_response(tid).await.map(|_| ())
     }
 
+    /// Pipeline a batch of `PROP_VALUE_SET`s: build every frame, write them all
+    /// as one back-to-back burst, *then* drain their acknowledgements (matched by
+    /// TID, in any order). This collapses N property writes from N serialized
+    /// round-trips into a single write-burst + a single ack-drain — one round-trip
+    /// of latency instead of N.
+    ///
+    /// Each spinel frame still carries exactly one property (the wire protocol has
+    /// no multi-set command), and each SET is still individually acknowledged
+    /// (the per-op ack is intrinsic to the lossy, independently-resettable RCP
+    /// link — it is the *serialization* between them, not the acks, that this
+    /// removes). Writing the frames contiguously also lets a framed transport
+    /// (e.g. the SPI flow-control layer) coalesce them into as few bus transfers
+    /// as possible.
+    ///
+    /// `props` is an iterator of `(prop_key, payload)`; an empty batch is a no-op.
+    async fn set_props<'p>(
+        &mut self,
+        props: impl IntoIterator<Item = (u32, &'p [u8])>,
+    ) -> Result<(), RadioErrorKind> {
+        let cmd = unsafe { ot_spinel_cmd_prop_value_set() };
+
+        // HDLC-encode each SET frame end-to-end into `hdlc_buf`, accumulating the
+        // set of outstanding TIDs to acknowledge.
+        let mut burst_len = 0;
+        let mut pending = TidSet::new();
+
+        for (prop, payload) in props {
+            let tid = self.alloc_tid();
+
+            // Build the raw spinel frame (header | cmd | prop | payload) into a
+            // small local scratch — these config SET frames are tiny.
+            let mut raw = [0u8; 32];
+            let mut n =
+                spinel_frame_prefix(&mut raw, tid, cmd, prop).ok_or(RadioErrorKind::TxFailed)?;
+            if n + payload.len() > raw.len() {
+                return Err(RadioErrorKind::TxFailed);
+            }
+            raw[n..n + payload.len()].copy_from_slice(payload);
+            n += payload.len();
+
+            // HDLC-encode it, appended after the frames already in the burst.
+            let encoded = hdlc_encode(&raw[..n], &mut self.hdlc_buf[burst_len..])
+                .ok_or(RadioErrorKind::TxFailed)?;
+            burst_len += encoded;
+            pending.insert(tid);
+        }
+
+        if burst_len == 0 {
+            return Ok(());
+        }
+
+        // Write the whole burst in one go, then drain all acknowledgements.
+        let mut off = 0;
+        while off < burst_len {
+            let written = self
+                .transport
+                .write(&self.hdlc_buf[off..burst_len])
+                .await
+                .map_err(|_| RadioErrorKind::TxFailed)?;
+            if written == 0 {
+                return Err(RadioErrorKind::TxFailed);
+            }
+            off += written;
+        }
+
+        self.drain_acks(pending).await
+    }
+
     /// Send a `PROP_VALUE_GET` and await the response frame (matched by TID),
     /// invoking `f` with the response's property payload.
     async fn get_prop<R>(
@@ -497,8 +594,10 @@ where
         Ok(f(&self.decoder.buf[off..len]))
     }
 
-    /// Await a response frame with a matching `tid`, dispatching any unsolicited
-    /// (`tid == 0`) frames received meanwhile. Returns `(prop, payload_offset)`.
+    /// Await a single response frame with a matching `tid`, dispatching any
+    /// unsolicited (`tid == 0`) frames received meanwhile. Returns `(prop,
+    /// payload_offset)` into `self.decoder.buf` (also stashes the frame length in
+    /// `self.decoder.len_snapshot`).
     async fn await_response(&mut self, tid: u8) -> Result<(u32, usize), RadioErrorKind> {
         let cmd_is = unsafe { ot_spinel_cmd_prop_value_is() };
 
@@ -517,6 +616,34 @@ where
             // Unsolicited (tid 0) or mismatched — ignore here; the RX path polls
             // for STREAM_RAW notifications separately.
         }
+    }
+
+    /// Drain the acknowledgements for a *set* of outstanding transaction ids,
+    /// one `PROP_VALUE_IS` per TID (arriving in any order, possibly coalesced in
+    /// a single transport read — important for SPI). Returns once every TID in
+    /// `pending` has been acknowledged, or errors on the response timeout.
+    ///
+    /// The value payloads of the acks are ignored (these are the echoed SET
+    /// confirmations); only their arrival is required. Unsolicited (`tid == 0`)
+    /// and unrelated frames seen meanwhile are dropped, matching
+    /// [`Self::await_response`].
+    async fn drain_acks(&mut self, mut pending: TidSet) -> Result<(), RadioErrorKind> {
+        let cmd_is = unsafe { ot_spinel_cmd_prop_value_is() };
+
+        while !pending.is_empty() {
+            let frame_len = self.recv_frame(RESPONSE_TIMEOUT).await?;
+
+            let frame = &self.decoder.buf[..frame_len];
+            let Some((rtid, rcmd, _rprop, _off)) = spinel_parse_header(frame) else {
+                continue;
+            };
+
+            if rcmd == cmd_is && pending.contains(rtid) {
+                pending.remove(rtid);
+            }
+        }
+
+        Ok(())
     }
 
     /// Run the RCP startup handshake once: reset, verify it is a raw-MAC RCP,
@@ -626,34 +753,52 @@ where
     }
 
     /// Flush the config to the RCP: send only the properties that changed since
-    /// the last flush.
+    /// the last flush, pipelined as a single burst (one round-trip regardless of
+    /// how many properties changed — see [`Self::set_props`]).
     async fn flush_config(&mut self, config: &Config) -> Result<(), RadioErrorKind> {
         let prev = self.config.clone();
         let changed = |get: fn(&Config) -> u64| prev.as_ref().map(get) != Some(get(config));
 
+        // Materialize each changed property's little-endian payload into a local
+        // so its slice stays valid for the whole burst, then stage the
+        // `(prop, payload)` pairs. At most six properties, so a fixed array +
+        // length avoids any allocation.
+        let chan = [config.channel];
+        let power = [config.power as u8];
+        let promisc = [config.promiscuous as u8];
+        let pan_id = config.pan_id.unwrap_or(0xffff).to_le_bytes();
+        let short_addr = config.short_addr.unwrap_or(0xffff).to_le_bytes();
+        let ext_addr = config.ext_addr.unwrap_or(0).to_le_bytes();
+
+        let mut batch: [(u32, &[u8]); 6] = [(0, &[]); 6];
+        let mut count = 0;
+
         if changed(|c| c.channel as u64) {
-            self.set_prop(PROP_PHY_CHAN, &[config.channel]).await?;
+            batch[count] = (PROP_PHY_CHAN, &chan);
+            count += 1;
         }
         if changed(|c| c.power as u8 as u64) {
-            self.set_prop(PROP_PHY_TX_POWER, &[config.power as u8])
-                .await?;
+            batch[count] = (PROP_PHY_TX_POWER, &power);
+            count += 1;
         }
         if changed(|c| c.promiscuous as u64) {
-            self.set_prop(PROP_MAC_PROMISCUOUS_MODE, &[config.promiscuous as u8])
-                .await?;
+            batch[count] = (PROP_MAC_PROMISCUOUS_MODE, &promisc);
+            count += 1;
         }
         if changed(|c| c.pan_id.unwrap_or(0xffff) as u64) {
-            let p = config.pan_id.unwrap_or(0xffff);
-            self.set_prop(PROP_MAC_15_4_PANID, &p.to_le_bytes()).await?;
+            batch[count] = (PROP_MAC_15_4_PANID, &pan_id);
+            count += 1;
         }
         if changed(|c| c.short_addr.unwrap_or(0xffff) as u64) {
-            let s = config.short_addr.unwrap_or(0xffff);
-            self.set_prop(PROP_MAC_15_4_SADDR, &s.to_le_bytes()).await?;
+            batch[count] = (PROP_MAC_15_4_SADDR, &short_addr);
+            count += 1;
         }
         if changed(|c| c.ext_addr.unwrap_or(0)) {
-            let e = config.ext_addr.unwrap_or(0);
-            self.set_prop(PROP_MAC_15_4_LADDR, &e.to_le_bytes()).await?;
+            batch[count] = (PROP_MAC_15_4_LADDR, &ext_addr);
+            count += 1;
         }
+
+        self.set_props(batch[..count].iter().copied()).await?;
 
         self.config = Some(config.clone());
         Ok(())
