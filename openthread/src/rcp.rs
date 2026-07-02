@@ -22,13 +22,18 @@
 //! # Wire protocol
 //!
 //! `SpinelRadio` speaks the spinel wire protocol directly, so it works against a
-//! **stock, unmodified `ot-rcp` firmware**. Frames are HDLC-framed (RFC 1662,
-//! implemented here) and carry a spinel command targeting a property; the config
-//! setters map to `PROP_VALUE_SET`s that are flushed just before a transmit /
-//! receive, and TX/RX map to the `STREAM_RAW` property. The only piece reused
-//! from OpenThread's C is the variable-length "packed-uint" codec (via the tiny
-//! `spinel_codec.c` shim); everything else (little-endian scalars, the
-//! length-prefixed data blob, the HDLC framing) is done here.
+//! **stock, unmodified `ot-rcp` firmware**. A spinel frame is a header byte, a
+//! variable-length command, a variable-length property key, and a payload; the
+//! config setters map to `PROP_VALUE_SET`s that are flushed just before a
+//! transmit / receive, and TX/RX map to the `STREAM_RAW` property. The only piece
+//! reused from OpenThread's C is the variable-length "packed-uint" codec (via the
+//! tiny `spinel_codec.c` shim); everything else (little-endian scalars, the
+//! length-prefixed data blob) is done here.
+//!
+//! `SpinelRadio` builds and parses only *raw* spinel frames; putting the frame on
+//! the wire — HDLC byte-stuffing for a UART, or the 5-byte SPI header protocol
+//! for SPI — is the job of the [`SpinelTransport`]. Two transports are provided:
+//! [`UartSpinelTransport`] and [`SpiSpinelTransport`].
 
 use core::future::Future;
 
@@ -38,26 +43,40 @@ use crate::radio::{Capabilities, Config, MacCapabilities, PsduMeta, Radio, Radio
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 
 // ---------------------------------------------------------------------------
-// SpinelTransport: the user-provided byte pipe to the RCP.
+// SpinelTransport: the user-provided *frame* pipe to the RCP.
 // ---------------------------------------------------------------------------
 
-/// The byte-stream transport to the remote RCP radio (typically a UART, or SPI).
+/// A framed transport to the remote RCP radio: it sends and receives **one
+/// complete raw spinel frame** at a time (header byte + packed command + packed
+/// property + payload — see the module docs).
 ///
-/// The [`read`](SpinelTransport::read) / [`write`](SpinelTransport::write)
-/// methods mirror [`embedded_io_async::Read`] / [`embedded_io_async::Write`]
-/// (both return the number of bytes transferred), so a `SpinelTransport` is a
-/// thin layer over any `embedded-io-async` byte stream — e.g. an embassy UART.
+/// # Why frame-oriented (not a byte stream)
+///
+/// Spinel needs *some* way to delimit frames on the wire, but the mechanism is
+/// transport-specific, so it belongs *inside* the transport rather than in
+/// [`SpinelRadio`]:
+///
+/// - Over a **UART** (a raw byte stream with no framing) the frames are HDLC
+///   byte-stuffed (RFC 1662). That is what [`UartSpinelTransport`] does.
+/// - Over **SPI** the frames are *not* HDLC-framed: each SPI transaction carries
+///   a 5-byte header whose length field delimits the payload, so the spinel
+///   frame is carried raw. That is what [`SpiSpinelTransport`] does — and it also
+///   handles SPI's lack of a slave-initiated channel via an interrupt line.
+///
+/// So `SpinelRadio` builds and parses only *raw* spinel frames and is agnostic to
+/// framing; each transport frames however its wire requires.
 pub trait SpinelTransport {
     /// The transport error type.
     type Error: core::fmt::Debug;
 
-    /// Write some bytes to the RCP, returning the number written (`>= 1`). A
-    /// short write is allowed; the caller loops to send the rest.
-    fn write(&mut self, bytes: &[u8]) -> impl Future<Output = Result<usize, Self::Error>>;
+    /// Send one complete raw spinel `frame` to the RCP. Resolves once the frame
+    /// has been handed to the wire.
+    fn send(&mut self, frame: &[u8]) -> impl Future<Output = Result<(), Self::Error>>;
 
-    /// Read bytes from the RCP into `buf`, returning the number read (`>= 1`).
-    /// Resolves when at least one byte is available.
-    fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize, Self::Error>>;
+    /// Receive one complete raw spinel frame from the RCP into `buf`, returning
+    /// its length. Resolves when a whole frame is available; the caller races it
+    /// against its own timeout.
+    fn recv(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize, Self::Error>>;
 }
 
 impl<T> SpinelTransport for &mut T
@@ -66,12 +85,12 @@ where
 {
     type Error = T::Error;
 
-    fn write(&mut self, bytes: &[u8]) -> impl Future<Output = Result<usize, Self::Error>> {
-        T::write(self, bytes)
+    fn send(&mut self, frame: &[u8]) -> impl Future<Output = Result<(), Self::Error>> {
+        T::send(self, frame)
     }
 
-    fn read(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize, Self::Error>> {
-        T::read(self, buf)
+    fn recv(&mut self, buf: &mut [u8]) -> impl Future<Output = Result<usize, Self::Error>> {
+        T::recv(self, buf)
     }
 }
 
@@ -143,6 +162,9 @@ const MAX_SPINEL_FRAME: usize = OT_RADIO_FRAME_MAX_SIZE as usize + 128;
 
 // ---------------------------------------------------------------------------
 // HDLC framing (RFC 1662 byte-stuffing + CRC-16/X.25 FCS).
+//
+// Used only by `UartSpinelTransport` (a UART is a raw byte stream with no
+// framing of its own). SPI does not use HDLC — see `SpiSpinelTransport`.
 // ---------------------------------------------------------------------------
 
 const HDLC_FLAG: u8 = 0x7e;
@@ -230,9 +252,6 @@ fn hdlc_encode(payload: &[u8], out: &mut [u8]) -> Option<usize> {
 struct HdlcDecoder {
     buf: [u8; MAX_SPINEL_FRAME],
     len: usize,
-    /// The payload length of the most recently completed frame (set when
-    /// `push` returns `Some`), so callers can re-borrow `buf[..len_snapshot]`.
-    len_snapshot: usize,
     fcs: u16,
     escaped: bool,
     in_frame: bool,
@@ -243,7 +262,6 @@ impl HdlcDecoder {
         Self {
             buf: [0; MAX_SPINEL_FRAME],
             len: 0,
-            len_snapshot: 0,
             fcs: HDLC_FCS_INIT,
             escaped: false,
             in_frame: false,
@@ -380,10 +398,11 @@ const SPINEL_RADIO_MAC_CAPS: u16 = 0;
 /// OpenThread RCP) over a [`SpinelTransport`] using the spinel protocol.
 ///
 /// Hand it to [`OpenThread::run`](crate::OpenThread::run) exactly like a local
-/// radio:
+/// radio, wrapping the wire in the matching [`SpinelTransport`]:
 ///
 /// ```ignore
-/// let radio = SpinelRadio::new(uart);   // `uart: impl SpinelTransport`
+/// let transport = UartSpinelTransport::new(uart);   // or SpiSpinelTransport::new(spi, int)
+/// let radio = SpinelRadio::new(transport);
 /// ot.run(radio).await
 /// ```
 pub struct SpinelRadio<T> {
@@ -397,10 +416,12 @@ pub struct SpinelRadio<T> {
     rx_enabled: bool,
     /// Next transaction id (1..=15, 0 is reserved for unsolicited notifications).
     next_tid: u8,
-    /// Scratch buffers.
+    /// Scratch buffer for the raw spinel frame being built for transmission.
     tx_frame: [u8; MAX_SPINEL_FRAME],
-    hdlc_buf: [u8; MAX_SPINEL_FRAME * 2],
-    decoder: HdlcDecoder,
+    /// The most recently received raw spinel frame, and its length. Response
+    /// parsers borrow `rx_frame[..rx_len]` after a `recv_frame`.
+    rx_frame: [u8; MAX_SPINEL_FRAME],
+    rx_len: usize,
 }
 
 impl<T> SpinelRadio<T>
@@ -417,8 +438,8 @@ where
             rx_enabled: false,
             next_tid: 1,
             tx_frame: [0; MAX_SPINEL_FRAME],
-            hdlc_buf: [0; MAX_SPINEL_FRAME * 2],
-            decoder: HdlcDecoder::new(),
+            rx_frame: [0; MAX_SPINEL_FRAME],
+            rx_len: 0,
         }
     }
 
@@ -432,51 +453,30 @@ where
         tid
     }
 
-    /// Write an already-built spinel frame (HDLC-encode + transport write).
+    /// Send an already-built raw spinel `frame` to the transport (which frames it
+    /// for its wire — HDLC for UART, the SPI header protocol for SPI).
     async fn send_frame(&mut self, frame: &[u8]) -> Result<(), RadioErrorKind> {
-        let n = hdlc_encode(frame, &mut self.hdlc_buf).ok_or(RadioErrorKind::TxFailed)?;
-
-        let mut off = 0;
-        while off < n {
-            let written = self
-                .transport
-                .write(&self.hdlc_buf[off..n])
-                .await
-                .map_err(|_| RadioErrorKind::TxFailed)?;
-            if written == 0 {
-                return Err(RadioErrorKind::TxFailed);
-            }
-            off += written;
-        }
-        Ok(())
+        self.transport
+            .send(frame)
+            .await
+            .map_err(|_| RadioErrorKind::TxFailed)
     }
 
-    /// Read + HDLC-decode until a complete spinel frame arrives, or the timeout
-    /// elapses. Returns the decoded frame length; the frame is in
-    /// `self.decoder.buf`.
+    /// Receive one complete raw spinel frame into `self.rx_frame`, or fail on
+    /// `timeout`. Returns the frame length (also stashed in `self.rx_len`);
+    /// callers parse `self.rx_frame[..len]`.
     async fn recv_frame(&mut self, timeout: Duration) -> Result<usize, RadioErrorKind> {
-        let mut rx = [0u8; 128];
+        let recv_fut = self.transport.recv(&mut self.rx_frame);
+        let mut recv_fut = core::pin::pin!(recv_fut);
         let mut timeout_fut = core::pin::pin!(Timer::after(timeout));
 
-        loop {
-            let read = {
-                let read_fut = self.transport.read(&mut rx);
-                let mut read_fut = core::pin::pin!(read_fut);
-                match embassy_futures::select::select(&mut read_fut, &mut timeout_fut).await {
-                    embassy_futures::select::Either::First(r) => {
-                        r.map_err(|_| RadioErrorKind::RxFailed)?
-                    }
-                    embassy_futures::select::Either::Second(()) => {
-                        return Err(RadioErrorKind::RxFailed)
-                    }
-                }
-            };
-
-            for &b in &rx[..read] {
-                if let Some(len) = self.decoder.push(b) {
-                    return Ok(len);
-                }
+        match embassy_futures::select::select(&mut recv_fut, &mut timeout_fut).await {
+            embassy_futures::select::Either::First(r) => {
+                let len = r.map_err(|_| RadioErrorKind::RxFailed)?;
+                self.rx_len = len;
+                Ok(len)
             }
+            embassy_futures::select::Either::Second(()) => Err(RadioErrorKind::RxFailed),
         }
     }
 
@@ -505,19 +505,19 @@ where
         self.await_response(tid).await.map(|_| ())
     }
 
-    /// Pipeline a batch of `PROP_VALUE_SET`s: build every frame, write them all
-    /// as one back-to-back burst, *then* drain their acknowledgements (matched by
-    /// TID, in any order). This collapses N property writes from N serialized
-    /// round-trips into a single write-burst + a single ack-drain — one round-trip
-    /// of latency instead of N.
+    /// Pipeline a batch of `PROP_VALUE_SET`s: send every frame back-to-back
+    /// *without* awaiting acks between them, then drain all their
+    /// acknowledgements (matched by TID, in any order). This collapses N property
+    /// writes from N serialized round-trips into a single send-burst + a single
+    /// ack-drain — one round-trip of latency instead of N.
     ///
     /// Each spinel frame still carries exactly one property (the wire protocol has
     /// no multi-set command), and each SET is still individually acknowledged
     /// (the per-op ack is intrinsic to the lossy, independently-resettable RCP
     /// link — it is the *serialization* between them, not the acks, that this
-    /// removes). Writing the frames contiguously also lets a framed transport
-    /// (e.g. the SPI flow-control layer) coalesce them into as few bus transfers
-    /// as possible.
+    /// removes). Sending the frames back-to-back also lets a framed transport
+    /// (e.g. the SPI header protocol) coalesce them into as few bus transfers as
+    /// possible.
     ///
     /// `props` is an iterator of `(prop_key, payload)`; an empty batch is a no-op.
     async fn set_props<'p>(
@@ -526,9 +526,6 @@ where
     ) -> Result<(), RadioErrorKind> {
         let cmd = unsafe { ot_spinel_cmd_prop_value_set() };
 
-        // HDLC-encode each SET frame end-to-end into `hdlc_buf`, accumulating the
-        // set of outstanding TIDs to acknowledge.
-        let mut burst_len = 0;
         let mut pending = TidSet::new();
 
         for (prop, payload) in props {
@@ -545,29 +542,13 @@ where
             raw[n..n + payload.len()].copy_from_slice(payload);
             n += payload.len();
 
-            // HDLC-encode it, appended after the frames already in the burst.
-            let encoded = hdlc_encode(&raw[..n], &mut self.hdlc_buf[burst_len..])
-                .ok_or(RadioErrorKind::TxFailed)?;
-            burst_len += encoded;
+            // Send it now, but do NOT await its ack — keep the pipeline full.
+            self.send_frame(&raw[..n]).await?;
             pending.insert(tid);
         }
 
-        if burst_len == 0 {
+        if pending.is_empty() {
             return Ok(());
-        }
-
-        // Write the whole burst in one go, then drain all acknowledgements.
-        let mut off = 0;
-        while off < burst_len {
-            let written = self
-                .transport
-                .write(&self.hdlc_buf[off..burst_len])
-                .await
-                .map_err(|_| RadioErrorKind::TxFailed)?;
-            if written == 0 {
-                return Err(RadioErrorKind::TxFailed);
-            }
-            off += written;
         }
 
         self.drain_acks(pending).await
@@ -590,22 +571,20 @@ where
         self.send_frame(&frame[..frame_len]).await?;
 
         let (_prop, off) = self.await_response(tid).await?;
-        let len = self.decoder.len_snapshot;
-        Ok(f(&self.decoder.buf[off..len]))
+        let len = self.rx_len;
+        Ok(f(&self.rx_frame[off..len]))
     }
 
     /// Await a single response frame with a matching `tid`, dispatching any
     /// unsolicited (`tid == 0`) frames received meanwhile. Returns `(prop,
-    /// payload_offset)` into `self.decoder.buf` (also stashes the frame length in
-    /// `self.decoder.len_snapshot`).
+    /// payload_offset)` into `self.rx_frame` (whose length is `self.rx_len`).
     async fn await_response(&mut self, tid: u8) -> Result<(u32, usize), RadioErrorKind> {
         let cmd_is = unsafe { ot_spinel_cmd_prop_value_is() };
 
         loop {
             let frame_len = self.recv_frame(RESPONSE_TIMEOUT).await?;
-            self.decoder.len_snapshot = frame_len;
 
-            let frame = &self.decoder.buf[..frame_len];
+            let frame = &self.rx_frame[..frame_len];
             let Some((rtid, rcmd, rprop, off)) = spinel_parse_header(frame) else {
                 continue;
             };
@@ -633,7 +612,7 @@ where
         while !pending.is_empty() {
             let frame_len = self.recv_frame(RESPONSE_TIMEOUT).await?;
 
-            let frame = &self.decoder.buf[..frame_len];
+            let frame = &self.rx_frame[..frame_len];
             let Some((rtid, rcmd, _rprop, _off)) = spinel_parse_header(frame) else {
                 continue;
             };
@@ -738,7 +717,7 @@ where
         let cmd_is = unsafe { ot_spinel_cmd_prop_value_is() };
         loop {
             let frame_len = self.recv_frame(RESPONSE_TIMEOUT).await?;
-            let frame = &self.decoder.buf[..frame_len];
+            let frame = &self.rx_frame[..frame_len];
             let Some((_tid, rcmd, rprop, off)) = spinel_parse_header(frame) else {
                 continue;
             };
@@ -894,7 +873,7 @@ where
 
         loop {
             let frame_len = self.recv_frame(Duration::from_secs(3600)).await?;
-            let frame = &self.decoder.buf[..frame_len];
+            let frame = &self.rx_frame[..frame_len];
             let Some((tid, rcmd, rprop, off)) = spinel_parse_header(frame) else {
                 continue;
             };
@@ -928,4 +907,339 @@ where
             // Other frames (matched responses to a concurrent op, status) — ignore.
         }
     }
+}
+
+// ===========================================================================
+// UartSpinelTransport: spinel frames over a UART (HDLC framing).
+// ===========================================================================
+
+/// A [`SpinelTransport`] over a UART (or any `embedded-io-async` byte stream).
+///
+/// A UART is a raw, unframed byte stream, so this transport HDLC-frames each
+/// spinel frame on the way out (byte-stuffing + FCS) and runs an incremental
+/// HDLC decoder on the way in — exactly OpenThread's POSIX `hdlc_interface`.
+///
+/// Wrap any full-duplex byte stream implementing [`embedded_io_async::Read`] +
+/// [`embedded_io_async::Write`] (e.g. an embassy UART):
+///
+/// ```ignore
+/// let radio = SpinelRadio::new(UartSpinelTransport::new(uart));
+/// ```
+pub struct UartSpinelTransport<U> {
+    uart: U,
+    /// HDLC-encode scratch (worst case: every byte escaped, plus flags + FCS).
+    tx_hdlc: [u8; MAX_SPINEL_FRAME * 2 + 4],
+    /// Incremental decoder for the inbound byte stream.
+    decoder: HdlcDecoder,
+    /// Read scratch pulled from the UART in chunks.
+    rx_chunk: [u8; 128],
+    /// Bytes buffered in `rx_chunk` not yet fed to the decoder, `[pos, fill)`.
+    rx_pos: usize,
+    rx_fill: usize,
+}
+
+impl<U> UartSpinelTransport<U> {
+    /// Create a UART spinel transport over `uart`.
+    pub const fn new(uart: U) -> Self {
+        Self {
+            uart,
+            tx_hdlc: [0; MAX_SPINEL_FRAME * 2 + 4],
+            decoder: HdlcDecoder::new(),
+            rx_chunk: [0; 128],
+            rx_pos: 0,
+            rx_fill: 0,
+        }
+    }
+}
+
+impl<U> SpinelTransport for UartSpinelTransport<U>
+where
+    U: embedded_io_async::Read + embedded_io_async::Write,
+{
+    type Error = UartTransportError<U::Error>;
+
+    async fn send(&mut self, frame: &[u8]) -> Result<(), Self::Error> {
+        let n = hdlc_encode(frame, &mut self.tx_hdlc).ok_or(UartTransportError::FrameTooLarge)?;
+        self.uart
+            .write_all(&self.tx_hdlc[..n])
+            .await
+            .map_err(UartTransportError::Io)
+    }
+
+    async fn recv(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        loop {
+            // Drain whatever is already buffered, feeding the HDLC decoder.
+            while self.rx_pos < self.rx_fill {
+                let byte = self.rx_chunk[self.rx_pos];
+                self.rx_pos += 1;
+
+                if let Some(len) = self.decoder.push(byte) {
+                    let len = len.min(buf.len());
+                    buf[..len].copy_from_slice(&self.decoder.buf[..len]);
+                    return Ok(len);
+                }
+            }
+
+            // Refill from the UART.
+            let n = self
+                .uart
+                .read(&mut self.rx_chunk)
+                .await
+                .map_err(UartTransportError::Io)?;
+            if n == 0 {
+                return Err(UartTransportError::Eof);
+            }
+            self.rx_pos = 0;
+            self.rx_fill = n;
+        }
+    }
+}
+
+/// Error type for [`UartSpinelTransport`].
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum UartTransportError<E> {
+    /// The underlying UART returned an error.
+    Io(E),
+    /// The UART reached end-of-stream (a `read` returned 0 bytes).
+    Eof,
+    /// A spinel frame exceeded the HDLC encode buffer.
+    FrameTooLarge,
+}
+
+// ===========================================================================
+// SpiSpinelTransport: spinel frames over SPI (5-byte SPI header protocol).
+// ===========================================================================
+
+/// SPI framing header size (flag byte + accept-len + data-len, all before the
+/// payload). See [`SpiSpinelTransport`] for the layout.
+const SPI_HEADER_SIZE: usize = 5;
+
+/// Flag-byte constants (from OpenThread's `spi_frame.hpp`).
+const SPI_FLAG_RESET: u8 = 1 << 7;
+const SPI_FLAG_PATTERN: u8 = 0x02;
+const SPI_FLAG_PATTERN_MASK: u8 = 0x03;
+
+/// A minimum SPI transfer size, so a small frame the RCP wants to send us can be
+/// picked up in a single transaction even before we know its length.
+const SPI_SMALL_PACKET_SIZE: usize = 32;
+
+/// A [`SpinelTransport`] over SPI, using OpenThread's SPI framing protocol
+/// (`spi_frame.hpp` / the POSIX `spi_interface`), against a stock `ot-rcp` built
+/// with the SPI HDLC-less spinel interface.
+///
+/// # Why SPI needs more than a byte pipe
+///
+/// SPI is master-driven and full-duplex-per-transfer: the RCP (a SPI *slave*)
+/// cannot start a transfer, and every clocked byte shifts one out *and* one in.
+/// So two extra mechanisms are layered on the bus:
+///
+/// - **An interrupt line** (`int`, active-low): the RCP asserts it to say "I have
+///   a frame for you, please clock a transfer". This is the slave-initiated
+///   channel raw SPI lacks. This transport [`Wait`](embedded_hal_async::digital::Wait)s
+///   on it before reading.
+/// - **A 5-byte SPI frame header** on every transfer:
+///   `flag(1) | accept_len(2, LE) | data_len(2, LE)`. `accept_len` is how many
+///   payload bytes *this* side can receive; `data_len` is how many it is sending.
+///   Because the transfer is full-duplex, one transaction simultaneously pushes
+///   our frame and pulls the RCP's, each bounded by the other's advertised
+///   `accept_len`. The flag byte carries a reset bit and a fixed pattern
+///   (`0x02`) that distinguishes a real header from an idle `0x00`/`0xFF` bus.
+///
+/// The payload inside the SPI frame is the **raw spinel frame** — SPI does its
+/// own framing via `data_len`, so (unlike UART) there is no HDLC.
+///
+/// ```ignore
+/// // `spi: embedded_hal_async::spi::SpiDevice`, `int: embedded_hal_async::digital::Wait`
+/// let radio = SpinelRadio::new(SpiSpinelTransport::new(spi, int));
+/// ```
+pub struct SpiSpinelTransport<S, I> {
+    spi: S,
+    int: I,
+    /// Full SPI transfer buffers (header + payload), reused every transaction.
+    tx_buf: [u8; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
+    rx_buf: [u8; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
+    /// A single queued outbound spinel frame waiting to be accepted by the RCP.
+    tx_pending: Option<usize>,
+    /// A single received spinel frame not yet handed to `recv`, `[.. len]` of
+    /// `rx_frame`.
+    rx_frame: [u8; MAX_SPINEL_FRAME],
+    rx_ready: Option<usize>,
+    /// The RCP's last-advertised pending data length (learned from a prior header
+    /// so the next transfer is sized to fit it).
+    slave_data_len: usize,
+    /// Whether we still owe the RCP the reset flag on our next header (set on the
+    /// very first transfer so the RCP knows the host came up fresh).
+    send_reset: bool,
+}
+
+impl<S, I> SpiSpinelTransport<S, I> {
+    /// Create an SPI spinel transport over SPI device `spi` and interrupt line
+    /// `int` (active-low: asserted low when the RCP has data to send).
+    pub const fn new(spi: S, int: I) -> Self {
+        Self {
+            spi,
+            int,
+            tx_buf: [0; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
+            rx_buf: [0; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
+            tx_pending: None,
+            rx_frame: [0; MAX_SPINEL_FRAME],
+            rx_ready: None,
+            slave_data_len: 0,
+            send_reset: true,
+        }
+    }
+}
+
+impl<S, I> SpiSpinelTransport<S, I>
+where
+    S: embedded_hal_async::spi::SpiDevice,
+    I: embedded_hal_async::digital::Wait,
+{
+    /// Perform one SPI transaction, honoring flow control in both directions:
+    /// advertise how much we can receive, send our queued frame (if any), and
+    /// pick up the RCP's frame (if it fits). Returns `Ok(true)` if a received
+    /// frame was buffered into `rx_frame`.
+    async fn push_pull(&mut self) -> Result<bool, SpiTransportError<S::Error, I::Error>> {
+        // ---- Build our TX header + payload. ----
+        let tx_payload_len = self.tx_pending.unwrap_or(0);
+
+        // How much we're willing to receive this transfer: enough for the RCP's
+        // announced pending frame, or at least a small-packet floor.
+        let accept_len = if self.slave_data_len != 0 {
+            self.slave_data_len
+        } else {
+            SPI_SMALL_PACKET_SIZE
+        }
+        .max(tx_payload_len);
+
+        // Flag byte: fixed pattern, plus the reset bit on the first transfer.
+        self.tx_buf[0] = SPI_FLAG_PATTERN | if self.send_reset { SPI_FLAG_RESET } else { 0 };
+        self.tx_buf[1..3].copy_from_slice(&(accept_len as u16).to_le_bytes());
+        self.tx_buf[3..5].copy_from_slice(&(tx_payload_len as u16).to_le_bytes());
+
+        // The payload was staged into `tx_buf[SPI_HEADER_SIZE..]` by `send`.
+        let transfer_len = SPI_HEADER_SIZE + accept_len.max(tx_payload_len);
+        if transfer_len > self.tx_buf.len() {
+            return Err(SpiTransportError::FrameTooLarge);
+        }
+
+        // Zero the unused RX region so a short/no-op slave reply reads as zeros.
+        for b in self.rx_buf[..transfer_len].iter_mut() {
+            *b = 0;
+        }
+
+        // ---- Clock the full-duplex transfer. ----
+        self.spi
+            .transfer(
+                &mut self.rx_buf[..transfer_len],
+                &self.tx_buf[..transfer_len],
+            )
+            .await
+            .map_err(SpiTransportError::Spi)?;
+
+        // We have now advertised the reset (if any) exactly once.
+        self.send_reset = false;
+
+        // ---- Parse the RCP's header. ----
+        let flag = self.rx_buf[0];
+        if flag == 0x00 || flag == 0xff {
+            // Bus idle / RCP not driving MISO — nothing exchanged this transfer.
+            return Ok(false);
+        }
+        if flag & SPI_FLAG_PATTERN_MASK != SPI_FLAG_PATTERN {
+            return Err(SpiTransportError::BadHeader);
+        }
+
+        let slave_accept_len = u16::from_le_bytes([self.rx_buf[1], self.rx_buf[2]]) as usize;
+        let slave_data_len = u16::from_le_bytes([self.rx_buf[3], self.rx_buf[4]]) as usize;
+
+        if slave_accept_len > MAX_SPINEL_FRAME || slave_data_len > MAX_SPINEL_FRAME {
+            return Err(SpiTransportError::BadHeader);
+        }
+
+        // Remember the RCP's pending length for sizing the *next* transfer.
+        self.slave_data_len = slave_data_len;
+
+        // ---- Did our outbound frame get accepted? ----
+        if tx_payload_len != 0 && tx_payload_len <= slave_accept_len {
+            self.tx_pending = None;
+        }
+
+        // ---- Did we receive a frame (and did it fit in our accept_len)? ----
+        let mut got_rx = false;
+        if slave_data_len != 0 && slave_data_len <= accept_len {
+            self.rx_frame[..slave_data_len]
+                .copy_from_slice(&self.rx_buf[SPI_HEADER_SIZE..SPI_HEADER_SIZE + slave_data_len]);
+            self.rx_ready = Some(slave_data_len);
+            // Consumed — the RCP will re-advertise if it has more.
+            self.slave_data_len = 0;
+            got_rx = true;
+        }
+
+        Ok(got_rx)
+    }
+}
+
+impl<S, I> SpinelTransport for SpiSpinelTransport<S, I>
+where
+    S: embedded_hal_async::spi::SpiDevice,
+    I: embedded_hal_async::digital::Wait,
+{
+    type Error = SpiTransportError<S::Error, I::Error>;
+
+    async fn send(&mut self, frame: &[u8]) -> Result<(), Self::Error> {
+        if frame.len() > MAX_SPINEL_FRAME {
+            return Err(SpiTransportError::FrameTooLarge);
+        }
+
+        // Stage the payload behind the header region and mark it pending.
+        self.tx_buf[SPI_HEADER_SIZE..SPI_HEADER_SIZE + frame.len()].copy_from_slice(frame);
+        self.tx_pending = Some(frame.len());
+
+        // Push transfers until the RCP accepts the frame. A transfer may also
+        // surface an inbound frame; buffer it for the next `recv`.
+        while self.tx_pending.is_some() {
+            self.push_pull().await?;
+        }
+
+        Ok(())
+    }
+
+    async fn recv(&mut self, buf: &mut [u8]) -> Result<usize, Self::Error> {
+        loop {
+            // Hand back an already-buffered frame first.
+            if let Some(len) = self.rx_ready.take() {
+                let len = len.min(buf.len());
+                buf[..len].copy_from_slice(&self.rx_frame[..len]);
+                return Ok(len);
+            }
+
+            // If the RCP has not yet told us it has data, wait for its interrupt.
+            // (If a prior header already announced a pending frame, go straight to
+            // a transfer to fetch it.)
+            if self.slave_data_len == 0 {
+                self.int
+                    .wait_for_low()
+                    .await
+                    .map_err(SpiTransportError::Int)?;
+            }
+
+            self.push_pull().await?;
+        }
+    }
+}
+
+/// Error type for [`SpiSpinelTransport`].
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub enum SpiTransportError<SpiErr, IntErr> {
+    /// The underlying SPI device returned an error.
+    Spi(SpiErr),
+    /// Waiting on the interrupt line failed.
+    Int(IntErr),
+    /// The RCP's SPI header failed the pattern/length sanity checks.
+    BadHeader,
+    /// A spinel frame exceeded the SPI transfer buffer.
+    FrameTooLarge,
 }
