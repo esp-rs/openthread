@@ -217,6 +217,18 @@ impl OpenThreadBuilder {
             .define("OT_FTD", "ON")
             .define("OT_MTD", "ON")
             .define("OT_RCP", "OFF")
+            // Compile the RCP-host spinel bridge shim (`gen/support/src/rcp_shim.cpp`)
+            // into the `support` library when the `rcp` feature is active. The shim
+            // provides the `otPlatRadio*` callbacks (forwarding to `RadioSpinel`) and
+            // the `otRcp*` entry points driven by `OpenThread::run_rcp`.
+            .define(
+                "OT_RCP_HOST_SHIM",
+                if std::env::var_os("CARGO_FEATURE_RCP").is_some() {
+                    "ON"
+                } else {
+                    "OFF"
+                },
+            )
             // Do not change from here below
             .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
             .define("OT_PLATFORM", "external")
