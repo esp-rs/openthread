@@ -198,6 +198,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # The submodule must be initialized before any build step: the crate build
+      # below uses `force-generate-bindings`, which forces an on-the-fly
+      # OpenThread build from the `openthread-sys/openthread` submodule (CMake
+      # `add_subdirectory(./openthread)`). Without the submodule that step fails
+      # with "does not contain a CMakeLists.txt file".
+      - name: openthread init
+        run: git submodule update --init --recursive
+
       - uses: dtolnay/rust-toolchain@v1
         with:
           target: x86_64-unknown-linux-gnu
@@ -223,16 +231,13 @@ jobs:
       #       xtask
 
       - name: Clippy
-        run: cargo clippy --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
+        run: cargo clippy --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
 
       - name: Build
-        run: cargo build --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+        run: cargo build --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
 
       - name: Fmt Check - Examples
         run: cd examples/${{ matrix.mcu[0] }}; cargo fmt -- --check
-
-      - name: openthread init
-        run: git submodule update --init --recursive
 
       - name: Detect host target triple
         run: |
@@ -257,10 +262,10 @@ jobs:
           echo "CLANG_PATH=${CLANG_PATH}" >> "$GITHUB_ENV"
 
       - name: Clippy - Examples
-        run: cd examples/${{ matrix.mcu[0] }}; cargo clippy --no-default-features --features ${{ matrix.mcu[1] }} --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
+        run: cd examples/${{ matrix.mcu[0] }}; cargo clippy --no-default-features --features ${{ matrix.mcu[1] }},force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
 
       - name: Build - Examples
-        run: cd examples/${{ matrix.mcu[0] }}; cargo build --no-default-features --features ${{ matrix.mcu[1] }} --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+        run: cd examples/${{ matrix.mcu[0] }}; cargo build --no-default-features --features ${{ matrix.mcu[1] }},force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
 
   # If libraries are rebuilt and tests are successful, we upload them in a specific job
   # that has write access to prevent security breaches, and unwanted use of the token

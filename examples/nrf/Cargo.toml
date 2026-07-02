@@ -27,6 +27,7 @@ overflow-checks = false
 
 [features]
 default = []
+force-generate-bindings = ["openthread/force-generate-bindings"]
 
 [dependencies]
 cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
