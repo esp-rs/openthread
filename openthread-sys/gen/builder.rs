@@ -217,10 +217,10 @@ impl OpenThreadBuilder {
             .define("OT_FTD", "ON")
             .define("OT_MTD", "ON")
             .define("OT_RCP", "OFF")
-            // Compile the RCP-host spinel bridge shim (`gen/support/src/rcp_shim.cpp`)
-            // into the `support` library when the `rcp` feature is active. The shim
-            // provides the `otPlatRadio*` callbacks (forwarding to `RadioSpinel`) and
-            // the `otRcp*` entry points driven by `OpenThread::run_rcp`.
+            // Compile the minimal spinel codec shim (`gen/support/src/spinel_codec.c`)
+            // into the `support` library when the `rcp` feature is active. It
+            // re-exports the spinel packed-uint codec used by the Rust
+            // `SpinelRadio` driver (`crate::rcp`).
             .define(
                 "OT_RCP_HOST_SHIM",
                 if std::env::var_os("CARGO_FEATURE_RCP").is_some() {

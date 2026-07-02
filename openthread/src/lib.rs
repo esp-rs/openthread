@@ -195,20 +195,13 @@ impl<'a> OpenThread<'a> {
             core::mem::transmute::<&RefCell<OtState<'static>>, &'a RefCell<OtState<'a>>>(state)
         };
 
-        let this = Self {
+        let mut this = Self {
             state,
             udp_state: None,
             #[cfg(feature = "srp-client")]
             srp_state: None,
         };
 
-        // In RCP-host mode the OpenThread instance must be initialized only after
-        // the spinel transport to the remote radio is live, because
-        // `otInstanceInitSingle()` drives the `otPlatRadio*` callbacks which, under
-        // `rcp`, perform synchronous spinel exchanges with the RCP. That deferred
-        // init happens inside `OpenThread::run_rcp`. In SoC mode we initialize
-        // eagerly here.
-        #[cfg(not(feature = "rcp"))]
         this.init()?;
 
         Ok(this)
@@ -253,14 +246,13 @@ impl<'a> OpenThread<'a> {
             )
         };
 
-        let this = Self {
+        let mut this = Self {
             state,
             udp_state: Some(udp_state),
             #[cfg(feature = "srp-client")]
             srp_state: None,
         };
 
-        #[cfg(not(feature = "rcp"))]
         this.init()?;
 
         Ok(this)
@@ -306,13 +298,12 @@ impl<'a> OpenThread<'a> {
             )
         };
 
-        let this = Self {
+        let mut this = Self {
             state,
             udp_state: None,
             srp_state: Some(srp_state),
         };
 
-        #[cfg(not(feature = "rcp"))]
         this.init()?;
 
         Ok(this)
@@ -373,13 +364,12 @@ impl<'a> OpenThread<'a> {
             )
         };
 
-        let this = Self {
+        let mut this = Self {
             state,
             udp_state: Some(udp_state),
             srp_state: Some(srp_state),
         };
 
-        #[cfg(not(feature = "rcp"))]
         this.init()?;
 
         Ok(this)
@@ -872,7 +862,7 @@ impl<'a> OpenThread<'a> {
     ///
     /// NOTE: This method assumes that tbe `OtState` contents is already initialized
     /// (i.e. all signals are in their initial values, and the data which represents OpenThread C types is all zeroed-out)
-    fn init(&self) -> Result<(), OtError> {
+    fn init(&mut self) -> Result<(), OtError> {
         {
             // TODO: Not ideal but we have to activate even before we have the instance
             // Reason: `otPlatEntropyGet` is called back

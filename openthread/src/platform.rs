@@ -7,11 +7,7 @@ use portable_atomic::AtomicUsize;
 
 use openthread_sys::otError_OT_ERROR_NONE;
 
-use crate::sys::{otError, otInstance, otLogLevel, otLogRegion};
-// `otRadioCaps` / `otRadioFrame` are only used by the SoC radio callbacks, which
-// are compiled out under the `rcp` feature (see the `soc_radio` module below).
-#[cfg(not(feature = "rcp"))]
-use crate::sys::{otRadioCaps, otRadioFrame};
+use crate::sys::{otError, otInstance, otLogLevel, otLogRegion, otRadioCaps, otRadioFrame};
 use crate::{IntoOtCode, OtActiveState, OtContext};
 
 /// A hack so that we can store a mutable reference to the active state in a global static variable
@@ -66,181 +62,171 @@ extern "C" fn otPlatAlarmMilliStop(instance: *const otInstance) -> otError {
         .into_ot_code()
 }
 
-// The `otPlatRadio*` platform callbacks below drive a *local* 802.15.4 radio via
-// the user-supplied `Radio` trait (the SoC path). In RCP-host mode (`rcp`
-// feature) the radio is remote and OpenThread's own `RadioSpinel` client
-// provides these callbacks instead (see `openthread-sys/gen/support/src/rcp_shim.cpp`
-// and `crate::rcp`), so this whole set is compiled out to avoid duplicate symbols.
-#[cfg(not(feature = "rcp"))]
-mod soc_radio {
-    use super::*;
+#[no_mangle]
+extern "C" fn otPlatRadioGetIeeeEui64(instance: *const otInstance, mac: *mut u8) {
+    let mac = unwrap!(unsafe { core::ptr::slice_from_raw_parts_mut(mac, 8).as_mut() });
 
-    #[no_mangle]
-    extern "C" fn otPlatRadioGetIeeeEui64(instance: *const otInstance, mac: *mut u8) {
-        let mac = unwrap!(unsafe { core::ptr::slice_from_raw_parts_mut(mac, 8).as_mut() });
-
-        OtContext::callback(instance).plat_radio_ieee_eui64(unwrap!(mac.try_into()));
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioGetCaps(instance: *const otInstance) -> otRadioCaps {
-        OtContext::callback(instance).plat_radio_caps()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioGetTransmitBuffer(instance: *const otInstance) -> *mut otRadioFrame {
-        OtContext::callback(instance).plat_radio_transmit_buffer()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioEnable(instance: *const otInstance) -> otError {
-        OtContext::callback(instance)
-            .plat_radio_enable()
-            .into_ot_code()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioSleep(instance: *const otInstance) -> otError {
-        OtContext::callback(instance)
-            .plat_radio_sleep()
-            .into_ot_code()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioDisable(instance: *const otInstance) -> otError {
-        OtContext::callback(instance)
-            .plat_radio_disable()
-            .into_ot_code()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioSetPromiscuous(instance: *const otInstance, enable: bool) {
-        OtContext::callback(instance).plat_radio_set_promiscuous(enable)
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioGetRssi(instance: *const otInstance) -> i8 {
-        OtContext::callback(instance).plat_radio_get_rssi()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioGetReceiveSensitivity(instance: *const otInstance) -> i8 {
-        OtContext::callback(instance).plat_radio_receive_sensititivy()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioIsEnabled(instance: *mut otInstance) -> bool {
-        OtContext::callback(instance).plat_radio_is_enabled()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioEnergyScan(
-        instance: *const otInstance,
-        channel: u8,
-        duration: u16,
-    ) -> otError {
-        OtContext::callback(instance)
-            .plat_radio_energy_scan(channel, duration)
-            .into_ot_code()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioGetPromiscuous(instance: *const otInstance) -> bool {
-        OtContext::callback(instance).plat_radio_get_promiscuous()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioSetExtendedAddress(instance: *const otInstance, address: *const u8) {
-        OtContext::callback(instance).plat_radio_set_extended_address(u64::from_le_bytes(unwrap!(
-            unsafe { core::slice::from_raw_parts(address, 8) }.try_into()
-        )));
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioSetShortAddress(instance: *const otInstance, address: u16) {
-        OtContext::callback(instance).plat_radio_set_short_address(address);
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioSetPanId(instance: *const otInstance, pan_id: u16) {
-        OtContext::callback(instance).plat_radio_set_pan_id(pan_id);
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioSetRxOnWhenIdle(instance: *const otInstance, enable: bool) {
-        OtContext::callback(instance).plat_radio_set_rx_on_when_idle(enable);
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioTransmit(
-        instance: *const otInstance,
-        frame: *const otRadioFrame,
-    ) -> otError {
-        OtContext::callback(instance)
-            .plat_radio_transmit(unsafe { &*frame })
-            .into_ot_code()
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioReceive(instance: *mut otInstance, channel: u8) -> otError {
-        OtContext::callback(instance)
-            .plat_radio_receive(channel)
-            .into_ot_code()
-    }
-
-    // --- Source-address match (FTD only) ---
-    //
-    // OpenThread routers/leaders (FTD) ask the radio to filter frames by the
-    // short/extended source addresses of their attached children. These callbacks
-    // are only referenced when an FTD `libopenthread-ftd.a` is linked; on MTD they
-    // are never called and are dropped by `--gc-sections`.
-    //
-    // TODO: surface these on the high-level radio trait so a driver can implement
-    // real hardware source matching. The defaults below accept-and-ignore (i.e. the
-    // radio behaves as if source matching is unavailable), which is functionally
-    // safe — OpenThread falls back to indirect transmission without HW assist.
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioEnableSrcMatch(_instance: *const otInstance, _enable: bool) {}
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioAddSrcMatchShortEntry(
-        _instance: *const otInstance,
-        _short_address: u16,
-    ) -> otError {
-        otError_OT_ERROR_NONE
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioAddSrcMatchExtEntry(
-        _instance: *const otInstance,
-        _ext_address: *const u8,
-    ) -> otError {
-        otError_OT_ERROR_NONE
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioClearSrcMatchShortEntry(
-        _instance: *const otInstance,
-        _short_address: u16,
-    ) -> otError {
-        otError_OT_ERROR_NONE
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioClearSrcMatchExtEntry(
-        _instance: *const otInstance,
-        _ext_address: *const u8,
-    ) -> otError {
-        otError_OT_ERROR_NONE
-    }
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioClearSrcMatchShortEntries(_instance: *const otInstance) {}
-
-    #[no_mangle]
-    extern "C" fn otPlatRadioClearSrcMatchExtEntries(_instance: *const otInstance) {}
+    OtContext::callback(instance).plat_radio_ieee_eui64(unwrap!(mac.try_into()));
 }
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetCaps(instance: *const otInstance) -> otRadioCaps {
+    OtContext::callback(instance).plat_radio_caps()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetTransmitBuffer(instance: *const otInstance) -> *mut otRadioFrame {
+    OtContext::callback(instance).plat_radio_transmit_buffer()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioEnable(instance: *const otInstance) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_enable()
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSleep(instance: *const otInstance) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_sleep()
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioDisable(instance: *const otInstance) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_disable()
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetPromiscuous(instance: *const otInstance, enable: bool) {
+    OtContext::callback(instance).plat_radio_set_promiscuous(enable)
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetRssi(instance: *const otInstance) -> i8 {
+    OtContext::callback(instance).plat_radio_get_rssi()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetReceiveSensitivity(instance: *const otInstance) -> i8 {
+    OtContext::callback(instance).plat_radio_receive_sensititivy()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioIsEnabled(instance: *mut otInstance) -> bool {
+    OtContext::callback(instance).plat_radio_is_enabled()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioEnergyScan(
+    instance: *const otInstance,
+    channel: u8,
+    duration: u16,
+) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_energy_scan(channel, duration)
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetPromiscuous(instance: *const otInstance) -> bool {
+    OtContext::callback(instance).plat_radio_get_promiscuous()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetExtendedAddress(instance: *const otInstance, address: *const u8) {
+    OtContext::callback(instance).plat_radio_set_extended_address(u64::from_le_bytes(unwrap!(
+        unsafe { core::slice::from_raw_parts(address, 8) }.try_into()
+    )));
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetShortAddress(instance: *const otInstance, address: u16) {
+    OtContext::callback(instance).plat_radio_set_short_address(address);
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetPanId(instance: *const otInstance, pan_id: u16) {
+    OtContext::callback(instance).plat_radio_set_pan_id(pan_id);
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetRxOnWhenIdle(instance: *const otInstance, enable: bool) {
+    OtContext::callback(instance).plat_radio_set_rx_on_when_idle(enable);
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioTransmit(
+    instance: *const otInstance,
+    frame: *const otRadioFrame,
+) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_transmit(unsafe { &*frame })
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioReceive(instance: *mut otInstance, channel: u8) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_receive(channel)
+        .into_ot_code()
+}
+
+// --- Source-address match (FTD only) ---
+//
+// OpenThread routers/leaders (FTD) ask the radio to filter frames by the
+// short/extended source addresses of their attached children. These callbacks
+// are only referenced when an FTD `libopenthread-ftd.a` is linked; on MTD they
+// are never called and are dropped by `--gc-sections`.
+//
+// TODO: surface these on the high-level radio trait so a driver can implement
+// real hardware source matching. The defaults below accept-and-ignore (i.e. the
+// radio behaves as if source matching is unavailable), which is functionally
+// safe — OpenThread falls back to indirect transmission without HW assist.
+
+#[no_mangle]
+extern "C" fn otPlatRadioEnableSrcMatch(_instance: *const otInstance, _enable: bool) {}
+
+#[no_mangle]
+extern "C" fn otPlatRadioAddSrcMatchShortEntry(
+    _instance: *const otInstance,
+    _short_address: u16,
+) -> otError {
+    otError_OT_ERROR_NONE
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioAddSrcMatchExtEntry(
+    _instance: *const otInstance,
+    _ext_address: *const u8,
+) -> otError {
+    otError_OT_ERROR_NONE
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioClearSrcMatchShortEntry(
+    _instance: *const otInstance,
+    _short_address: u16,
+) -> otError {
+    otError_OT_ERROR_NONE
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioClearSrcMatchExtEntry(
+    _instance: *const otInstance,
+    _ext_address: *const u8,
+) -> otError {
+    otError_OT_ERROR_NONE
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioClearSrcMatchShortEntries(_instance: *const otInstance) {}
+
+#[no_mangle]
+extern "C" fn otPlatRadioClearSrcMatchExtEntries(_instance: *const otInstance) {}
 
 // --- PBKDF2 (FTD with commissioning) ---
 //

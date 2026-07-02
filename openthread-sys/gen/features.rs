@@ -274,12 +274,15 @@ pub fn device_link_libs() -> Vec<&'static str> {
 
     if rcp {
         // Remote radio (RCP) over a spinel transport: this MCU runs the stack
-        // but drives a separate radio chip. Mirrors OpenThread's POSIX RCP host
-        // (src/posix/platform/CMakeLists.txt): radio-spinel (the RadioSpinel
-        // client) + spinel-rcp (common spinel codec) + hdlc (framing).
-        libs.push("openthread-radio-spinel");
+        // but drives a separate radio chip. The Rust `SpinelRadio` driver
+        // (`openthread::rcp`) implements the spinel/HDLC wire protocol itself and
+        // does NOT use OpenThread's synchronous C++ `RadioSpinel` client. The one
+        // C dependency is the variable-length packed-uint codec from `spinel.c`
+        // (in `openthread-spinel-rcp`), reached via the `spinel_codec.c` shim
+        // compiled into `support`. So — unlike OpenThread's POSIX RCP host — we
+        // link neither `openthread-radio-spinel` (the blocking client) nor
+        // `openthread-hdlc` (framing is done in Rust); only the codec archive.
         libs.push("openthread-spinel-rcp");
-        libs.push("openthread-hdlc");
     }
 
     libs.push(core);
@@ -329,6 +332,15 @@ pub fn prebuilt_validity() -> Result<(), String> {
     // compilation and must not reuse it.
     if !use_external_mbedtls() {
         parts.push("-mbedtls-rs-sys (bundled MbedTLS)".to_string());
+    }
+
+    // The `rcp` feature compiles the spinel codec shim (`spinel_codec.c`,
+    // `OT_RCP_HOST_SHIM`) into `libsupport.a` and links `openthread-spinel-rcp`.
+    // The prebuilt profile is `matter` (no `rcp`), so the committed `libsupport.a`
+    // lacks the shim — a `rcp` build must be produced on the fly, or the final
+    // firmware link would fail with undefined `ot_spinel_*` symbols.
+    if std::env::var_os("CARGO_FEATURE_RCP").is_some() {
+        parts.push("+rcp (spinel codec shim)".to_string());
     }
 
     // The prebuilt is built with OpenThread's default heap configuration (no
