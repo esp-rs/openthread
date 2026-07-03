@@ -222,6 +222,26 @@ fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
     Some((tid, cmd, prop, off))
 }
 
+/// Parse a spinel radio frame body (the payload of a `STREAM_RAW`
+/// `PROP_VALUE_IS`, used both for a received frame and for the ACK reported in a
+/// transmit-done status). Returns the PSDU slice and its RSSI.
+///
+/// Layout (from OpenThread's `RadioSpinel::ParseRadioFrame`):
+/// `DATA_WLEN(psdu) + i8 rssi + i8 noise + u16 flags + ...`; we take the PSDU and
+/// the RSSI (the fields after are LQI/timestamp/rx-error, unused here).
+fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>)> {
+    if body.len() < 2 {
+        return None;
+    }
+    let plen = u16::from_le_bytes([body[0], body[1]]) as usize;
+    if body.len() < 2 + plen {
+        return None;
+    }
+    let psdu = &body[2..2 + plen];
+    let rssi = body.get(2 + plen).map(|&b| b as i8);
+    Some((psdu, rssi))
+}
+
 /// A tiny set of outstanding spinel transaction ids (1..=15), stored as a
 /// bitmask. Used to drain the acknowledgements of a pipelined burst of
 /// `PROP_VALUE_SET`s, matching each ack to its request by TID regardless of
@@ -255,13 +275,37 @@ impl TidSet {
 // SpinelRadio: a `Radio` over a spinel transport.
 // ---------------------------------------------------------------------------
 
-/// Radio capabilities we advertise to OpenThread.
+/// The PHY capabilities we advertise to OpenThread.
 ///
-/// Minimal on purpose: no hardware MAC-offloading (so OpenThread's `MacRadio`
-/// wrapper handles ACKs/filtering/security in software and hands us already
-/// secured PSDUs), and CCA is done by the RCP as part of `STREAM_RAW`.
-const SPINEL_RADIO_CAPS: u16 = 0;
-const SPINEL_RADIO_MAC_CAPS: u16 = 0;
+/// These are the capabilities a raw-MAC `ot-rcp` provides *as part of its
+/// `STREAM_RAW` transmit contract*: it performs CSMA/CA backoff, per-frame
+/// automatic retransmission, and the ACK-timeout wait for us (we drive them via
+/// the `csmaCaEnabled` / `maxCsmaBackoffs` / `maxFrameRetries` fields of the
+/// transmit payload). We advertise only this fixed, guaranteed subset — the
+/// *variable* PHY caps a specific RCP may additionally have (e.g.
+/// `TRANSMIT_SEC`, precise TX/RX timing) are reported by the RCP at runtime via
+/// `PROP_RADIO_CAPS`, which the `Radio` trait's compile-time `const CAPS` cannot
+/// yet carry (see the `CAPS` impl for the follow-up). Under-claiming here is
+/// safe: OpenThread performs any unclaimed capability in software.
+const SPINEL_RADIO_CAPS: Capabilities = Capabilities::ACK_TIMEOUT
+    .union(Capabilities::CSMA_BACKOFF)
+    .union(Capabilities::TRANSMIT_RETRIES);
+
+/// The MAC-offload capabilities we advertise to OpenThread.
+///
+/// Unlike the PHY caps, these are **not** guessed: they are guaranteed by the
+/// `CAP_MAC_RAW` capability that [`SpinelRadio::ensure_init`] already requires
+/// from the RCP. A raw-MAC RCP always hardware-filters received frames by PAN
+/// ID / short / extended address (we push those filters via the `MAC_15_4_*ADDR`
+/// properties) and handles 802.15.4 acknowledgements autonomously — sending the
+/// ACK for a received frame (`RX_ACK`) and reporting the received ACK of a
+/// transmitted frame (`TX_ACK`, surfaced by [`SpinelRadio::transmit`]). So
+/// OpenThread's `MacRadio` software fallback is not needed for any of these.
+const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
+    .union(MacCapabilities::FILTER_SHORT_ADDR)
+    .union(MacCapabilities::FILTER_EXT_ADDR)
+    .union(MacCapabilities::TX_ACK)
+    .union(MacCapabilities::RX_ACK);
 
 /// A [`crate::Radio`] implementation that drives a remote 802.15.4 radio (an
 /// OpenThread RCP) over a [`SpinelTransport`] using the spinel protocol.
@@ -352,6 +396,19 @@ where
     /// Send a `PROP_VALUE_SET` with a raw payload and await its echoed
     /// `PROP_VALUE_IS` acknowledgement (matched by TID).
     async fn set_prop(&mut self, prop: u32, payload: &[u8]) -> Result<(), RadioErrorKind> {
+        self.send_prop_await(prop, payload).await.map(|_| ())
+    }
+
+    /// Send a `PROP_VALUE_SET` with a raw payload and await its matched
+    /// `PROP_VALUE_IS` response, returning `(prop, payload_offset)` into
+    /// `self.rx_frame` (length `self.rx_len`). Most callers only need the ack and
+    /// use [`Self::set_prop`]; `transmit` uses this to read the transmit-done
+    /// body (status + ACK frame).
+    async fn send_prop_await(
+        &mut self,
+        prop: u32,
+        payload: &[u8],
+    ) -> Result<(u32, usize), RadioErrorKind> {
         let tid = self.alloc_tid();
         let cmd = unsafe { ot_spinel_cmd_prop_value_set() };
 
@@ -371,7 +428,7 @@ where
         frame[..frame_len].copy_from_slice(&self.tx_frame[..frame_len]);
         self.send_frame(&frame[..frame_len]).await?;
 
-        self.await_response(tid).await.map(|_| ())
+        self.await_response(tid).await
     }
 
     /// Pipeline a batch of `PROP_VALUE_SET`s: send every frame back-to-back
@@ -669,8 +726,18 @@ where
 {
     type Error = RadioErrorKind;
 
-    const CAPS: Capabilities = Capabilities::from_bits_truncate(SPINEL_RADIO_CAPS);
-    const MAC_CAPS: MacCapabilities = MacCapabilities::from_bits_truncate(SPINEL_RADIO_MAC_CAPS);
+    // TODO (full `PROP_RADIO_CAPS` fidelity): a real RCP reports its exact
+    // `otRadioCaps` at runtime via `PROP_RADIO_CAPS` (read once at init, exactly
+    // as OpenThread's own `RadioSpinel` does). We currently advertise only the
+    // fixed subset guaranteed by the raw-MAC / `STREAM_RAW` contract, because the
+    // `Radio` trait models `CAPS` as a compile-time `const` and the RCP's caps
+    // are only known after the async handshake. Picking up the RCP's *variable*
+    // caps (`TRANSMIT_SEC`, precise timing, …) needs either a runtime caps query
+    // on the trait or a guarantee that `otPlatRadioGetCaps` is called only after
+    // `ensure_init`. Until then we under-claim, which OpenThread covers in
+    // software.
+    const CAPS: Capabilities = SPINEL_RADIO_CAPS;
+    const MAC_CAPS: MacCapabilities = SPINEL_RADIO_MAC_CAPS;
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.ensure_init().await?;
@@ -681,7 +748,7 @@ where
         &mut self,
         psdu: &[u8],
         cca: bool,
-        _ack_psdu_buf: Option<&mut [u8]>,
+        ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         self.ensure_init().await?;
 
@@ -704,9 +771,12 @@ where
 
         payload[n] = channel;
         n += 1;
-        payload[n] = 0; // maxCsmaBackoffs (host-MAC does retries)
+        // Let the RCP do CSMA/CA backoff and frame retries — we advertise
+        // `CSMA_BACKOFF` + `TRANSMIT_RETRIES`, so OpenThread expects the radio to
+        // handle them. 802.15.4 defaults (macMaxCSMABackoffs=4, macMaxFrameRetries=3).
+        payload[n] = 4; // maxCsmaBackoffs
         n += 1;
-        payload[n] = 0; // maxFrameRetries
+        payload[n] = 3; // maxFrameRetries
         n += 1;
         payload[n] = cca as u8; // csmaCaEnabled
         n += 1;
@@ -725,13 +795,51 @@ where
         payload[n] = tx_power as u8;
         n += 1;
 
-        self.set_prop(PROP_STREAM_RAW, &payload[..n]).await?;
+        // Send STREAM_RAW and take the matched transmit-done response.
+        let (_prop, off) = self.send_prop_await(PROP_STREAM_RAW, &payload[..n]).await?;
 
-        // The transmit ACK/status arrives as the matched response, already
-        // consumed by `set_prop`'s `await_response`. Software MAC (MacRadio)
-        // handles ACK reception via a subsequent `receive`, so we report no
-        // ACK meta here.
-        Ok(None)
+        // Parse the transmit-done body (from `RadioSpinel::HandleTransmitDone`):
+        //   uint_packed status + bool framePending + bool headerUpdated
+        //   + [if status OK] the ACK radio frame (same layout as an RX frame).
+        // We advertise `TX_ACK`, so OpenThread expects us to return the received
+        // ACK here rather than have `MacRadio` synthesize it in software.
+        let body_end = self.rx_len;
+        let body = &self.rx_frame[off..body_end];
+
+        let Some((status, mut p)) = spinel_uint_decode(body) else {
+            return Ok(None);
+        };
+        // status != OK → the transmit failed (no ACK / channel access). Report as
+        // no ACK; OpenThread maps a missing ACK to the appropriate retry/failure.
+        let status_ok = status == 0; // SPINEL_STATUS_OK
+        if !status_ok {
+            return Ok(None);
+        }
+        // Skip framePending (bool, 1 byte) + headerUpdated (bool, 1 byte).
+        if body.len() < p + 2 {
+            return Ok(None);
+        }
+        p += 2;
+
+        // The remaining bytes are the ACK radio frame (if any was received).
+        let Some((ack_psdu, ack_rssi)) = parse_radio_frame(&body[p..]) else {
+            return Ok(None);
+        };
+
+        match ack_psdu_buf {
+            Some(buf) => {
+                let copy = ack_psdu.len().min(buf.len());
+                buf[..copy].copy_from_slice(&ack_psdu[..copy]);
+                Ok(Some(PsduMeta {
+                    len: copy,
+                    channel,
+                    rssi: ack_rssi,
+                }))
+            }
+            // The caller didn't ask for the ACK PSDU (didn't expect an ACK), so
+            // there is nothing to report even though the transmit succeeded.
+            None => Ok(None),
+        }
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
@@ -749,22 +857,12 @@ where
 
             // Unsolicited STREAM_RAW notification = a received frame.
             if tid == 0 && rcmd == cmd_is && rprop == PROP_STREAM_RAW {
-                let body = &frame[off..];
-                if body.len() < 2 {
+                let Some((psdu, rssi)) = parse_radio_frame(&frame[off..]) else {
                     continue;
-                }
-                let plen = u16::from_le_bytes([body[0], body[1]]) as usize;
-                if body.len() < 2 + plen {
-                    continue;
-                }
-                let psdu = &body[2..2 + plen];
-
-                // Metadata following the DATA_WLEN: rssi(i8) + noise(i8) + ...
-                let meta_off = 2 + plen;
-                let rssi = body.get(meta_off).map(|&b| b as i8);
+                };
                 let channel = self.config.as_ref().map(|c| c.channel).unwrap_or(0);
 
-                let copy = plen.min(psdu_buf.len());
+                let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
 
                 return Ok(PsduMeta {
