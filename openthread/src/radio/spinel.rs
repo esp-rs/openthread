@@ -49,7 +49,9 @@ use core::future::Future;
 
 use embassy_time::{Duration, Timer};
 
-use crate::radio::{Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioErrorKind};
+use crate::radio::{
+    Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
+};
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 
 // ---------------------------------------------------------------------------
@@ -148,6 +150,8 @@ const PROP_PROTOCOL_VERSION: u32 = 1;
 const PROP_CAPS: u32 = 5;
 const PROP_HWADDR: u32 = 8;
 const PROP_PHY_ENABLED: u32 = 0x20;
+/// `SPINEL_PROP_RADIO_CAPS` — the RCP's `otRadioCaps` bitmask (packed-uint).
+const PROP_RADIO_CAPS: u32 = 0x1207;
 const PROP_PHY_CHAN: u32 = 0x21;
 const PROP_PHY_TX_POWER: u32 = 0x25;
 const PROP_MAC_15_4_LADDR: u32 = 0x34;
@@ -320,9 +324,13 @@ const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
 /// ```
 pub struct SpinelRadio<T> {
     transport: T,
-    /// The RCP is brought up lazily on the first radio operation (the `Radio`
-    /// trait has no async constructor). `None` until the startup handshake runs.
+    /// The RCP is brought up on the first radio operation (or eagerly via
+    /// [`Radio::init`]). `None` until the startup handshake runs.
     eui64: Option<[u8; 8]>,
+    /// The PHY capabilities read from the RCP's `PROP_RADIO_CAPS` during the
+    /// handshake. Until the handshake runs it holds the fixed baseline
+    /// ([`SPINEL_RADIO_CAPS`]); afterwards it is the RCP's reported set.
+    caps: Capabilities,
     /// Last-applied config; used to only re-send changed properties.
     config: Option<Config>,
     /// Whether raw-stream (RX) is currently enabled on the RCP.
@@ -347,6 +355,7 @@ where
         Self {
             transport,
             eui64: None,
+            caps: SPINEL_RADIO_CAPS,
             config: None,
             rx_enabled: false,
             next_tid: 1,
@@ -631,6 +640,18 @@ where
             .await?;
         self.eui64 = Some(eui64);
 
+        // Read the RCP's PHY capabilities (`otRadioCaps` bitmask). This is the
+        // authoritative, per-device PHY cap set — reported at runtime, which is
+        // why the `Radio` trait's compile-time `const CAPS` cannot carry it and
+        // [`Radio::init`] returns it instead. We keep any bits our fixed baseline
+        // guarantees even if a minimal RCP under-reports.
+        let caps_bits = self
+            .get_prop(PROP_RADIO_CAPS, |payload| {
+                spinel_uint_decode(payload).map(|(v, _)| v).unwrap_or(0)
+            })
+            .await?;
+        self.caps = Capabilities::from_bits_truncate(caps_bits as u16) | SPINEL_RADIO_CAPS;
+
         // Enable the PHY.
         self.set_prop(PROP_PHY_ENABLED, &[1]).await?;
 
@@ -726,18 +747,23 @@ where
 {
     type Error = RadioErrorKind;
 
-    // TODO (full `PROP_RADIO_CAPS` fidelity): a real RCP reports its exact
-    // `otRadioCaps` at runtime via `PROP_RADIO_CAPS` (read once at init, exactly
-    // as OpenThread's own `RadioSpinel` does). We currently advertise only the
-    // fixed subset guaranteed by the raw-MAC / `STREAM_RAW` contract, because the
-    // `Radio` trait models `CAPS` as a compile-time `const` and the RCP's caps
-    // are only known after the async handshake. Picking up the RCP's *variable*
-    // caps (`TRANSMIT_SEC`, precise timing, …) needs either a runtime caps query
-    // on the trait or a guarantee that `otPlatRadioGetCaps` is called only after
-    // `ensure_init`. Until then we under-claim, which OpenThread covers in
-    // software.
-    const CAPS: Capabilities = SPINEL_RADIO_CAPS;
-    const MAC_CAPS: MacCapabilities = SPINEL_RADIO_MAC_CAPS;
+    async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
+        // Run the startup handshake (idempotent) and report the RCP's discovered
+        // capabilities: the PHY set from the RCP's `PROP_RADIO_CAPS`, and the MAC
+        // offload set guaranteed by the raw-MAC contract (`ensure_init` requires
+        // `CAP_MAC_RAW`). The hot paths still call `ensure_init` defensively, so a
+        // radio used without an eager `init` (or one whose eager init failed)
+        // still recovers.
+        //
+        // A future RCP that reports *additional* MAC offload at runtime (e.g.
+        // hardware crypto — a `TRANSMIT_SEC`-style capability) would union it in
+        // here from the relevant spinel property; the const is only the baseline.
+        self.ensure_init().await?;
+        Ok(RadioCaps {
+            phy: self.caps,
+            mac: SPINEL_RADIO_MAC_CAPS,
+        })
+    }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.ensure_init().await?;

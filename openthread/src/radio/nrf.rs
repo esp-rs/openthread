@@ -3,9 +3,7 @@
 pub use embassy_nrf::radio::ieee802154::{Cca as RadioCca, Packet};
 
 use crate::fmt::Bytes;
-use crate::{
-    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioError, RadioErrorKind,
-};
+use crate::{Cca, Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind};
 
 pub use embassy_nrf::radio::ieee802154::Radio as Ieee802154;
 pub use embassy_nrf::radio::{Error, Instance as Ieee802154Peripheral};
@@ -88,10 +86,11 @@ impl<'a> NrfRadio<'a> {
 impl Radio for NrfRadio<'_> {
     type Error = Error;
 
-    const CAPS: Capabilities = Capabilities::empty();
-
-    // The NRF radio does not have any MAC offloading capabilities
-    const MAC_CAPS: MacCapabilities = MacCapabilities::empty();
+    async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
+        // The nRF radio has no PHY or MAC offloading capabilities of its own;
+        // OpenThread / `MacRadio` handle everything in software.
+        Ok(RadioCaps::default())
+    }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         if self.config != *config {

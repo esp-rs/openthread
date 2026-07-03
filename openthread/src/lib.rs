@@ -959,9 +959,6 @@ impl<'a> OpenThread<'a> {
         R: Radio,
         T: MacRadioTimer,
     {
-        // Fetch the radio capabilities from the driver
-        self.activate().state().ot.radio_caps = R::CAPS.bits();
-
         /// Fill the OpenThread frame structure based on the PSDU data returned by the radio
         fn fill_frame(
             frame: &mut otRadioFrame,
@@ -997,6 +994,27 @@ impl<'a> OpenThread<'a> {
         }
 
         let mut radio = MacRadio::new(radio, timer);
+
+        // Bring the radio up and fetch its runtime capabilities, then cache the
+        // PHY set for `otPlatRadioGetCaps`. This runs before the loop below first
+        // pumps the OpenThread stack, so the caps are in place before the stack
+        // can ask for them. A radio with statically-known caps returns them
+        // directly; one that discovers them from hardware (e.g. `SpinelRadio`
+        // querying its RCP) reports the discovered set. (The MAC set is consumed
+        // internally by the `MacRadio` wrapper, not reported to the C stack.) On
+        // failure we advertise no PHY offload (OpenThread then does everything in
+        // software) and let the radio recover lazily on the first request.
+        let radio_caps = match radio.init().await {
+            Ok(caps) => caps.phy,
+            Err(e) => {
+                warn!(
+                    "Radio init failed: {:?}; advertising no PHY capabilities",
+                    e
+                );
+                Capabilities::empty()
+            }
+        };
+        self.activate().state().ot.radio_caps = radio_caps.bits();
 
         let radio_cmd = || poll_fn(move |cx| self.activate().state().ot.radio.poll_wait(cx));
 

@@ -6,7 +6,9 @@ use embassy_sync::signal::Signal;
 use esp_radio::ieee802154::Config as EspConfig;
 
 use crate::fmt::Bytes;
-use crate::{Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioErrorKind};
+use crate::{
+    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
+};
 
 pub use esp_radio::ieee802154::Ieee802154;
 
@@ -110,12 +112,15 @@ impl<'a> EspRadio<'a> {
 impl Radio for EspRadio<'_> {
     type Error = RadioErrorKind;
 
-    const CAPS: Capabilities = Capabilities::ACK_TIMEOUT
-        .union(Capabilities::CSMA_BACKOFF)
-        // .union(Capabilities::RX_ON_WHEN_IDLE) TODO: Depends on coex being off in ESP-IDF
-        ;
-
-    const MAC_CAPS: MacCapabilities = MacCapabilities::all();
+    async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
+        // Fixed, statically-known capabilities of the ESP 802.15.4 radio: it does
+        // full MAC offload (auto-ACK, filtering) and CSMA/ACK-timeout in hardware.
+        Ok(RadioCaps {
+            phy: Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF),
+            // .union(Capabilities::RX_ON_WHEN_IDLE) TODO: Depends on coex being off in ESP-IDF
+            mac: MacCapabilities::all(),
+        })
+    }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         if self.config != *config {
