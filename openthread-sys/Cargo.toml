@@ -139,11 +139,13 @@ use-gcc = []
 prebuilt = ["matter", "mbedtls-rs-sys"]
 
 # Barebones profile for Matter: SRP client (service registration), SLAAC
-# (address autoconfig), ECDSA, ping. No provisioning (joiner/commissioner),
-# CoAP, DNS server, TCP, etc. (UDP is core and always available.)
+# (address autoconfig), ECDSA, ping, and the DNS client (operational discovery —
+# resolving/browsing `_matter._tcp` records via the Thread border router's DNS-SD
+# server). No provisioning (joiner/commissioner), CoAP, DNS-SD server, TCP, etc.
+# (UDP is core and always available.)
 # (`srp-client` already pulls in `ecdsa`, but it is listed explicitly here too
 # for clarity, since Matter requires ECDSA for operational certificates.)
-matter = ["srp-client", "slaac", "ecdsa", "ping-sender"]
+matter = ["srp-client", "slaac", "ecdsa", "ping-sender", "dns-client"]
 
 # ---------------------------------------------------------------------------
 # OpenThread feature knobs. Each maps to one or more `OT_*` CMake options in
