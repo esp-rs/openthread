@@ -199,6 +199,14 @@ pub mod uart;
 pub use spi::{IntPolarity, SpiSpinelTransport, SpiTransportError};
 pub use uart::{UartSpinelTransport, UartTransportError};
 
+/// Host serial device (`std` feature): an async serial byte stream over a
+/// `/dev/tty*` device, ready to wrap in a [`UartSpinelTransport`] to drive an
+/// `ot-rcp` from a Linux/macOS host over USB. See [`serial::SerialPort`].
+#[cfg(feature = "std")]
+pub mod serial;
+#[cfg(feature = "std")]
+pub use serial::SerialPort;
+
 // ---------------------------------------------------------------------------
 // Spinel frame build/parse.
 // ---------------------------------------------------------------------------

@@ -30,6 +30,13 @@ srp-client = ["openthread-sys/srp-client"]
 #              the crate docs / `OpenThread` RCP-host API).
 ftd = ["openthread-sys/ftd"]
 rcp = ["openthread-sys/rcp", "dep:embedded-io-async", "dep:embedded-hal", "dep:embedded-hal-async"]
+# Host-side helpers that require `std`. Currently: a ready-to-use serial
+# [`SerialPort`] transport for the RCP driver (async serial over a `/dev/tty*`
+# device on Unix), so a Linux/macOS host can drive an `ot-rcp` over USB. Implies
+# `rcp` (the serial transport is only useful with the spinel driver). Windows
+# serial support is a planned addition (its handles need overlapped I/O, unlike
+# the readiness-based `async-io` path used on Unix).
+std = ["rcp", "dep:async-io", "dep:nix", "embedded-io-async/std"]
 # Build OpenThread against the external MbedTLS (`mbedtls-rs-sys`) rather than
 # its own bundled MbedTLS. On by default; omit (with `default-features = false`)
 # to use the bundled MbedTLS and drop the `mbedtls-rs-sys` dependency.
@@ -134,6 +141,11 @@ embassy-net-driver-channel = { workspace = true, default-features = false, optio
 embedded-io-async = { workspace = true, default-features = false, optional = true }
 embedded-hal = { workspace = true, default-features = false, optional = true }
 embedded-hal-async = { workspace = true, default-features = false, optional = true }
+# `std` feature: host serial transport (`radio::spinel::serial`). `async-io` for
+# readiness-based async I/O over the tty fd; `nix` to open + configure it
+# (`fs` = open, `term` = termios/baud). Unix only for now.
+async-io = { workspace = true, default-features = false, optional = true }
+nix = { workspace = true, default-features = false, features = ["fs", "term"], optional = true }
 esp-radio = { workspace = true, default-features = false, features = ["unstable", "ieee802154"], optional = true }
 embassy-nrf = { workspace = true, default-features = false, optional = true }
 portable-atomic = { workspace = true, default-features = false }
