@@ -93,6 +93,22 @@ impl OpenThreadBuilder {
 
         // Generate the bindings using `bindgen`:
         log::info!("Generating bindings");
+
+        // The `rcp` feature additionally binds OpenThread's internal spinel
+        // header (`lib/spinel/spinel.h`) for the Rust `SpinelRadio` driver: the
+        // spinel command/status/header constants and the `spinel_packed_uint_*`
+        // codec. That header lives under `openthread/src` (not the public
+        // `include` dir) and is pulled in via `include_rcp.h`, with the matching
+        // `spinel_.*` / `SPINEL_.*` allowlist entries. Non-`rcp` builds parse only
+        // the public `include.h` and never emit the spinel bindings.
+        let rcp = std::env::var_os("CARGO_FEATURE_RCP").is_some();
+
+        let include_header = self
+            .crate_root_path
+            .join("gen")
+            .join("include")
+            .join(if rcp { "include_rcp.h" } else { "include.h" });
+
         let mut builder = Builder::default()
             .use_core()
             .enable_function_attribute_detection()
@@ -101,17 +117,21 @@ impl OpenThreadBuilder {
             .layout_tests(false)
             .allowlist_item("ot.*")
             .allowlist_item("OT_.*")
-            .header(
-                self.crate_root_path
-                    .join("gen")
-                    .join("include")
-                    .join("include.h")
-                    .to_string_lossy(),
-            )
+            .header(include_header.to_string_lossy())
             .clang_args([&format!(
                 "-I{}",
                 canon(&self.crate_root_path.join("openthread").join("include"))
             )]);
+
+        if rcp {
+            builder = builder
+                .allowlist_item("spinel_.*")
+                .allowlist_item("SPINEL_.*")
+                .clang_arg(format!(
+                    "-I{}",
+                    canon(&self.crate_root_path.join("openthread").join("src"))
+                ));
+        }
 
         if self.short_enums() {
             builder = builder.clang_arg("-fshort-enums");
@@ -217,18 +237,6 @@ impl OpenThreadBuilder {
             .define("OT_FTD", "ON")
             .define("OT_MTD", "ON")
             .define("OT_RCP", "OFF")
-            // Compile the minimal spinel codec shim (`gen/support/src/spinel_codec.c`)
-            // into the `support` library when the `rcp` feature is active. It
-            // re-exports the spinel packed-uint codec used by the Rust
-            // `SpinelRadio` driver (`crate::rcp`).
-            .define(
-                "OT_RCP_HOST_SHIM",
-                if std::env::var_os("CARGO_FEATURE_RCP").is_some() {
-                    "ON"
-                } else {
-                    "OFF"
-                },
-            )
             // Do not change from here below
             .define("OT_LOG_OUTPUT", "PLATFORM_DEFINED")
             .define("OT_PLATFORM", "external")
