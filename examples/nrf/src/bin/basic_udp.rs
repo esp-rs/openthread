@@ -26,7 +26,7 @@ use embassy_nrf::{bind_interrupts, peripherals, radio};
 use openthread::nrf::{Ieee802154, NrfRadio};
 use openthread::{
     BytesFmt, EmbassyTimeTimer, OpenThread, OtResources, OtUdpResources, PhyRadioRunner,
-    ProxyRadio, ProxyRadioResources, Radio, SimpleRamSettings, UdpSocket,
+    ProxyRadio, ProxyRadioResources, SimpleRamSettings, UdpSocket,
 };
 
 use panic_rtt_target as _;

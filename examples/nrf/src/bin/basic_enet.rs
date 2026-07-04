@@ -31,7 +31,7 @@ use openthread::enet::{self, EnetDriver, EnetRunner};
 use openthread::nrf::{Ieee802154, NrfRadio};
 use openthread::{
     BytesFmt, EmbassyTimeTimer, OpenThread, OtResources, PhyRadioRunner, ProxyRadio,
-    ProxyRadioResources, Radio, SimpleRamSettings,
+    ProxyRadioResources, SimpleRamSettings,
 };
 
 use rand_core::RngCore;

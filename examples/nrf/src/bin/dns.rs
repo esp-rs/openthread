@@ -40,7 +40,7 @@ use embassy_time::{Duration, Timer};
 use openthread::nrf::{Ieee802154, NrfRadio};
 use openthread::{
     DnsResponse, EmbassyTimeTimer, OpenThread, OtResources, OtUdpResources, PhyRadioRunner,
-    ProxyRadio, ProxyRadioResources, Radio, SimpleRamSettings,
+    ProxyRadio, ProxyRadioResources, SimpleRamSettings,
 };
 
 use panic_rtt_target as _;
