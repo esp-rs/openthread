@@ -1,0 +1,46 @@
+[package]
+name = "host-openthread-examples"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+categories = ["embedded", "hardware-support"]
+keywords = ["thread", "openthread", "embedded", "host"]
+description = "openthread examples for a host (Linux/macOS) driving a remote RCP over serial"
+repository = "https://github.com/esp-rs/openthread"
+license = "MIT OR Apache-2.0"
+rust-version = "1.84"
+
+[features]
+default = []
+# Regenerate the OpenThread bindings on the fly (needed until the committed
+# host-target bindings match the active feature set).
+force-generate-bindings = ["openthread/force-generate-bindings"]
+
+[dependencies]
+embassy-executor = { version = "0.10", features = ["platform-std", "executor-thread"] }
+embassy-time = { version = "0.5", features = ["std"] }
+embassy-futures = "0.1"
+log = "0.4"
+env_logger = "0.11"
+heapless = "0.9"
+rand = { version = "0.9", features = ["std", "std_rng", "os_rng"] }
+static_cell = "2.1"
+# `utoa` provides the `utoa`/`strtoul` C symbols OpenThread's C references;
+# `critical-section` with `std` supplies a host `critical-section` impl.
+tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "strtoul"] }
+critical-section = { version = "1.2", features = ["std"] }
+
+# The `std` feature pulls in `rcp` + the host `SerialPort` transport.
+openthread = { path = "../../openthread", features = ["std", "udp", "srp", "dns-client", "embassy-net-driver-channel", "isupper"] }
+
+[[bin]]
+path = "./src/bin/basic_udp.rs"
+name = "basic_udp"
+
+[[bin]]
+path = "./src/bin/srp.rs"
+name = "srp"
+
+[[bin]]
+path = "./src/bin/dns.rs"
+name = "dns"
