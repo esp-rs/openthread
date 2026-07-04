@@ -265,6 +265,16 @@ fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>)> {
     Some((psdu, rssi))
 }
 
+/// Append a (possibly NUL-terminated) UTF-8 blob `src` into `out` starting at
+/// `at`, returning the new total length. Used to collect diag command output.
+#[cfg(feature = "diag")]
+fn copy_utf8(src: &[u8], out: &mut [u8], at: usize) -> usize {
+    let end = src.iter().position(|&b| b == 0).unwrap_or(src.len());
+    let copy = end.min(out.len().saturating_sub(at));
+    out[at..at + copy].copy_from_slice(&src[..copy]);
+    at + copy
+}
+
 /// A tiny set of outstanding spinel transaction ids (1..=15), stored as a
 /// bitmask. Used to drain the acknowledgements of a pipelined burst of
 /// `PROP_VALUE_SET`s, matching each ack to its request by TID regardless of
@@ -757,6 +767,65 @@ where
             self.rx_enabled = enabled;
         }
         Ok(())
+    }
+
+    /// Send an `ot-rcp` **manufacturing / RF diagnostics** command (`diag …`) to
+    /// the radio co-processor and collect its textual reply into `out`, returning
+    /// the number of bytes written.
+    ///
+    /// This is a bench / bring-up utility for exercising the RCP's *radio
+    /// hardware* directly — RF tone output (`diag cw`), packet-error-rate tests
+    /// (`diag send` / `diag stats`), channel and power setup, etc. It is **not**
+    /// part of normal Thread operation:
+    ///
+    /// - The RCP firmware must be built with diagnostics support
+    ///   (`OPENTHREAD_CONFIG_DIAG_ENABLE`); a stock non-diag `ot-rcp` replies with
+    ///   an error string.
+    /// - `diag start` puts the radio into a mode in which it does **not** perform
+    ///   normal Thread TX/RX. Because this takes `&mut self`, it cannot be called
+    ///   while [`OpenThread::run`](crate::OpenThread::run) owns the radio — so it
+    ///   is naturally a *before-`run`* tool. Run `diag stop` before handing the
+    ///   radio to the stack.
+    ///
+    /// `command` is the full diag command line (e.g. `"diag channel 20"`), sent
+    /// verbatim over `SPINEL_PROP_NEST_STREAM_MFG`. Output is collected from the
+    /// matched reply plus any further output lines that arrive within
+    /// [`RESPONSE_TIMEOUT`] (some commands stream several lines), concatenated
+    /// into `out` and truncated to its length.
+    #[cfg(feature = "diag")]
+    pub async fn diag(&mut self, command: &str, out: &mut [u8]) -> Result<usize, RadioErrorKind> {
+        self.ensure_init().await?;
+
+        let prop = crate::sys::SPINEL_PROP_NEST_STREAM_MFG as u32;
+
+        // `SPINEL_DATATYPE_UTF8_S` is a NUL-terminated string: command bytes + NUL.
+        let mut payload = [0u8; MAX_SPINEL_FRAME];
+        let n = command.len();
+        if n + 1 > payload.len() {
+            return Err(RadioErrorKind::TxFailed);
+        }
+        payload[..n].copy_from_slice(command.as_bytes());
+        payload[n] = 0;
+
+        // Send as a PROP_VALUE_SET; the matched response carries the first line.
+        let (_p, off) = self.send_prop_await(prop, &payload[..=n]).await?;
+        let mut written = copy_utf8(&self.rx_frame[off..self.rx_len], out, 0);
+
+        // Drain any further streamed output lines (unsolicited
+        // PROP_VALUE_IS(NEST_STREAM_MFG)) until the RCP goes quiet.
+        while written < out.len() {
+            let Ok(len) = self.recv_frame(RESPONSE_TIMEOUT).await else {
+                break; // timeout => no more output
+            };
+            let Some((_tid, rcmd, rprop, o)) = spinel_parse_header(&self.rx_frame[..len]) else {
+                continue;
+            };
+            if rcmd == CMD_PROP_VALUE_IS && rprop == prop {
+                written = copy_utf8(&self.rx_frame[o..len], out, written);
+            }
+        }
+
+        Ok(written)
     }
 }
 

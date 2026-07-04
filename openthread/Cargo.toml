@@ -30,6 +30,12 @@ srp-client = ["openthread-sys/srp-client"]
 #              the crate docs / `OpenThread` RCP-host API).
 ftd = ["openthread-sys/ftd"]
 rcp = ["openthread-sys/rcp", "dep:embedded-io-async", "dep:embedded-hal", "dep:embedded-hal-async"]
+# RCP manufacturing/RF diagnostics: adds `SpinelRadio::diag`, a bench/bring-up
+# utility that sends `diag …` commands to the radio co-processor's firmware (RF
+# tone, PER tests, channel/power setup). Implies `rcp`. Off by default — it is a
+# standalone bench tool, not part of normal Thread operation, and the RCP
+# firmware must itself be built with diagnostics support.
+diag = ["rcp"]
 # Host-side helpers that require `std`. Currently: a ready-to-use serial
 # [`SerialPort`] transport for the RCP driver (async serial over a `/dev/tty*`
 # device on Unix), so a Linux/macOS host can drive an `ot-rcp` over USB. Implies
