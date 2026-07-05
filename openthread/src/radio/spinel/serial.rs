@@ -65,10 +65,13 @@ impl SerialPort {
         )
         .map_err(io::Error::from)?;
 
-        // Map the numeric baud to the platform's `BaudRate` (on Linux the speed
-        // *is* the numeric value; an unsupported rate is rejected).
-        let baud = BaudRate::try_from(baud as nix::libc::speed_t)
-            .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "unsupported baud rate"))?;
+        // Map the numeric baud to the platform's `BaudRate`. Note this is NOT a
+        // numeric cast: on many platforms (e.g. Linux) the termios speed constant
+        // `B115200` is an *encoded* value (0x1002), not `115200`. `nix`'s
+        // `TryFrom<speed_t>` matches those encoded constants, so we translate from
+        // the human baud number explicitly.
+        let baud = baud_rate(baud)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "unsupported baud rate"))?;
 
         // Raw mode + baud + 8N1 + no flow control.
         let mut termios = nix::sys::termios::tcgetattr(&fd).map_err(io::Error::from)?;
@@ -85,6 +88,22 @@ impl SerialPort {
             inner: Async::new(fd)?,
         })
     }
+}
+
+/// Translate a human baud number (e.g. `115_200`) into the platform's termios
+/// [`BaudRate`]. Returns `None` for a rate the platform does not define.
+fn baud_rate(baud: u32) -> Option<BaudRate> {
+    Some(match baud {
+        9_600 => BaudRate::B9600,
+        19_200 => BaudRate::B19200,
+        38_400 => BaudRate::B38400,
+        57_600 => BaudRate::B57600,
+        115_200 => BaudRate::B115200,
+        230_400 => BaudRate::B230400,
+        460_800 => BaudRate::B460800,
+        921_600 => BaudRate::B921600,
+        _ => return None,
+    })
 }
 
 impl embedded_io_async::ErrorType for SerialPort {

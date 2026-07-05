@@ -31,7 +31,14 @@ tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "st
 critical-section = { version = "1.2", features = ["std"] }
 
 # The `std` feature pulls in `rcp` + the host `SerialPort` transport.
-openthread = { path = "../../openthread", features = ["std", "udp", "srp", "dns-client", "embassy-net-driver-channel", "isupper"] }
+#
+# `heap-ext-ot` routes OpenThread's own heap to the global allocator (we provide
+# `otPlatCAlloc`/`otPlatFree` in `platform.rs`). Necessary on a 64-bit host:
+# OpenThread's *internal* heap only aligns to `sizeof(void*)` (8 bytes), but the
+# `mbedtls-rs-sys` digest/cipher contexts require 16-byte alignment — libc
+# `calloc` provides that, the internal heap does not.
+openthread = { path = "../../openthread", features = ["std", "udp", "srp", "dns-client", "embassy-net-driver-channel", "isupper", "heap-ext-ot", "log"] }
+libc = "0.2"
 
 [[bin]]
 path = "./src/bin/basic_udp.rs"
