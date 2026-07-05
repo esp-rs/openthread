@@ -2,15 +2,15 @@
 //! radio lives on a *separate* chip (an OpenThread **RCP** — Radio Co-Processor)
 //! reached over a UART/SPI link using the **spinel** protocol.
 //!
-//! # ⚠️ Not yet hardware-tested
+//! # Hardware validation status
 //!
-//! **This entire module is unverified against real hardware.** [`SpinelRadio`]
-//! and both transports ([`UartSpinelTransport`] and [`SpiSpinelTransport`]) have
-//! so far only been *compile*-checked — no exchange with an actual `ot-rcp` has
-//! been run. The spinel/HDLC/SPI framing is implemented to the OpenThread
-//! reference, but timing, flow-control edge cases, and the startup handshake may
-//! not behave correctly on a physical link. Treat this as experimental until
-//! validated end-to-end with an RCP dongle.
+//! The **UART** path ([`SpinelRadio`] + [`UartSpinelTransport`] + [`SerialPort`])
+//! is validated end-to-end against a real `ot-rcp` (an nRF52840 dongle over USB
+//! CDC-ACM): the host example resets and handshakes the RCP, loads an operational
+//! dataset, and drives MLE. The **SPI** transport ([`SpiSpinelTransport`]) is
+//! still *compile*-checked only — its full-duplex `accept_len`/`data_len`
+//! negotiation and interrupt handling are implemented to spec but not yet
+//! observed on a physical SPI link.
 //!
 //! # Design
 //!
@@ -158,6 +158,10 @@ const PROP_MAC_15_4_SADDR: u32 = 0x35;
 const PROP_MAC_15_4_PANID: u32 = 0x36;
 const PROP_MAC_RAW_STREAM_ENABLED: u32 = 0x37;
 const PROP_MAC_PROMISCUOUS_MODE: u32 = 0x38;
+/// `SPINEL_PROP_MAC_RX_ON_WHEN_IDLE_MODE` — keep the receiver on between TX/RX so
+/// the RCP hears asynchronous traffic (MLE, parent responses). Without it a
+/// non-sleepy node never attaches.
+const PROP_MAC_RX_ON_WHEN_IDLE_MODE: u32 = 0x3b;
 const PROP_STREAM_RAW: u32 = 0x71;
 
 /// The RCP capability ids we require (a real RCP in raw-MAC mode).
@@ -179,11 +183,40 @@ const RESET_STACK: u32 = crate::sys::SPINEL_RESET_STACK as u32;
 const STATUS_RESET_BEGIN: u32 = crate::sys::SPINEL_STATUS_RESET__BEGIN as u32;
 const STATUS_RESET_END: u32 = crate::sys::SPINEL_STATUS_RESET__END as u32;
 
-/// Response timeout for a spinel request.
-const RESPONSE_TIMEOUT: Duration = Duration::from_millis(1000);
+/// Timeout for a spinel *command* response (a `PROP_VALUE_SET`/`GET` ack, or a
+/// reset status). Matches the reference `RadioSpinel::kMaxWaitTime` (2000 ms).
+/// This must be generous: on a busy link the ack can queue behind a burst of
+/// unsolicited inbound `STREAM_RAW` frames, and each is a fresh wire read.
+const RESPONSE_TIMEOUT: Duration = Duration::from_millis(2000);
+
+/// Timeout for a **transmit** to complete (the `STREAM_RAW` transmit-done
+/// response). This is much longer than a plain command ack because the RCP does
+/// CSMA/CA backoff **and** up to `maxFrameRetries` MAC retransmissions before it
+/// reports done — a *broadcast* frame (e.g. an MLE Parent Request, which is
+/// never acked) burns every backoff + retry slot first, which on a congested
+/// channel comfortably exceeds one second. The reference uses
+/// `OPENTHREAD_SPINEL_CONFIG_RCP_TX_WAIT_TIME_SECS` (5 s). Using the shorter
+/// command timeout here made transmits spuriously fail with `RxFailed`, which
+/// OpenThread saw as a failed Parent Request — so the node could never attach.
+const TRANSMIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Max on-the-wire spinel frame (pre-HDLC) we build/parse.
 const MAX_SPINEL_FRAME: usize = OT_RADIO_FRAME_MAX_SIZE as usize + 128;
+
+/// Max size of a stashed received-frame body (`STREAM_RAW` payload: the
+/// length-prefixed PSDU plus RSSI/noise/flags/PHY-data metadata).
+const RX_BODY_CAP: usize = OT_RADIO_FRAME_MAX_SIZE as usize + 32;
+
+/// How many received frames to buffer while the driver is busy waiting for a
+/// command response (see [`SpinelRadio::try_stash_rx`]). 802.15.4 receive is
+/// bursty; these slots absorb frames that arrive during a transmit — which, on a
+/// congested channel, can legitimately run for a second or more of CSMA backoff
+/// plus MAC retries (see [`TRANSMIT_TIMEOUT`]), so the buffer is sized to hold a
+/// burst across that whole window rather than a single frame or two.
+const RX_QUEUE_DEPTH: usize = 16;
+
+/// A stashed received-frame body: the `STREAM_RAW` payload bytes.
+type RxFrame = heapless::Vec<u8, RX_BODY_CAP>;
 
 // ---------------------------------------------------------------------------
 // Transports: putting a raw spinel frame on a concrete wire.
@@ -372,6 +405,14 @@ pub struct SpinelRadio<T> {
     /// parsers borrow `rx_frame[..rx_len]` after a `recv_frame`.
     rx_frame: [u8; MAX_SPINEL_FRAME],
     rx_len: usize,
+    /// Received-frame bodies that arrived (as unsolicited `STREAM_RAW`
+    /// notifications) while the driver was waiting for a command response, so
+    /// they cannot be dropped. `receive` drains this before reading the wire.
+    /// This is essential: OpenThread transmits almost continuously (parent
+    /// requests, scans), so most inbound frames arrive during a transmit's
+    /// response wait — without this queue they would be lost and the node could
+    /// never attach.
+    rx_queue: heapless::Deque<RxFrame, RX_QUEUE_DEPTH>,
 }
 
 impl<T> SpinelRadio<T>
@@ -391,7 +432,41 @@ where
             tx_frame: [0; MAX_SPINEL_FRAME],
             rx_frame: [0; MAX_SPINEL_FRAME],
             rx_len: 0,
+            rx_queue: heapless::Deque::new(),
         }
+    }
+
+    /// If the just-received frame in `rx_frame[..frame_len]` is an *unsolicited*
+    /// received-radio-frame notification (`tid == 0`, `PROP_VALUE_IS`,
+    /// `STREAM_RAW`), stash its body in the RX queue so a later [`Self::receive`]
+    /// can return it, and report `true`. Called from every command-response wait
+    /// loop so inbound frames are never dropped while a command is in flight.
+    ///
+    /// If the queue is full the oldest frame is evicted (newest-wins) — a
+    /// deliberate bound; sustained inability to drain means the consumer is not
+    /// calling `receive` fast enough, in which case dropping the stalest frame is
+    /// the least-bad option.
+    fn try_stash_rx(&mut self, frame_len: usize) -> bool {
+        let frame = &self.rx_frame[..frame_len];
+        let Some((tid, rcmd, rprop, off)) = spinel_parse_header(frame) else {
+            return false;
+        };
+        if tid != 0 || rcmd != CMD_PROP_VALUE_IS || rprop != PROP_STREAM_RAW {
+            return false;
+        }
+
+        let body = &self.rx_frame[off..frame_len];
+        let mut stashed = RxFrame::new();
+        // Truncate to capacity (a valid 802.15.4 frame body always fits).
+        let n = body.len().min(RX_BODY_CAP);
+        // `extend_from_slice` on a fixed Vec cannot fail for `n <= capacity`.
+        let _ = stashed.extend_from_slice(&body[..n]);
+
+        if self.rx_queue.is_full() {
+            let _ = self.rx_queue.pop_front();
+        }
+        let _ = self.rx_queue.push_back(stashed);
+        true
     }
 
     fn alloc_tid(&mut self) -> u8 {
@@ -417,24 +492,30 @@ where
     /// `timeout`. Returns the frame length (also stashed in `self.rx_len`);
     /// callers parse `self.rx_frame[..len]`.
     async fn recv_frame(&mut self, timeout: Duration) -> Result<usize, RadioErrorKind> {
-        let recv_fut = self.transport.recv(&mut self.rx_frame);
-        let mut recv_fut = core::pin::pin!(recv_fut);
-        let mut timeout_fut = core::pin::pin!(Timer::after(timeout));
+        let len = {
+            let recv_fut = self.transport.recv(&mut self.rx_frame);
+            let mut recv_fut = core::pin::pin!(recv_fut);
+            let mut timeout_fut = core::pin::pin!(Timer::after(timeout));
 
-        match embassy_futures::select::select(&mut recv_fut, &mut timeout_fut).await {
-            embassy_futures::select::Either::First(r) => {
-                let len = r.map_err(|_| RadioErrorKind::RxFailed)?;
-                self.rx_len = len;
-                Ok(len)
+            match embassy_futures::select::select(&mut recv_fut, &mut timeout_fut).await {
+                embassy_futures::select::Either::First(r) => {
+                    r.map_err(|_| RadioErrorKind::RxFailed)?
+                }
+                embassy_futures::select::Either::Second(()) => {
+                    return Err(RadioErrorKind::RxFailed)
+                }
             }
-            embassy_futures::select::Either::Second(()) => Err(RadioErrorKind::RxFailed),
-        }
+        };
+        self.rx_len = len;
+        Ok(len)
     }
 
     /// Send a `PROP_VALUE_SET` with a raw payload and await its echoed
     /// `PROP_VALUE_IS` acknowledgement (matched by TID).
     async fn set_prop(&mut self, prop: u32, payload: &[u8]) -> Result<(), RadioErrorKind> {
-        self.send_prop_await(prop, payload).await.map(|_| ())
+        self.send_prop_await(prop, payload, RESPONSE_TIMEOUT)
+            .await
+            .map(|_| ())
     }
 
     /// Send a `PROP_VALUE_SET` with a raw payload and await its matched
@@ -442,10 +523,16 @@ where
     /// `self.rx_frame` (length `self.rx_len`). Most callers only need the ack and
     /// use [`Self::set_prop`]; `transmit` uses this to read the transmit-done
     /// body (status + ACK frame).
+    ///
+    /// `timeout` bounds the wait for the matched response: a plain config ack
+    /// uses [`RESPONSE_TIMEOUT`], while `transmit` passes the longer
+    /// [`TRANSMIT_TIMEOUT`] because a transmit-done can lag by seconds while the
+    /// RCP does CSMA backoff + MAC retries.
     async fn send_prop_await(
         &mut self,
         prop: u32,
         payload: &[u8],
+        timeout: Duration,
     ) -> Result<(u32, usize), RadioErrorKind> {
         let tid = self.alloc_tid();
         let cmd = CMD_PROP_VALUE_SET;
@@ -466,7 +553,7 @@ where
         frame[..frame_len].copy_from_slice(&self.tx_frame[..frame_len]);
         self.send_frame(&frame[..frame_len]).await?;
 
-        self.await_response(tid).await
+        self.await_response(tid, timeout).await
     }
 
     /// Pipeline a batch of `PROP_VALUE_SET`s: send every frame back-to-back
@@ -534,7 +621,7 @@ where
         frame[..frame_len].copy_from_slice(&self.tx_frame[..frame_len]);
         self.send_frame(&frame[..frame_len]).await?;
 
-        let (_prop, off) = self.await_response(tid).await?;
+        let (_prop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
         let len = self.rx_len;
         Ok(f(&self.rx_frame[off..len]))
     }
@@ -542,11 +629,24 @@ where
     /// Await a single response frame with a matching `tid`, dispatching any
     /// unsolicited (`tid == 0`) frames received meanwhile. Returns `(prop,
     /// payload_offset)` into `self.rx_frame` (whose length is `self.rx_len`).
-    async fn await_response(&mut self, tid: u8) -> Result<(u32, usize), RadioErrorKind> {
+    ///
+    /// `timeout` bounds *each* wire read; every stashed inbound frame restarts
+    /// the wait, so a busy link does not time the response out prematurely.
+    async fn await_response(
+        &mut self,
+        tid: u8,
+        timeout: Duration,
+    ) -> Result<(u32, usize), RadioErrorKind> {
         let cmd_is = CMD_PROP_VALUE_IS;
 
         loop {
-            let frame_len = self.recv_frame(RESPONSE_TIMEOUT).await?;
+            let frame_len = self.recv_frame(timeout).await?;
+
+            // Stash any inbound radio frame that arrives while we wait, rather
+            // than dropping it (OpenThread transmits near-continuously).
+            if self.try_stash_rx(frame_len) {
+                continue;
+            }
 
             let frame = &self.rx_frame[..frame_len];
             let Some((rtid, rcmd, rprop, off)) = spinel_parse_header(frame) else {
@@ -556,8 +656,7 @@ where
             if rtid == tid && rcmd == cmd_is {
                 return Ok((rprop, off));
             }
-            // Unsolicited (tid 0) or mismatched — ignore here; the RX path polls
-            // for STREAM_RAW notifications separately.
+            // A mismatched command response — ignore.
         }
     }
 
@@ -567,14 +666,18 @@ where
     /// `pending` has been acknowledged, or errors on the response timeout.
     ///
     /// The value payloads of the acks are ignored (these are the echoed SET
-    /// confirmations); only their arrival is required. Unsolicited (`tid == 0`)
-    /// and unrelated frames seen meanwhile are dropped, matching
+    /// confirmations); only their arrival is required. Inbound radio frames seen
+    /// meanwhile are stashed (see [`Self::try_stash_rx`]), matching
     /// [`Self::await_response`].
     async fn drain_acks(&mut self, mut pending: TidSet) -> Result<(), RadioErrorKind> {
         let cmd_is = CMD_PROP_VALUE_IS;
 
         while !pending.is_empty() {
             let frame_len = self.recv_frame(RESPONSE_TIMEOUT).await?;
+
+            if self.try_stash_rx(frame_len) {
+                continue;
+            }
 
             let frame = &self.rx_frame[..frame_len];
             let Some((rtid, rcmd, _rprop, _off)) = spinel_parse_header(frame) else {
@@ -693,6 +796,9 @@ where
         let cmd_is = CMD_PROP_VALUE_IS;
         loop {
             let frame_len = self.recv_frame(RESPONSE_TIMEOUT).await?;
+            if self.try_stash_rx(frame_len) {
+                continue;
+            }
             let frame = &self.rx_frame[..frame_len];
             let Some((_tid, rcmd, rprop, off)) = spinel_parse_header(frame) else {
                 continue;
@@ -716,16 +822,17 @@ where
 
         // Materialize each changed property's little-endian payload into a local
         // so its slice stays valid for the whole burst, then stage the
-        // `(prop, payload)` pairs. At most six properties, so a fixed array +
+        // `(prop, payload)` pairs. At most seven properties, so a fixed array +
         // length avoids any allocation.
         let chan = [config.channel];
         let power = [config.power as u8];
         let promisc = [config.promiscuous as u8];
+        let rx_when_idle = [config.rx_when_idle as u8];
         let pan_id = config.pan_id.unwrap_or(0xffff).to_le_bytes();
         let short_addr = config.short_addr.unwrap_or(0xffff).to_le_bytes();
         let ext_addr = config.ext_addr.unwrap_or(0).to_le_bytes();
 
-        let mut batch: [(u32, &[u8]); 6] = [(0, &[]); 6];
+        let mut batch: [(u32, &[u8]); 7] = [(0, &[]); 7];
         let mut count = 0;
 
         if changed(|c| c.channel as u64) {
@@ -738,6 +845,13 @@ where
         }
         if changed(|c| c.promiscuous as u64) {
             batch[count] = (PROP_MAC_PROMISCUOUS_MODE, &promisc);
+            count += 1;
+        }
+        if changed(|c| c.rx_when_idle as u64) {
+            // NOTE: some RCP firmwares (e.g. the nRF `ot-rcp`) do not implement
+            // this property and reply with an error LAST_STATUS, which we ignore
+            // (the RCP then keeps its default rx-when-idle behaviour). Harmless.
+            batch[count] = (PROP_MAC_RX_ON_WHEN_IDLE_MODE, &rx_when_idle);
             count += 1;
         }
         if changed(|c| c.pan_id.unwrap_or(0xffff) as u64) {
@@ -808,7 +922,9 @@ where
         payload[n] = 0;
 
         // Send as a PROP_VALUE_SET; the matched response carries the first line.
-        let (_p, off) = self.send_prop_await(prop, &payload[..=n]).await?;
+        let (_p, off) = self
+            .send_prop_await(prop, &payload[..=n], RESPONSE_TIMEOUT)
+            .await?;
         let mut written = copy_utf8(&self.rx_frame[off..self.rx_len], out, 0);
 
         // Drain any further streamed output lines (unsolicited
@@ -817,6 +933,9 @@ where
             let Ok(len) = self.recv_frame(RESPONSE_TIMEOUT).await else {
                 break; // timeout => no more output
             };
+            if self.try_stash_rx(len) {
+                continue;
+            }
             let Some((_tid, rcmd, rprop, o)) = spinel_parse_header(&self.rx_frame[..len]) else {
                 continue;
             };
@@ -909,8 +1028,13 @@ where
         payload[n] = tx_power as u8;
         n += 1;
 
-        // Send STREAM_RAW and take the matched transmit-done response.
-        let (_prop, off) = self.send_prop_await(PROP_STREAM_RAW, &payload[..n]).await?;
+        // Send STREAM_RAW and take the matched transmit-done response. Use the
+        // long transmit timeout: a broadcast frame (no ACK) burns all CSMA
+        // backoffs + MAC retries before the RCP reports done, which can take
+        // seconds on a congested channel — see [`TRANSMIT_TIMEOUT`].
+        let (_prop, off) = self
+            .send_prop_await(PROP_STREAM_RAW, &payload[..n], TRANSMIT_TIMEOUT)
+            .await?;
 
         // Parse the transmit-done body (from `RadioSpinel::HandleTransmitDone`):
         //   uint_packed status + bool framePending + bool headerUpdated
@@ -960,8 +1084,25 @@ where
         self.ensure_init().await?;
         self.ensure_rx_enabled(true).await?;
 
-        let cmd_is = CMD_PROP_VALUE_IS;
+        let channel = self.config.as_ref().map(|c| c.channel).unwrap_or(0);
 
+        // First return any frame that was stashed while we were busy waiting for
+        // a command response (see `try_stash_rx`). This is the common case —
+        // inbound frames usually arrive during a transmit.
+        while let Some(stashed) = self.rx_queue.pop_front() {
+            if let Some((psdu, rssi)) = parse_radio_frame(&stashed) {
+                let copy = psdu.len().min(psdu_buf.len());
+                psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
+                return Ok(PsduMeta {
+                    len: copy,
+                    channel,
+                    rssi,
+                });
+            }
+            // Unparseable stashed frame — skip and try the next.
+        }
+
+        // Nothing queued: read the wire until an unsolicited `STREAM_RAW` arrives.
         loop {
             let frame_len = self.recv_frame(Duration::from_secs(3600)).await?;
             let frame = &self.rx_frame[..frame_len];
@@ -970,11 +1111,10 @@ where
             };
 
             // Unsolicited STREAM_RAW notification = a received frame.
-            if tid == 0 && rcmd == cmd_is && rprop == PROP_STREAM_RAW {
+            if tid == 0 && rcmd == CMD_PROP_VALUE_IS && rprop == PROP_STREAM_RAW {
                 let Some((psdu, rssi)) = parse_radio_frame(&frame[off..]) else {
                     continue;
                 };
-                let channel = self.config.as_ref().map(|c| c.channel).unwrap_or(0);
 
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
