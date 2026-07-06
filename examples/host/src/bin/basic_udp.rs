@@ -36,7 +36,7 @@ const BOUND_PORT: u16 = 1212;
 const UDP_SOCKETS_BUF: usize = 1280;
 const UDP_MAX_SOCKETS: usize = 2;
 
-const DEFAULT_SERIAL: &str = "/dev/ttyACM1";
+const DEFAULT_SERIAL: &str = "/dev/ttyACM0";
 const DEFAULT_BAUD: u32 = 115_200;
 
 const THREAD_DATASET: &str = match option_env!("THREAD_DATASET") {

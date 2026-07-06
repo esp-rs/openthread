@@ -158,9 +158,8 @@ const PROP_MAC_15_4_SADDR: u32 = 0x35;
 const PROP_MAC_15_4_PANID: u32 = 0x36;
 const PROP_MAC_RAW_STREAM_ENABLED: u32 = 0x37;
 const PROP_MAC_PROMISCUOUS_MODE: u32 = 0x38;
-/// `SPINEL_PROP_MAC_RX_ON_WHEN_IDLE_MODE` — keep the receiver on between TX/RX so
-/// the RCP hears asynchronous traffic (MLE, parent responses). Without it a
-/// non-sleepy node never attaches.
+/// `SPINEL_PROP_MAC_RX_ON_WHEN_IDLE_MODE` — keep the receiver on between TX/RX
+/// so the RCP hears asynchronous traffic (MLE, parent responses).
 const PROP_MAC_RX_ON_WHEN_IDLE_MODE: u32 = 0x3b;
 const PROP_STREAM_RAW: u32 = 0x71;
 
@@ -194,10 +193,8 @@ const RESPONSE_TIMEOUT: Duration = Duration::from_millis(2000);
 /// CSMA/CA backoff **and** up to `maxFrameRetries` MAC retransmissions before it
 /// reports done — a *broadcast* frame (e.g. an MLE Parent Request, which is
 /// never acked) burns every backoff + retry slot first, which on a congested
-/// channel comfortably exceeds one second. The reference uses
-/// `OPENTHREAD_SPINEL_CONFIG_RCP_TX_WAIT_TIME_SECS` (5 s). Using the shorter
-/// command timeout here made transmits spuriously fail with `RxFailed`, which
-/// OpenThread saw as a failed Parent Request — so the node could never attach.
+/// channel comfortably exceeds one second. Matches the reference's
+/// `OPENTHREAD_SPINEL_CONFIG_RCP_TX_WAIT_TIME_SECS` (5 s).
 const TRANSMIT_TIMEOUT: Duration = Duration::from_secs(5);
 
 /// Max on-the-wire spinel frame (pre-HDLC) we build/parse.
@@ -207,13 +204,18 @@ const MAX_SPINEL_FRAME: usize = OT_RADIO_FRAME_MAX_SIZE as usize + 128;
 /// length-prefixed PSDU plus RSSI/noise/flags/PHY-data metadata).
 const RX_BODY_CAP: usize = OT_RADIO_FRAME_MAX_SIZE as usize + 32;
 
-/// How many received frames to buffer while the driver is busy waiting for a
-/// command response (see [`SpinelRadio::try_stash_rx`]). 802.15.4 receive is
-/// bursty; these slots absorb frames that arrive during a transmit — which, on a
-/// congested channel, can legitimately run for a second or more of CSMA backoff
-/// plus MAC retries (see [`TRANSMIT_TIMEOUT`]), so the buffer is sized to hold a
-/// burst across that whole window rather than a single frame or two.
-const RX_QUEUE_DEPTH: usize = 16;
+/// The default RX-queue depth (the `RX_QUEUE_DEPTH` const generic of
+/// [`SpinelRadio`]): how many received frames to buffer while the driver is
+/// busy waiting for a command response (see [`SpinelRadio::try_stash_rx`]).
+///
+/// Eight slots hold more than a saturated 250 kbps channel can deliver during
+/// a typical command round-trip (~10-30 ms). Only a transmit stalled for
+/// seconds in CSMA backoff on a congested mesh (see [`TRANSMIT_TIMEOUT`])
+/// could overflow it — and overflow degrades gracefully (the oldest frame is
+/// evicted). Deployments on very busy meshes can raise the depth via
+/// [`SpinelRadio::new_with_rx_queue_depth`]; each slot costs
+/// `OT_RADIO_FRAME_MAX_SIZE + 32` (~160) bytes of RAM.
+pub const DEFAULT_RX_QUEUE_DEPTH: usize = 8;
 
 /// A stashed received-frame body: the `STREAM_RAW` payload bytes.
 type RxFrame = heapless::Vec<u8, RX_BODY_CAP>;
@@ -280,12 +282,19 @@ fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
 
 /// Parse a spinel radio frame body (the payload of a `STREAM_RAW`
 /// `PROP_VALUE_IS`, used both for a received frame and for the ACK reported in a
-/// transmit-done status). Returns the PSDU slice and its RSSI.
+/// transmit-done status). Returns the PSDU slice, its RSSI, and the channel it
+/// was actually received on.
 ///
 /// Layout (from OpenThread's `RadioSpinel::ParseRadioFrame`):
-/// `DATA_WLEN(psdu) + i8 rssi + i8 noise + u16 flags + ...`; we take the PSDU and
-/// the RSSI (the fields after are LQI/timestamp/rx-error, unused here).
-fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>)> {
+/// `DATA_WLEN(psdu) + i8 rssi + i8 noise + u16 flags + PHY-data struct + ...`,
+/// where the PHY-data struct is a spinel struct (u16-LE length prefix) whose
+/// first two bytes are the 802.15.4 channel and LQI. The RX channel matters
+/// when the radio is retuned between reception and delivery (e.g. a frame
+/// stashed during a command wait, or beacons during an active scan) — the
+/// config channel at delivery time may no longer be the reception channel.
+/// Missing metadata (a short body) degrades to `None`, and the caller falls
+/// back to the config channel.
+fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>)> {
     if body.len() < 2 {
         return None;
     }
@@ -294,8 +303,14 @@ fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>)> {
         return None;
     }
     let psdu = &body[2..2 + plen];
-    let rssi = body.get(2 + plen).map(|&b| b as i8);
-    Some((psdu, rssi))
+
+    // Metadata after the PSDU: rssi(1) + noise(1) + flags(2) + PHY-data struct
+    // (2-byte LE length prefix, then channel + lqi + ...).
+    let meta = &body[2 + plen..];
+    let rssi = meta.first().map(|&b| b as i8);
+    let channel = (meta.len() >= 7 && u16::from_le_bytes([meta[4], meta[5]]) >= 1).then(|| meta[6]);
+
+    Some((psdu, rssi, channel))
 }
 
 /// Append a (possibly NUL-terminated) UTF-8 blob `src` into `out` starting at
@@ -384,7 +399,12 @@ const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
 /// let radio = SpinelRadio::new(transport);
 /// ot.run(radio).await
 /// ```
-pub struct SpinelRadio<T> {
+///
+/// The `RX_QUEUE_DEPTH` const generic sizes the buffer for inbound frames that
+/// arrive while a command round-trip is in flight (see
+/// [`DEFAULT_RX_QUEUE_DEPTH`]); the default suits typical meshes, and
+/// [`SpinelRadio::new_with_rx_queue_depth`] selects a custom depth.
+pub struct SpinelRadio<T, const RX_QUEUE_DEPTH: usize = DEFAULT_RX_QUEUE_DEPTH> {
     transport: T,
     /// The RCP is brought up on the first radio operation (or eagerly via
     /// [`Radio::init`]). `None` until the startup handshake runs.
@@ -408,10 +428,12 @@ pub struct SpinelRadio<T> {
     /// Received-frame bodies that arrived (as unsolicited `STREAM_RAW`
     /// notifications) while the driver was waiting for a command response, so
     /// they cannot be dropped. `receive` drains this before reading the wire.
-    /// This is essential: OpenThread transmits almost continuously (parent
-    /// requests, scans), so most inbound frames arrive during a transmit's
-    /// response wait — without this queue they would be lost and the node could
-    /// never attach.
+    ///
+    /// This matters because the RCP has already MAC-ACKed a unicast before
+    /// forwarding it, so a frame dropped here would never be retransmitted at
+    /// the MAC layer — only slow upper-layer retries could recover it. The
+    /// reference `SpinelDriver` keeps the same queue (its `MultiFrameBuffer`
+    /// of frames saved while `WaitResponse` runs).
     rx_queue: heapless::Deque<RxFrame, RX_QUEUE_DEPTH>,
 }
 
@@ -419,9 +441,27 @@ impl<T> SpinelRadio<T>
 where
     T: SpinelTransport,
 {
-    /// Create a new `SpinelRadio` over `transport`. The RCP is initialized on the
-    /// first radio operation.
+    /// Create a new `SpinelRadio` over `transport`, with the default RX-queue
+    /// depth ([`DEFAULT_RX_QUEUE_DEPTH`]). The RCP is initialized on the first
+    /// radio operation.
     pub fn new(transport: T) -> Self {
+        Self::new_with_rx_queue_depth(transport)
+    }
+}
+
+impl<T, const RX_QUEUE_DEPTH: usize> SpinelRadio<T, RX_QUEUE_DEPTH>
+where
+    T: SpinelTransport,
+{
+    /// Create a new `SpinelRadio` over `transport` with a custom RX-queue
+    /// depth (see [`DEFAULT_RX_QUEUE_DEPTH`] for how to size it):
+    ///
+    /// ```ignore
+    /// let radio = SpinelRadio::<_, 16>::new_with_rx_queue_depth(transport);
+    /// ```
+    ///
+    /// The RCP is initialized on the first radio operation.
+    pub fn new_with_rx_queue_depth(transport: T) -> Self {
         Self {
             transport,
             eui64: None,
@@ -439,8 +479,9 @@ where
     /// If the just-received frame in `rx_frame[..frame_len]` is an *unsolicited*
     /// received-radio-frame notification (`tid == 0`, `PROP_VALUE_IS`,
     /// `STREAM_RAW`), stash its body in the RX queue so a later [`Self::receive`]
-    /// can return it, and report `true`. Called from every command-response wait
-    /// loop so inbound frames are never dropped while a command is in flight.
+    /// can return it, and report `true`. Called from the command-response wait
+    /// loops ([`Self::await_response`], [`Self::drain_acks`]) so inbound frames
+    /// are never dropped while a command is in flight.
     ///
     /// If the queue is full the oldest frame is evicted (newest-wins) — a
     /// deliberate bound; sustained inability to drain means the consumer is not
@@ -792,13 +833,14 @@ where
 
     /// Wait for an unsolicited `LAST_STATUS` in `[begin, end)` (the RCP reset
     /// acknowledgement). Best-effort with a timeout.
+    ///
+    /// No RX stashing here (unlike [`Self::await_response`]): the RCP has just
+    /// been reset, so its raw stream is disabled and no `STREAM_RAW` frames can
+    /// arrive during this wait.
     async fn wait_reset_status(&mut self, begin: u32, end: u32) -> Result<(), RadioErrorKind> {
         let cmd_is = CMD_PROP_VALUE_IS;
         loop {
             let frame_len = self.recv_frame(RESPONSE_TIMEOUT).await?;
-            if self.try_stash_rx(frame_len) {
-                continue;
-            }
             let frame = &self.rx_frame[..frame_len];
             let Some((_tid, rcmd, rprop, off)) = spinel_parse_header(frame) else {
                 continue;
@@ -830,7 +872,15 @@ where
         let rx_when_idle = [config.rx_when_idle as u8];
         let pan_id = config.pan_id.unwrap_or(0xffff).to_le_bytes();
         let short_addr = config.short_addr.unwrap_or(0xffff).to_le_bytes();
-        let ext_addr = config.ext_addr.unwrap_or(0).to_le_bytes();
+        // The spinel `MAC_15_4_LADDR` property carries the extended address in
+        // *reversed* byte order relative to the bytes `otPlatRadioSetExtendedAddress`
+        // hands the platform — which is what `Config::ext_addr` holds, as
+        // `u64::from_le_bytes` of those bytes (see `platform.rs`). The reference
+        // POSIX host reverses before encoding (`otPlatRadioSetExtendedAddress` in
+        // `posix/platform/radio.cpp`), so big-endian is the wire order. The RCP's
+        // hardware address filter — and hence all unicast reception — depends on
+        // this order.
+        let ext_addr = config.ext_addr.unwrap_or(0).to_be_bytes();
 
         let mut batch: [(u32, &[u8]); 7] = [(0, &[]); 7];
         let mut count = 0;
@@ -928,14 +978,14 @@ where
         let mut written = copy_utf8(&self.rx_frame[off..self.rx_len], out, 0);
 
         // Drain any further streamed output lines (unsolicited
-        // PROP_VALUE_IS(NEST_STREAM_MFG)) until the RCP goes quiet.
+        // PROP_VALUE_IS(NEST_STREAM_MFG)) until the RCP goes quiet. No RX
+        // stashing here (unlike `await_response`): `diag` is a before-`run`
+        // tool (see above), so the raw stream has never been enabled and no
+        // `STREAM_RAW` frames can arrive.
         while written < out.len() {
             let Ok(len) = self.recv_frame(RESPONSE_TIMEOUT).await else {
                 break; // timeout => no more output
             };
-            if self.try_stash_rx(len) {
-                continue;
-            }
             let Some((_tid, rcmd, rprop, o)) = spinel_parse_header(&self.rx_frame[..len]) else {
                 continue;
             };
@@ -948,7 +998,7 @@ where
     }
 }
 
-impl<T> Radio for SpinelRadio<T>
+impl<T, const RX_QUEUE_DEPTH: usize> Radio for SpinelRadio<T, RX_QUEUE_DEPTH>
 where
     T: SpinelTransport,
 {
@@ -1060,7 +1110,7 @@ where
         p += 2;
 
         // The remaining bytes are the ACK radio frame (if any was received).
-        let Some((ack_psdu, ack_rssi)) = parse_radio_frame(&body[p..]) else {
+        let Some((ack_psdu, ack_rssi, ack_channel)) = parse_radio_frame(&body[p..]) else {
             return Ok(None);
         };
 
@@ -1070,7 +1120,7 @@ where
                 buf[..copy].copy_from_slice(&ack_psdu[..copy]);
                 Ok(Some(PsduMeta {
                     len: copy,
-                    channel,
+                    channel: ack_channel.unwrap_or(channel),
                     rssi: ack_rssi,
                 }))
             }
@@ -1084,18 +1134,22 @@ where
         self.ensure_init().await?;
         self.ensure_rx_enabled(true).await?;
 
-        let channel = self.config.as_ref().map(|c| c.channel).unwrap_or(0);
+        // Fallback for frames whose metadata lacks the PHY-data struct; the
+        // parsed per-frame channel is preferred (a stashed frame may have been
+        // received on a different channel than the current config's, e.g.
+        // during an active scan).
+        let cfg_channel = self.config.as_ref().map(|c| c.channel).unwrap_or(0);
 
         // First return any frame that was stashed while we were busy waiting for
         // a command response (see `try_stash_rx`). This is the common case —
         // inbound frames usually arrive during a transmit.
         while let Some(stashed) = self.rx_queue.pop_front() {
-            if let Some((psdu, rssi)) = parse_radio_frame(&stashed) {
+            if let Some((psdu, rssi, rx_channel)) = parse_radio_frame(&stashed) {
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
                 return Ok(PsduMeta {
                     len: copy,
-                    channel,
+                    channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
                 });
             }
@@ -1112,7 +1166,7 @@ where
 
             // Unsolicited STREAM_RAW notification = a received frame.
             if tid == 0 && rcmd == CMD_PROP_VALUE_IS && rprop == PROP_STREAM_RAW {
-                let Some((psdu, rssi)) = parse_radio_frame(&frame[off..]) else {
+                let Some((psdu, rssi, rx_channel)) = parse_radio_frame(&frame[off..]) else {
                     continue;
                 };
 
@@ -1121,7 +1175,7 @@ where
 
                 return Ok(PsduMeta {
                     len: copy,
-                    channel,
+                    channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
                 });
             }

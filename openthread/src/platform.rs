@@ -385,11 +385,9 @@ extern "C" fn otPlatLog(
 // Other C functions which might generally not be supported by MCU ROMs or by - say - `tinyrlibc`.
 //
 // IMPORTANT: these MUST match the C `<ctype.h>` ABI exactly — `int isXXX(int c)`.
-// A `-> bool` return is a real bug on some hosts: C's `isXXX` returns `int`, so
-// the caller reads 4 bytes of the return register; a 1-byte `bool` leaves the
-// upper 3 bytes undefined (fine on ARM where returns are zero-extended, but on
-// x86-64 they are garbage), making e.g. `iscntrl('-')` read as truthy and
-// wrongly rejecting a valid UTF-8 string (breaks dataset network-name validation).
+// C callers read a full `int` from the return register, so a narrower Rust
+// return type (e.g. `bool`) leaves its upper bytes undefined on targets that
+// do not zero-extend narrow returns (x86-64).
 
 #[no_mangle]
 extern "C" fn iscntrl(c: core::ffi::c_int) -> core::ffi::c_int {
