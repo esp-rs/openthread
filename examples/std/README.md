@@ -18,9 +18,9 @@ flashed with stock `ot-rcp` firmware) connected over USB serial.
 ## Running
 
 ```sh
-# Point RCP_SERIAL at your dongle (default: /dev/ttyUSB0), THREAD_DATASET at your
+# Point RCP_SERIAL at your dongle (default: /dev/ttyACM0), THREAD_DATASET at your
 # network's operational dataset (a hex TLV string; a default is baked in).
-RCP_SERIAL=/dev/ttyUSB0 \
+RCP_SERIAL=/dev/ttyACM0 \
 THREAD_DATASET=<hex-tlv> \
   cargo run --features force-generate-bindings --bin basic_udp
 ```

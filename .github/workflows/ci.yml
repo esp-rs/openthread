@@ -76,6 +76,17 @@ jobs:
       - name: Build
         run: cargo build
 
+      - name: Fmt Check - STD Examples
+        run: cd examples/std; cargo fmt -- --check
+
+      # `force-generate-bindings` is currently required for the STD examples
+      # (until the committed host-target bindings match their feature set).
+      - name: Clippy - STD Examples
+        run: cd examples/std; cargo clippy --features force-generate-bindings -- -D warnings
+
+      - name: Build - STD Examples
+        run: cd examples/std; cargo build --features force-generate-bindings
+
   build-openthread:
     name: Pre-build OpenThread native libs
     runs-on: ubuntu-latest
