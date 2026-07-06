@@ -151,7 +151,7 @@ embedded-hal-async = { workspace = true, default-features = false, optional = tr
 # readiness-based async I/O over the tty fd; `nix` to open + configure it
 # (`fs` = open, `term` = termios/baud). Unix only for now.
 async-io = { workspace = true, default-features = false, optional = true }
-nix = { workspace = true, default-features = false, features = ["fs", "term"], optional = true }
+nix = { workspace = true, default-features = false, features = ["fs", "term", "poll"], optional = true }
 esp-radio = { workspace = true, default-features = false, features = ["unstable", "ieee802154"], optional = true }
 embassy-nrf = { workspace = true, default-features = false, optional = true }
 portable-atomic = { workspace = true, default-features = false }

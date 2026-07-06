@@ -179,6 +179,20 @@ impl HdlcDecoder {
 /// ```ignore
 /// let radio = SpinelRadio::new(UartSpinelTransport::new(uart));
 /// ```
+///
+/// # Keep the wire drained (choose a buffered/DMA UART)
+///
+/// [`SpinelRadio`](super::SpinelRadio) reads this transport in bursts around
+/// its command exchanges, so on an MCU the UART must capture inbound bytes
+/// *between* those reads on its own: construct it with interrupt- or
+/// DMA-backed RX buffering (e.g. embassy's ring-buffered/`Buffered` UART
+/// variants), sized for a few in-flight spinel frames, and/or enable RTS/CTS
+/// hardware flow control. An unbuffered UART merely *drops* on RX overrun —
+/// the clipped frame fails its HDLC FCS and spinel's per-command acks recover
+/// it — but chronic overruns under inbound traffic degrade throughput. (On a
+/// `std` host, [`SerialPort`](super::SerialPort) provides this draining via a
+/// background thread; some USB transports — e.g. the ESP32XX USB-Serial-JTAG —
+/// *require* it, wedging the RCP if the host stops reading.)
 pub struct UartSpinelTransport<U> {
     uart: U,
     /// HDLC-encode scratch (worst case: every byte escaped, plus flags + FCS).

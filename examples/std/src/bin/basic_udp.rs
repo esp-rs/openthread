@@ -6,7 +6,8 @@
 //! provisions an MTD device with fixed Thread network settings, waits for it to
 //! connect, and then sends and receives IPv6 UDP packets.
 //!
-//! Set the serial device with `RCP_SERIAL` (default `/dev/ttyACM0`) and,
+//! Set the serial device with `RCP_SERIAL` (default `/dev/ttyACM0`), the baud
+//! rate with `RCP_BAUD` (default 115200; e.g. 460800 for ESP32XX RCPs) and,
 //! optionally, the network with `THREAD_DATASET` (a hex TLV string).
 
 use core::net::{Ipv6Addr, SocketAddrV6};
@@ -56,8 +57,12 @@ fn main() {
 #[embassy_executor::task]
 async fn main_task(spawner: Spawner) {
     let serial_path = std::env::var("RCP_SERIAL").unwrap_or_else(|_| DEFAULT_SERIAL.into());
+    let baud = std::env::var("RCP_BAUD")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(DEFAULT_BAUD);
 
-    info!("Starting; opening RCP serial {serial_path} @ {DEFAULT_BAUD} baud");
+    info!("Starting; opening RCP serial {serial_path} @ {baud} baud");
 
     // A `'static` RNG (OpenThread stores the reference), seeded from the OS.
     static RNG: StaticCell<StdRng> = StaticCell::new();
@@ -85,7 +90,7 @@ async fn main_task(spawner: Spawner) {
     // Unlike the embedded examples there is no `ProxyRadio` / high-priority
     // executor split — serial I/O is not latency-critical, so the radio runs
     // directly in `OpenThread::run`.
-    let serial = SerialPort::open(&serial_path, DEFAULT_BAUD).expect("open RCP serial");
+    let serial = SerialPort::open(&serial_path, baud).expect("open RCP serial");
     let radio = SpinelRadio::new(UartSpinelTransport::new(serial));
 
     spawner.spawn(run_ot(ot.clone(), radio).unwrap());
