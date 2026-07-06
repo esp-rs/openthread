@@ -37,10 +37,13 @@ pub struct PingStressArgs {
     #[arg(short = 'I', long)]
     interface: Option<String>,
 
-    /// ICMP payload sizes (bytes) to sweep. The default covers a
-    /// single-frame payload and one that 6LoWPAN-fragments into several
-    /// 802.15.4 frames.
-    #[arg(long, value_delimiter = ',', default_value = "56,512")]
+    /// ICMP payload sizes (bytes) to sweep. The default covers a single-frame
+    /// payload, one that 6LoWPAN-fragments into several 802.15.4 frames, and
+    /// 1232 — the largest echo that still fits one IPv6 packet at Thread's
+    /// 1280 MTU (~16 fragments), the worst case for the 6LoWPAN reassembly
+    /// queues: losing any one fragment wastes the whole packet and holds a
+    /// reassembly buffer until timeout.
+    #[arg(long, value_delimiter = ',', default_value = "56,512,1232")]
     sizes: Vec<u16>,
 
     /// Ping intervals (milliseconds) to sweep, heaviest last. The system
@@ -85,6 +88,41 @@ struct BurstOutcome {
     /// Time until the first fully clean recovery probe, or `None` if the
     /// device did not recover within the limit.
     recovery: Option<f64>,
+}
+
+/// Estimate the channel ceiling — echo round trips per second the 802.15.4
+/// link can physically carry — for a given ICMP payload size, so the report
+/// can show each burst's `load` factor and the loss floor it implies.
+///
+/// Model (an order-of-magnitude aid, not a promise): 250 kbps O-QPSK PHY, one
+/// radio hop, otherwise idle channel. The IPv6 datagram is `payload + 8
+/// (ICMPv6) + 40 (IPv6)`; 6LoWPAN IPHC saves ~32 header bytes, and a
+/// fragmented datagram carries ~96 datagram bytes per full 127-byte frame.
+/// Each frame costs its on-air bytes (plus 6 B PHY preamble/header) at
+/// 250 kbps, plus ~2.3 ms for CSMA backoff, turnaround, MAC-ACK and IFS. The
+/// request and the reply cross the same channel, so one echo costs both
+/// directions' airtime.
+fn link_estimate(size: u16) -> f64 {
+    let datagram = f64::from(size) + 8.0 + 40.0;
+
+    // Single frame if the IPHC-compressed datagram plus ~25 B of MAC
+    // overhead fits a 127-byte PSDU; otherwise FRAG1/FRAGN fragments.
+    let compressed = datagram - 32.0;
+    let frames = if compressed + 25.0 <= 127.0 {
+        1.0
+    } else {
+        (datagram / 96.0).ceil()
+    };
+
+    let frame_bytes = if frames > 1.0 {
+        127.0
+    } else {
+        compressed + 25.0
+    };
+    let per_frame_ms = (6.0 + frame_bytes) * 8.0 / 250.0 + 2.3;
+    let ping_ms = 2.0 * frames * per_frame_ms;
+
+    1000.0 / ping_ms
 }
 
 pub fn run(args: &PingStressArgs) -> Result<()> {
@@ -295,17 +333,30 @@ fn fmt_rtt(rtt: Option<f64>) -> String {
 /// (radio environments are noisy).
 fn report(outcomes: &[BurstOutcome]) {
     println!();
-    println!("size (B) | interval (ms) |  pps | tx    | rx    | loss %  | avg rtt (ms) | recovery (s)");
-    println!("---------|---------------|------|-------|-------|---------|--------------|-------------");
+    println!("size (B) | interval (ms) |  pps | load  | tx    | rx    | loss %  | exp. loss % | avg rtt (ms) | recovery (s)");
+    println!("---------|---------------|------|-------|-------|-------|---------|-------------|--------------|-------------");
     for o in outcomes {
+        let pps = 1000 / o.interval_ms.max(1);
+        let load = f64::from(pps) / link_estimate(o.size);
+        // The capacity floor: with the offered load at `load` times what the
+        // channel can carry, at least `1 - 1/load` of the echoes must be lost
+        // no matter how well the stack behaves. Real loss runs higher on
+        // fragmented payloads (one lost fragment voids the whole packet).
+        let expected_loss = (1.0 - 1.0 / load).max(0.0) * 100.0;
         println!(
-            "{:>8} | {:>13} | {:>4} | {:>5} | {:>5} | {:>7.2} | {:>12} | {}",
+            "{:>8} | {:>13} | {:>4} | {:>4.1}x | {:>5} | {:>5} | {:>7.2} | {:>11} | {:>12} | {}",
             o.size,
             o.interval_ms,
-            1000 / o.interval_ms.max(1),
+            pps,
+            load,
             o.stats.transmitted,
             o.stats.received,
             o.stats.loss_pct(),
+            if expected_loss > 0.0 {
+                format!(">= {expected_loss:.0}")
+            } else {
+                "0".into()
+            },
             match o.stats.rtt_avg_ms {
                 Some(ms) => format!("{ms:.1}"),
                 None => "n/a".into(),

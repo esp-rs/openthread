@@ -103,6 +103,19 @@ impl SerialPort {
         let baud = baud_rate(baud)
             .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "unsupported baud rate"))?;
 
+        // Exclusive mode: a tty allows concurrent opens by default, and a
+        // second reader (a stale process, a terminal monitor) silently steals
+        // bytes from the spinel stream, corrupting both sessions. With
+        // `TIOCEXCL`, other non-root opens fail with `EBUSY` instead.
+        //
+        // SAFETY: `fd` is a valid, owned tty descriptor; `TIOCEXCL` takes no
+        // argument.
+        if unsafe { nix::libc::ioctl(std::os::fd::AsRawFd::as_raw_fd(&fd), nix::libc::TIOCEXCL) }
+            != 0
+        {
+            return Err(io::Error::last_os_error());
+        }
+
         // Raw mode + baud + 8N1 + no flow control.
         let mut termios = nix::sys::termios::tcgetattr(&fd).map_err(io::Error::from)?;
         cfmakeraw(&mut termios);
