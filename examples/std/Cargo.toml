@@ -1,5 +1,5 @@
 [package]
-name = "host-openthread-examples"
+name = "std-openthread-examples"
 version = "0.1.0"
 edition = "2021"
 resolver = "2"

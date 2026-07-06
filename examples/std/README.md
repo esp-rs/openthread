@@ -1,4 +1,4 @@
-# `openthread` host examples
+# `openthread` STD (host) examples
 
 These examples run the full OpenThread stack on a **host** (Linux/macOS) and
 drive a **remote** `ot-rcp` radio co-processor over a serial port using the
