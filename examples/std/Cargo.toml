@@ -31,13 +31,7 @@ tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "st
 critical-section = { version = "1.2", features = ["std"] }
 
 # The `std` feature pulls in `rcp` + the host `SerialPort` transport.
-#
-# `heap-ext-ot` routes OpenThread's own heap to the global allocator (we provide
-# `otPlatCAlloc`/`otPlatFree` in `platform.rs`). On a host there is no reason to
-# run OpenThread + MbedTLS out of OT's small internal heap buffer when a real
-# libc heap is available.
-openthread = { path = "../../openthread", features = ["std", "udp", "srp", "dns-client", "embassy-net-driver-channel", "isupper", "heap-ext-ot", "log"] }
-libc = "0.2"
+openthread = { path = "../../openthread", features = ["std", "udp", "srp", "dns-client", "embassy-net-driver-channel", "isupper", "log"] }
 
 [patch.crates-io]
 # OpenThread emplaces mbedtls crypto contexts in 8-aligned opaque storage, so

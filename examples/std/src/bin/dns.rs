@@ -28,10 +28,6 @@ use static_cell::StaticCell;
 // Linked for its `utoa`/`strtoul` C symbols, which OpenThread's C references.
 use tinyrlibc as _;
 
-// Provides `otPlatCAlloc`/`otPlatFree` for the `heap-ext-ot` feature.
-#[path = "../platform.rs"]
-mod platform;
-
 const UDP_SOCKETS_BUF: usize = 1280;
 const UDP_MAX_SOCKETS: usize = 2;
 

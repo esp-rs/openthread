@@ -26,11 +26,6 @@ use static_cell::StaticCell;
 // Linked for its `utoa`/`strtoul` C symbols, which OpenThread's C references.
 use tinyrlibc as _;
 
-// Provides `otPlatCAlloc`/`otPlatFree` for the `heap-ext-ot` feature (see the
-// module docs — routes OpenThread's heap to libc for 16-byte-aligned MbedTLS).
-#[path = "../platform.rs"]
-mod platform;
-
 const BOUND_PORT: u16 = 1212;
 
 const UDP_SOCKETS_BUF: usize = 1280;
