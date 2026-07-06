@@ -1065,7 +1065,19 @@ where
         n += 1;
         payload[n] = 1; // isHeaderUpdated (OT core secured the frame)
         n += 1;
-        payload[n] = 0; // isARetx
+        // isARetx: set for secured frames to keep the RCP's hands off the MAC
+        // header. RCP firmwares with a transmit-security engine (e.g. the nRF
+        // `ot-rcp`, `ot-nrf528xx` `radio.c` `otPlatRadioTransmit`) overwrite
+        // the frame counter and key index of every secured key-id-mode-1 frame
+        // with their *own* counter/key-id state — without consulting
+        // `isHeaderUpdated`/`isSecurityProcessed` — unless the frame is marked
+        // as a retransmission. Since this driver performs security on the
+        // host, the header is final: a re-stamped counter/key-id no longer
+        // matches the MIC, and every receiver silently drops the frame after
+        // its radio has already acknowledged it. `isARetx` has no other effect
+        // on the RCP for our traffic (its only other use is a CSL IE update,
+        // and CSL is never configured here).
+        payload[n] = psdu.first().is_some_and(|fcf| fcf & 0x08 != 0) as u8;
         n += 1;
         payload[n] = 1; // isSecurityProcessed (security done host-side)
         n += 1;

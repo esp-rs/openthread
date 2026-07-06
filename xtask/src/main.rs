@@ -12,6 +12,8 @@ use log::{info, LevelFilter};
 
 use tempfile::TempDir;
 
+mod ping_stress;
+
 #[derive(Parser, Debug)]
 #[command(
     author,
@@ -69,6 +71,16 @@ enum Commands {
         #[arg(last = true, allow_hyphen_values = true)]
         cargo_args: Vec<String>,
     },
+
+    /// Load/recovery-test a live OpenThread device with escalating ICMPv6
+    /// echo traffic (via the system `ping`).
+    ///
+    /// Sweeps a payload-size × interval matrix against the device and checks
+    /// that loss grows gracefully with the offered load and that the device
+    /// answers a clean probe promptly after each burst. Works against any
+    /// OpenThread node reachable over IPv6 — the host RCP driver as well as
+    /// an MCU with its native radio. See `xtask/src/ping_stress.rs`.
+    PingStress(ping_stress::PingStressArgs),
 }
 
 fn main() -> Result<()> {
@@ -84,6 +96,10 @@ fn main() -> Result<()> {
     let sys_crate_root_path = workspace.join("openthread-sys");
 
     let args = Args::parse();
+
+    if let Some(Commands::PingStress(ping_args)) = &args.command {
+        return ping_stress::run(ping_args);
+    }
 
     if let Some(Commands::Gen {
         target,

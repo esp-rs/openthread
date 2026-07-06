@@ -5,7 +5,7 @@
 //! Runs the OpenThread stack on a Linux/macOS host, talks to a stock `ot-rcp`
 //! over serial (spinel), registers an SRP host + service, and serves UDP.
 //!
-//! Set the serial device with `RCP_SERIAL` (default `/dev/ttyUSB0`) and,
+//! Set the serial device with `RCP_SERIAL` (default `/dev/ttyACM0`) and,
 //! optionally, `THREAD_DATASET` (hex TLV).
 
 use core::fmt::Write as _;
@@ -41,7 +41,7 @@ const UDP_MAX_SOCKETS: usize = 2;
 const SRP_SERVICE_BUF: usize = 300;
 const SRP_MAX_SERVICES: usize = 2;
 
-const DEFAULT_SERIAL: &str = "/dev/ttyUSB0";
+const DEFAULT_SERIAL: &str = "/dev/ttyACM0";
 const DEFAULT_BAUD: u32 = 115_200;
 
 const THREAD_DATASET: &str = match option_env!("THREAD_DATASET") {
@@ -52,8 +52,11 @@ const THREAD_DATASET: &str = match option_env!("THREAD_DATASET") {
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 fn main() {
+    // Default to `info`; `RUST_LOG` overrides (e.g. `RUST_LOG=trace` surfaces
+    // the OpenThread C-stack logs when built with a verbose `OT_LOG_LEVEL`).
     env_logger::builder()
         .filter_level(log::LevelFilter::Info)
+        .parse_default_env()
         .init();
 
     let executor = EXECUTOR.init(Executor::new());

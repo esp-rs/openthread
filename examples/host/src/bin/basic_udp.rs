@@ -6,7 +6,7 @@
 //! provisions an MTD device with fixed Thread network settings, waits for it to
 //! connect, and then sends and receives IPv6 UDP packets.
 //!
-//! Set the serial device with `RCP_SERIAL` (default `/dev/ttyUSB0`) and,
+//! Set the serial device with `RCP_SERIAL` (default `/dev/ttyACM0`) and,
 //! optionally, the network with `THREAD_DATASET` (a hex TLV string).
 
 use core::net::{Ipv6Addr, SocketAddrV6};
@@ -47,8 +47,11 @@ const THREAD_DATASET: &str = match option_env!("THREAD_DATASET") {
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 fn main() {
+    // Default to `info`; `RUST_LOG` overrides (e.g. `RUST_LOG=trace` surfaces
+    // the OpenThread C-stack logs when built with a verbose `OT_LOG_LEVEL`).
     env_logger::builder()
         .filter_level(log::LevelFilter::Info)
+        .parse_default_env()
         .init();
 
     let executor = EXECUTOR.init(Executor::new());
