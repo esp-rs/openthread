@@ -29,10 +29,9 @@ use heapless::Vec;
 
 use openthread::enet::{self, EnetDriver, EnetRunner};
 use openthread::nrf::{Ieee802154, NrfRadio};
-use openthread::sys::otRadioCaps;
 use openthread::{
     BytesFmt, EmbassyTimeTimer, OpenThread, OtResources, PhyRadioRunner, ProxyRadio,
-    ProxyRadioResources, Radio, SimpleRamSettings,
+    ProxyRadioResources, SimpleRamSettings,
 };
 
 use rand_core::RngCore;
@@ -77,8 +76,6 @@ const THREAD_DATASET: &str = if let Some(dataset) = option_env!("THREAD_DATASET"
 } else {
     "000300001901020fd80208b566147d38e384200e080000639c5d67a3bd0510c490f58d4be0d5eaeb0f09b395d1ae17030d4e4553542d50414e2d304644380708fd7d4f8232cb00000410a7e08419ae47c177fb91bcfcec789aa50c0402a0f77835060004001fffe0"
 };
-
-const NRF_RADIO_CAPS: otRadioCaps = NrfRadio::CAPS.bits();
 
 // Only needed for tinyrlibc's alloc functions which won't be called at runtime.
 //
@@ -223,7 +220,7 @@ async fn main(spawner: Spawner) {
 #[embassy_executor::task]
 async fn run_enet_driver(
     mut runner: EnetRunner<'static, IPV6_PACKET_SIZE>,
-    radio: ProxyRadio<'static, NRF_RADIO_CAPS>,
+    radio: ProxyRadio<'static>,
 ) -> ! {
     runner.run(radio).await
 }

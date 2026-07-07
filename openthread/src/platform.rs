@@ -382,20 +382,27 @@ extern "C" fn otPlatLog(
     otError_OT_ERROR_NONE
 }
 
-// Other C functions which might generally not be supported by MCU ROMs or by - say - `tinyrlibc`
+// Other C functions which might generally not be supported by MCU ROMs or by - say - `tinyrlibc`.
+//
+// IMPORTANT: these MUST match the C `<ctype.h>` ABI exactly — `int isXXX(int c)`.
+// C callers read a full `int` from the return register, so a narrower Rust
+// return type (e.g. `bool`) leaves its upper bytes undefined on targets that
+// do not zero-extend narrow returns (x86-64).
 
 #[no_mangle]
-extern "C" fn iscntrl(v: u32) -> bool {
-    v < ' ' as u32
+extern "C" fn iscntrl(c: core::ffi::c_int) -> core::ffi::c_int {
+    // Control chars: 0x00..=0x1F and 0x7F (DEL).
+    ((0..0x20).contains(&c) || c == 0x7f) as core::ffi::c_int
 }
 
 #[no_mangle]
-extern "C" fn isprint(v: u32) -> bool {
-    v >= ' ' as u32 && v <= 127
+extern "C" fn isprint(c: core::ffi::c_int) -> core::ffi::c_int {
+    // Printable: space (0x20) through '~' (0x7E).
+    (0x20..0x7f).contains(&c) as core::ffi::c_int
 }
 
 #[cfg(feature = "isupper")]
 #[no_mangle]
-extern "C" fn isupper(v: u32) -> bool {
-    v >= 'A' as u32 && v <= 'Z' as u32
+extern "C" fn isupper(c: core::ffi::c_int) -> core::ffi::c_int {
+    (('A' as core::ffi::c_int..='Z' as core::ffi::c_int).contains(&c)) as core::ffi::c_int
 }

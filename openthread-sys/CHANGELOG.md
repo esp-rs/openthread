@@ -1,0 +1,14 @@
+# Changelog
+
+All notable changes to this project will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## Unreleased
+* Remote Radio Support (Spinel-RCP) (#98)
+* Streamline several features (#97):
+  * Put dns-client as part of the default / matter feature
+
+## [0.2.1] - 2026-06-25
+* Initial release
