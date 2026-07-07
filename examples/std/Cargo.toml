@@ -34,11 +34,8 @@ critical-section = { version = "1.2", features = ["std"] }
 openthread = { path = "../../openthread", features = ["std", "udp", "srp", "dns-client", "embassy-net-driver-channel", "isupper", "log"] }
 
 [patch.crates-io]
-# OpenThread emplaces mbedtls crypto contexts in 8-aligned opaque storage, so
-# an mbedtls-rs-sys whose alt contexts tolerate any alignment is required; the
-# published 0.1.0 demands 16-byte alignment. Drop this patch once a version
-# with alignment-agnostic contexts is published.
-mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", branch = "hw-accel" }
+# Necessary for some memory alignment issues which are only solved in the not-released-yet mbedtls-rs
+mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs" }
 
 [[bin]]
 path = "./src/bin/basic_udp.rs"
