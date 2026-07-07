@@ -115,6 +115,11 @@ impl Radio for EspRadio<'_> {
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
         // Fixed, statically-known capabilities of the ESP 802.15.4 radio: it does
         // full MAC offload (auto-ACK, filtering) and CSMA/ACK-timeout in hardware.
+        //
+        // No `ENERGY_SCAN` (and no `Radio::energy_scan` impl): the ESP 802.15.4
+        // hardware does have an energy detector, but `esp-radio`'s `Ieee802154`
+        // driver does not expose it (as of 0.18). Until it does, energy scans on
+        // this radio yield no measurements (see `Radio::energy_scan`).
         Ok(RadioCaps {
             phy: Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF),
             // .union(Capabilities::RX_ON_WHEN_IDLE) TODO: Depends on coex being off in ESP-IDF

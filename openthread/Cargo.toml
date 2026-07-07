@@ -83,7 +83,7 @@ isupper = [] # Provide internal implementation of the `isupper` C fn
 # ---------------------------------------------------------------------------
 
 # Barebones profile for Matter
-matter = ["srp-client", "dns-client", "openthread-sys/matter"]
+matter = ["srp-client", "dns-client", "ping-sender", "openthread-sys/matter"]
 
 # ---------------------------------------------------------------------------
 # OpenThread capability features. Each re-exports the corresponding

@@ -305,8 +305,26 @@ pub trait Radio {
     // TODO
     //fn set_enabled(&mut self, enabled: bool) -> Result<(), Self::Error>;
 
-    // TODO
-    //fn energy_scan(&mut self, channel: u8, duration: u16) -> Result<(), Self::Error>;
+    /// Perform an energy scan on `channel`: measure the energy observed over
+    /// `duration_millis` and return the maximum RSSI, in dBm.
+    ///
+    /// A radio that cannot measure channel energy keeps this default
+    /// implementation, which completes immediately reporting "no measurement"
+    /// (the 802.15.4 "invalid RSSI" value, +127 dBm); OpenThread omits such
+    /// channels from the energy scan results, so a scan on such a radio
+    /// cleanly yields *no* results rather than fake readings.
+    ///
+    /// NOTE: OpenThread's energy scan requests are always routed here,
+    /// regardless of whether the radio reports [`Capabilities::ENERGY_SCAN`]
+    /// (see the initial-`radio_caps` discussion in `lib.rs`: OpenThread
+    /// snapshots the radio capabilities before the actual `Radio` instance is
+    /// known, and its software-sampling fallback needs a synchronous RSSI
+    /// read, which is unimplementable on top of this async trait).
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        let _ = (channel, duration_millis);
+
+        Ok(crate::sys::OT_RADIO_RSSI_INVALID as i8)
+    }
 
     /// Transmit a radio frame.
     ///
@@ -347,6 +365,10 @@ where
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         T::set_config(self, config).await
+    }
+
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        T::energy_scan(self, channel, duration_millis).await
     }
 
     async fn transmit(
@@ -520,6 +542,14 @@ where
         self.ext_addr = config.ext_addr.unwrap_or(MacHeader::BROADCAST_EXT_ADDR);
 
         Ok(())
+    }
+
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        // Energy scan involves no MAC-layer processing - pass through.
+        self.radio
+            .energy_scan(channel, duration_millis)
+            .await
+            .map_err(Self::Error::Io)
     }
 
     async fn transmit(
@@ -843,6 +873,13 @@ impl Radio for ProxyRadio<'_> {
         // radio in a `MacRadio`, so the MAC set it publishes is the full offload
         // set; the runner must be running for TX/RX to work at all, so this
         // resolves once it has brought the radio up.)
+        //
+        // TODO: the proxy's request/response protocol carries only TX/RX, so
+        // `Radio::energy_scan` is *not* forwarded to the PHY radio: the proxy
+        // keeps the default implementation and reports "no measurement". This
+        // costs nothing today (no proxied radio can measure channel energy —
+        // see the `esp`/`nrf` notes); forward it through the protocol if one
+        // ever can.
         Ok(self.caps.wait().await)
     }
 

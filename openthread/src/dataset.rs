@@ -2,6 +2,8 @@
 //!
 //! Basically, a way to configure the Thread network settings.
 
+#[cfg(feature = "ftd")]
+use crate::sys::otDatasetCreateNewNetwork;
 use crate::sys::{
     otDatasetGetActive, otDatasetParseTlvs, otDatasetSetActive, otDatasetSetActiveTlvs,
     otDatasetSetPending, otDatasetSetPendingTlvs, otError_OT_ERROR_INVALID_ARGS,
@@ -40,7 +42,68 @@ pub struct OperationalDataset<'a> {
     pub channel_mask: Option<u32>,
 }
 
-impl OperationalDataset<'_> {
+impl<'a> OperationalDataset<'a> {
+    /// Load a dataset from the format the `OpenThread` C library provides.
+    ///
+    /// The inverse of [`Self::store_raw`]: components marked absent load as
+    /// `None`, and the network name borrows from `raw`.
+    ///
+    /// (Currently only consumed by the `ftd`-gated
+    /// [`OpenThread::create_new_network_dataset`], hence the `cfg`.)
+    #[cfg(feature = "ftd")]
+    pub(crate) fn load_raw(raw: &'a otOperationalDataset) -> Self {
+        let components = OperationalDatasetComponents::load_raw(&raw.mComponents);
+
+        Self {
+            active_timestamp: components
+                .active_timestamp_present
+                .then(|| ThreadTimestamp {
+                    seconds: raw.mActiveTimestamp.mSeconds,
+                    ticks: raw.mActiveTimestamp.mTicks,
+                    authoritative: raw.mActiveTimestamp.mAuthoritative,
+                }),
+            pending_timestamp: components
+                .pending_timestamp_present
+                .then(|| ThreadTimestamp {
+                    seconds: raw.mPendingTimestamp.mSeconds,
+                    ticks: raw.mPendingTimestamp.mTicks,
+                    authoritative: raw.mPendingTimestamp.mAuthoritative,
+                }),
+            network_key: components.network_key_present.then(|| raw.mNetworkKey.m8),
+            network_name: components.network_name_present.then(|| {
+                let name = unsafe {
+                    core::slice::from_raw_parts(
+                        raw.mNetworkName.m8.as_ptr() as *const u8,
+                        raw.mNetworkName.m8.len(),
+                    )
+                };
+
+                unwrap!(
+                    unwrap!(
+                        core::ffi::CStr::from_bytes_until_nul(name),
+                        "Not a valid CStr"
+                    )
+                    .to_str(),
+                    "Not a valid UTF-8 string"
+                )
+            }),
+            extended_pan_id: components
+                .extended_pan_id_present
+                .then(|| raw.mExtendedPanId.m8),
+            mesh_local_prefix: components
+                .mesh_local_prefix_present
+                .then(|| raw.mMeshLocalPrefix.m8),
+            delay: components.delay_present.then_some(raw.mDelay),
+            pan_id: components.pan_id_present.then_some(raw.mPanId),
+            channel: components.channel_present.then_some(raw.mChannel),
+            pskc: components.pskc_present.then(|| raw.mPskc.m8),
+            security_policy: components
+                .security_policy_present
+                .then(|| SecurityPolicy::load_raw(&raw.mSecurityPolicy)),
+            channel_mask: components.channel_mask_present.then_some(raw.mChannelMask),
+        }
+    }
+
     /// Store the dataset in the format the `OpenThread` C library expects.
     ///
     /// Arguments:
@@ -79,7 +142,7 @@ impl OperationalDataset<'_> {
         }
 
         if let Some(pending_timestamp) = dataset.pending_timestamp {
-            raw_dataset.mActiveTimestamp = otTimestamp {
+            raw_dataset.mPendingTimestamp = otTimestamp {
                 mSeconds: pending_timestamp.seconds,
                 mTicks: pending_timestamp.ticks,
                 mAuthoritative: pending_timestamp.authoritative,
@@ -387,6 +450,38 @@ impl OpenThread<'_> {
                 .then_some(dataset.mChannelMask),
             components,
         })
+    }
+
+    /// Create the Operational Dataset for a brand-new Thread network
+    /// (`otDatasetCreateNewNetwork`): cryptographically random values for the
+    /// security-sensitive parameters (network key, PSKc, extended PAN ID,
+    /// mesh-local prefix), a random PAN ID and channel, and defaults for the
+    /// rest.
+    ///
+    /// The generated dataset is handed to the `f` closure, which can inspect
+    /// or tweak a copy of it (e.g. set the network name, or pin the channel —
+    /// typically picked with [`OpenThread::energy_scan`]) and apply it via
+    /// [`OpenThread::set_active_dataset`]; calling back into this `OpenThread`
+    /// instance from within the closure is allowed. Forming the network then
+    /// amounts to enabling IPv6 and Thread — this node becomes the Leader.
+    #[cfg(feature = "ftd")]
+    pub fn create_new_network_dataset<F, R>(&self, f: F) -> Result<R, OtError>
+    where
+        F: FnOnce(&OperationalDataset<'_>) -> R,
+    {
+        // A stack local (~250 B) rather than the shared dataset scratch in the
+        // resources, so that the activation can be dropped before `f` runs
+        // (which is what allows `f` to call back into this `OpenThread`).
+        let mut raw: otOperationalDataset = unsafe { core::mem::zeroed() };
+
+        {
+            let mut ot = self.activate();
+            let state = ot.state();
+
+            ot!(unsafe { otDatasetCreateNewNetwork(state.ot.instance, &mut raw) })?;
+        }
+
+        Ok(f(&OperationalDataset::load_raw(&raw)))
     }
 
     /// Set a new active dataset in the OpenThread stack.

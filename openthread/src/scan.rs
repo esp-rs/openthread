@@ -3,14 +3,15 @@ use core::future::poll_fn;
 
 use crate::fmt::bitflags;
 use crate::sys::{
-    otActiveScanResult, otError_OT_ERROR_BUSY, otInstance, otLinkActiveScan,
-    otLinkIsActiveScanInProgress, OT_CHANNEL_10_MASK, OT_CHANNEL_11_MASK, OT_CHANNEL_12_MASK,
-    OT_CHANNEL_13_MASK, OT_CHANNEL_14_MASK, OT_CHANNEL_15_MASK, OT_CHANNEL_16_MASK,
-    OT_CHANNEL_17_MASK, OT_CHANNEL_18_MASK, OT_CHANNEL_19_MASK, OT_CHANNEL_1_MASK,
-    OT_CHANNEL_20_MASK, OT_CHANNEL_21_MASK, OT_CHANNEL_22_MASK, OT_CHANNEL_23_MASK,
-    OT_CHANNEL_24_MASK, OT_CHANNEL_25_MASK, OT_CHANNEL_26_MASK, OT_CHANNEL_2_MASK,
-    OT_CHANNEL_3_MASK, OT_CHANNEL_4_MASK, OT_CHANNEL_5_MASK, OT_CHANNEL_6_MASK, OT_CHANNEL_7_MASK,
-    OT_CHANNEL_8_MASK, OT_CHANNEL_9_MASK,
+    otActiveScanResult, otEnergyScanResult, otError_OT_ERROR_BUSY, otInstance, otLinkActiveScan,
+    otLinkEnergyScan, otLinkIsActiveScanInProgress, otLinkIsEnergyScanInProgress,
+    OT_CHANNEL_10_MASK, OT_CHANNEL_11_MASK, OT_CHANNEL_12_MASK, OT_CHANNEL_13_MASK,
+    OT_CHANNEL_14_MASK, OT_CHANNEL_15_MASK, OT_CHANNEL_16_MASK, OT_CHANNEL_17_MASK,
+    OT_CHANNEL_18_MASK, OT_CHANNEL_19_MASK, OT_CHANNEL_1_MASK, OT_CHANNEL_20_MASK,
+    OT_CHANNEL_21_MASK, OT_CHANNEL_22_MASK, OT_CHANNEL_23_MASK, OT_CHANNEL_24_MASK,
+    OT_CHANNEL_25_MASK, OT_CHANNEL_26_MASK, OT_CHANNEL_2_MASK, OT_CHANNEL_3_MASK,
+    OT_CHANNEL_4_MASK, OT_CHANNEL_5_MASK, OT_CHANNEL_6_MASK, OT_CHANNEL_7_MASK, OT_CHANNEL_8_MASK,
+    OT_CHANNEL_9_MASK,
 };
 use crate::{ot, OpenThread, OtContext, OtError};
 
@@ -77,6 +78,27 @@ pub struct ScanResult<'a> {
     pub native_commissioner: bool,
     /// Discovery Response
     pub discover: bool,
+}
+
+/// An energy scan result for a single channel: the maximum RSSI observed on
+/// the channel over the scan duration. Used e.g. to pick the quietest channel
+/// before forming a new network.
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct EnergyScanResult {
+    /// IEEE 802.15.4 Channel
+    pub channel: u8,
+    /// The maximum RSSI observed on the channel (dBm)
+    pub max_rssi: i8,
+}
+
+impl From<&otEnergyScanResult> for EnergyScanResult {
+    fn from(result: &otEnergyScanResult) -> Self {
+        Self {
+            channel: result.mChannel,
+            max_rssi: result.mMaxRssi,
+        }
+    }
 }
 
 impl<'a> From<&'a otActiveScanResult> for ScanResult<'a> {
@@ -216,6 +238,108 @@ impl<'a> OpenThread<'a> {
         if last {
             state.ot.scan_callback = None;
             state.ot.scan_done.signal(());
+        }
+    }
+
+    /// Perform an IEEE 802.15.4 energy scan: measure the maximum RSSI on each
+    /// of the specified channels for the specified duration (`otLinkEnergyScan`).
+    ///
+    /// Useful e.g. for picking the quietest channel before forming a new
+    /// network (see [`OpenThread::create_new_network_dataset`], `ftd` only).
+    ///
+    /// Arguments:
+    /// - `channels`: The channel mask to scan.
+    /// - `duration_millis`: The scan duration per channel, in milliseconds.
+    /// - `f`: A closure that will be called with each channel's result, and
+    ///   finally - with `None` - when the scan is complete.
+    ///
+    /// NOTE: The future returned by this method is currently NOT `core::mem::forget`
+    /// safe. Its constructor MUST run, so don't call `core::mem::forget` on it.
+    pub async fn energy_scan<F>(
+        &self,
+        channels: Channels,
+        duration_millis: u16,
+        mut f: F,
+    ) -> Result<(), OtError>
+    where
+        F: FnMut(Option<&EnergyScanResult>),
+    {
+        {
+            let mut ot = self.activate();
+            let state = ot.state();
+
+            let in_progress = unsafe { otLinkIsEnergyScanInProgress(state.ot.instance) };
+
+            if in_progress {
+                warn!("Another energy scan in progress");
+                return Err(OtError::new(otError_OT_ERROR_BUSY));
+            }
+
+            // Clear any stale completion left over from a prior scan whose future
+            // was dropped after the callback signalled but before `poll_wait`
+            // consumed it - otherwise this scan would complete immediately.
+            state.ot.energy_scan_done.reset();
+
+            {
+                let f: &mut dyn FnMut(Option<&EnergyScanResult>) = &mut f;
+
+                let energy_scan_callback = &mut state.ot.energy_scan_callback;
+                *energy_scan_callback = Some(unsafe {
+                    core::mem::transmute::<
+                        &mut dyn FnMut(Option<&EnergyScanResult>),
+                        &'a mut dyn FnMut(Option<&EnergyScanResult>),
+                    >(f)
+                });
+
+                ot!(unsafe {
+                    otLinkEnergyScan(
+                        state.ot.instance,
+                        channels.bits(),
+                        duration_millis,
+                        Some(Self::plat_c_energy_scan_callback),
+                        state.ot.instance as *mut _ as *mut _,
+                    )
+                })?;
+            }
+        }
+
+        // See the forget-safety note in `scan` above: the same caveat applies to
+        // the lifetime-erased `F` closure reference stashed here.
+        let _guard = scopeguard::guard((), |_| {
+            let mut ot = self.activate();
+            let state = ot.state();
+
+            let energy_scan_callback = &mut state.ot.energy_scan_callback;
+
+            *energy_scan_callback = None;
+        });
+
+        poll_fn(move |cx| self.activate().state().ot.energy_scan_done.poll_wait(cx)).await;
+
+        Ok(())
+    }
+
+    unsafe extern "C" fn plat_c_energy_scan_callback(
+        scan_result: *mut otEnergyScanResult,
+        context: *mut c_void,
+    ) {
+        let instance = context as *mut otInstance;
+
+        let mut ot = OtContext::callback(instance);
+        let state = ot.state();
+
+        let scan_result = unsafe { scan_result.as_ref() };
+        let last = scan_result.is_none();
+
+        let scan_result = scan_result.map(|s| s.into());
+
+        if let Some(f) = state.ot.energy_scan_callback.as_mut() {
+            f(scan_result.as_ref());
+        }
+
+        if last {
+            state.ot.energy_scan_callback = None;
+            state.ot.energy_scan_done.signal(());
         }
     }
 }

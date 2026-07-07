@@ -150,6 +150,10 @@ const PROP_PROTOCOL_VERSION: u32 = 1;
 const PROP_CAPS: u32 = 5;
 const PROP_HWADDR: u32 = 8;
 const PROP_PHY_ENABLED: u32 = 0x20;
+const PROP_MAC_SCAN_STATE: u32 = 0x30;
+const PROP_MAC_SCAN_MASK: u32 = 0x31;
+const PROP_MAC_SCAN_PERIOD: u32 = 0x32;
+const PROP_MAC_ENERGY_SCAN_RESULT: u32 = 0x39;
 /// `SPINEL_PROP_RADIO_CAPS` — the RCP's `otRadioCaps` bitmask (packed-uint).
 const PROP_RADIO_CAPS: u32 = 0x1207;
 const PROP_PHY_CHAN: u32 = 0x21;
@@ -170,6 +174,10 @@ const CAP_MAC_RAW: u32 = 513;
 
 /// The single interface id we use (non-multipan host).
 const SPINEL_IID: u8 = 0;
+
+/// `SPINEL_SCAN_STATE_ENERGY` — the [`PROP_MAC_SCAN_STATE`] value starting an
+/// energy scan.
+const SCAN_STATE_ENERGY: u8 = 2;
 
 // Structural spinel constants, from the (bindgen-generated) `crate::sys`
 // bindings of `spinel.h`. Re-typed to the `u32`/`u8` this driver uses (bindgen
@@ -370,9 +378,19 @@ impl TidSet {
 /// `PROP_RADIO_CAPS`, which the `Radio` trait's compile-time `const CAPS` cannot
 /// yet carry (see the `CAPS` impl for the follow-up). Under-claiming here is
 /// safe: OpenThread performs any unclaimed capability in software.
+///
+/// `ENERGY_SCAN` is part of the baseline even though it is not strictly part of
+/// the transmit contract: the scan runs on the *RCP's* MAC sub-layer (via the
+/// `MAC_SCAN_*` properties), which measures with the radio hardware's energy
+/// detector — or, failing that, samples real RSSI on the RCP itself — so
+/// forwarding is the only path to real measurements (the host cannot sample a
+/// remote radio's RSSI synchronously). An RCP that cannot scan at all rejects
+/// the scan-state write, which [`SpinelRadio::energy_scan`] surfaces as an
+/// error (reported to OpenThread as an "invalid RSSI" scan result).
 const SPINEL_RADIO_CAPS: Capabilities = Capabilities::ACK_TIMEOUT
     .union(Capabilities::CSMA_BACKOFF)
-    .union(Capabilities::TRANSMIT_RETRIES);
+    .union(Capabilities::TRANSMIT_RETRIES)
+    .union(Capabilities::ENERGY_SCAN);
 
 /// The MAC-offload capabilities we advertise to OpenThread.
 ///
@@ -880,6 +898,13 @@ where
             .await?;
         self.caps = Capabilities::from_bits_truncate(caps_bits as u16) | SPINEL_RADIO_CAPS;
 
+        info!(
+            "RCP radio caps: 0x{:04x} (reported 0x{:08x} + baseline 0x{:04x})",
+            self.caps.bits(),
+            caps_bits,
+            SPINEL_RADIO_CAPS.bits()
+        );
+
         // Enable the PHY.
         self.set_prop(PROP_PHY_ENABLED, &[1]).await?;
 
@@ -1080,6 +1105,68 @@ where
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.ensure_init().await?;
         self.flush_config(config).await
+    }
+
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        self.ensure_init().await?;
+
+        // Configure and start the scan on the RCP, checking each ack: an RCP
+        // that cannot scan at all (its radio lacks an energy detector and its
+        // firmware was built without the software-scan fallback) rejects the
+        // scan-state write with a `LAST_STATUS` error, and that must fail the
+        // scan rather than leave us waiting for a result that never comes.
+        let period = duration_millis.to_le_bytes();
+
+        for (prop, payload) in [
+            (PROP_MAC_SCAN_MASK, &[channel][..]),
+            (PROP_MAC_SCAN_PERIOD, &period[..]),
+            (PROP_MAC_SCAN_STATE, &[SCAN_STATE_ENERGY][..]),
+        ] {
+            let (rprop, _off) = self
+                .send_prop_await(prop, payload, RESPONSE_TIMEOUT)
+                .await?;
+            if rprop != prop {
+                // The ack did not echo the property we set - typically a
+                // `LAST_STATUS` carrying an error such as "unimplemented".
+                warn!(
+                    "Energy scan: RCP rejected the 0x{:02x} property write",
+                    prop
+                );
+                return Err(RadioErrorKind::Other);
+            }
+        }
+
+        // Wait for the unsolicited per-channel scan result notification,
+        // stashing any radio frames received meanwhile (see `try_stash_rx`).
+        //
+        // If this future is dropped before the result arrives (e.g. the radio
+        // runner preempts the scan with a new command), the stray notification
+        // is simply ignored by the other wire-read loops later.
+        let timeout = RESPONSE_TIMEOUT + Duration::from_millis(duration_millis as u64);
+
+        loop {
+            let frame_len = self.recv_frame(timeout).await?;
+
+            if self.try_stash_rx(frame_len) {
+                continue;
+            }
+
+            let frame = &self.rx_frame[..frame_len];
+            let Some((_tid, rcmd, rprop, off)) = spinel_parse_header(frame) else {
+                continue;
+            };
+
+            if rcmd == CMD_PROP_VALUE_IS && rprop == PROP_MAC_ENERGY_SCAN_RESULT {
+                // Payload ("Cc"): channel (u8) + max RSSI (i8).
+                let body = &frame[off..];
+                if body.len() < 2 {
+                    return Err(RadioErrorKind::Other);
+                }
+
+                return Ok(body[1] as i8);
+            }
+            // Other frames (e.g. the scan-state-back-to-idle notification) — ignore.
+        }
     }
 
     async fn transmit(
