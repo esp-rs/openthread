@@ -47,6 +47,7 @@
 //! [`UartSpinelTransport`] and [`SpiSpinelTransport`].
 
 use core::future::Future;
+use core::mem::MaybeUninit;
 
 use embassy_time::{Duration, Timer};
 
@@ -212,9 +213,10 @@ const RX_BODY_CAP: usize = OT_RADIO_FRAME_MAX_SIZE as usize + 32;
 /// a typical command round-trip (~10-30 ms). Only a transmit stalled for
 /// seconds in CSMA backoff on a congested mesh (see [`TRANSMIT_TIMEOUT`])
 /// could overflow it — and overflow degrades gracefully (the oldest frame is
-/// evicted). Deployments on very busy meshes can raise the depth via
-/// [`SpinelRadio::new_with_rx_queue_depth`]; each slot costs
-/// `OT_RADIO_FRAME_MAX_SIZE + 32` (~160) bytes of RAM.
+/// evicted). Deployments on very busy meshes can raise the depth via the
+/// `RX_QUEUE_DEPTH` const generic of [`SpinelRadioResources`] (the radio
+/// infers its own depth from the resources handed to [`SpinelRadio::new`]);
+/// each slot costs `OT_RADIO_FRAME_MAX_SIZE + 32` (~160) bytes of RAM.
 pub const DEFAULT_RX_QUEUE_DEPTH: usize = 8;
 
 /// A stashed received-frame body: the `STREAM_RAW` payload bytes.
@@ -231,8 +233,8 @@ type RxFrame = heapless::Vec<u8, RX_BODY_CAP>;
 pub mod spi;
 pub mod uart;
 
-pub use spi::{IntPolarity, SpiSpinelTransport, SpiTransportError};
-pub use uart::{UartSpinelTransport, UartTransportError};
+pub use spi::{IntPolarity, SpiSpinelTransport, SpiTransportError, SpiTransportResources};
+pub use uart::{UartSpinelTransport, UartTransportError, UartTransportResources};
 
 /// Host serial device (`std` feature): an async serial byte stream over a
 /// `/dev/tty*` device, ready to wrap in a [`UartSpinelTransport`] to drive an
@@ -388,23 +390,82 @@ const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
     .union(MacCapabilities::TX_ACK)
     .union(MacCapabilities::RX_ACK);
 
+/// The resources (buffers) needed by a [`SpinelRadio`].
+///
+/// A separate type so that the (large) buffers can be allocated separately
+/// from the radio itself — e.g. in a `static` — rather than travel by value
+/// inside `SpinelRadio` through constructor returns and into the future that
+/// runs the stack, risking transient stack blow-ups on small MCUs.
+///
+/// `new` is `const`, and the buffers start their life as `MaybeUninit`, so a
+/// `SpinelRadioResources` can be statically-allocated (e.g. in a
+/// `static_cell::ConstStaticCell`) without any stack traffic; they are
+/// initialized in-place by [`SpinelRadio::new`].
+///
+/// The `RX_QUEUE_DEPTH` const generic sizes the queue for inbound frames that
+/// arrive while a command round-trip is in flight (see
+/// [`DEFAULT_RX_QUEUE_DEPTH`] for how to size it). It is erased from the
+/// `SpinelRadio` borrowing these resources.
+pub struct SpinelRadioResources<const RX_QUEUE_DEPTH: usize = DEFAULT_RX_QUEUE_DEPTH> {
+    /// Scratch buffer for the raw spinel frame being built for transmission.
+    tx_frame: MaybeUninit<[u8; MAX_SPINEL_FRAME]>,
+    /// The most recently received raw spinel frame.
+    rx_frame: MaybeUninit<[u8; MAX_SPINEL_FRAME]>,
+    /// Received-frame bodies stashed while a command response is awaited.
+    rx_queue: MaybeUninit<heapless::Deque<RxFrame, RX_QUEUE_DEPTH>>,
+}
+
+impl<const RX_QUEUE_DEPTH: usize> SpinelRadioResources<RX_QUEUE_DEPTH> {
+    /// Create a new `SpinelRadioResources` instance.
+    pub const fn new() -> Self {
+        Self {
+            tx_frame: MaybeUninit::uninit(),
+            rx_frame: MaybeUninit::uninit(),
+            rx_queue: MaybeUninit::uninit(),
+        }
+    }
+
+    /// Initialize the resources, as they start their life as `MaybeUninit` so
+    /// as to avoid mem-moves. Returns the buffers, with the queue's compile-time
+    /// capacity erased to a [`heapless::DequeView`].
+    fn init(
+        &mut self,
+    ) -> (
+        &mut [u8; MAX_SPINEL_FRAME],
+        &mut [u8; MAX_SPINEL_FRAME],
+        &mut heapless::deque::DequeView<RxFrame>,
+    ) {
+        (
+            self.tx_frame.write([0; MAX_SPINEL_FRAME]),
+            self.rx_frame.write([0; MAX_SPINEL_FRAME]),
+            self.rx_queue.write(heapless::Deque::new()).as_mut_view(),
+        )
+    }
+}
+
+impl<const RX_QUEUE_DEPTH: usize> Default for SpinelRadioResources<RX_QUEUE_DEPTH> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A [`crate::Radio`] implementation that drives a remote 802.15.4 radio (an
 /// OpenThread RCP) over a [`SpinelTransport`] using the spinel protocol.
 ///
 /// Hand it to [`OpenThread::run`](crate::OpenThread::run) exactly like a local
-/// radio, wrapping the wire in the matching [`SpinelTransport`]:
+/// radio, wrapping the wire in the matching [`SpinelTransport`]. The buffers
+/// live in a separately-allocated (e.g. static) [`SpinelRadioResources`]:
 ///
 /// ```ignore
-/// let transport = UartSpinelTransport::new(uart);   // or SpiSpinelTransport::new(spi, int)
-/// let radio = SpinelRadio::new(transport);
+/// static RESOURCES: ConstStaticCell<SpinelRadioResources> =
+///     ConstStaticCell::new(SpinelRadioResources::new());
+///
+/// // or SpiSpinelTransport::new(spi, int, polarity, ...)
+/// let transport = UartSpinelTransport::new(uart, ...);
+/// let radio = SpinelRadio::new(transport, RESOURCES.take());
 /// ot.run(radio).await
 /// ```
-///
-/// The `RX_QUEUE_DEPTH` const generic sizes the buffer for inbound frames that
-/// arrive while a command round-trip is in flight (see
-/// [`DEFAULT_RX_QUEUE_DEPTH`]); the default suits typical meshes, and
-/// [`SpinelRadio::new_with_rx_queue_depth`] selects a custom depth.
-pub struct SpinelRadio<T, const RX_QUEUE_DEPTH: usize = DEFAULT_RX_QUEUE_DEPTH> {
+pub struct SpinelRadio<'a, T> {
     transport: T,
     /// The RCP is brought up on the first radio operation (or eagerly via
     /// [`Radio::init`]). `None` until the startup handshake runs.
@@ -420,10 +481,10 @@ pub struct SpinelRadio<T, const RX_QUEUE_DEPTH: usize = DEFAULT_RX_QUEUE_DEPTH> 
     /// Next transaction id (1..=15, 0 is reserved for unsolicited notifications).
     next_tid: u8,
     /// Scratch buffer for the raw spinel frame being built for transmission.
-    tx_frame: [u8; MAX_SPINEL_FRAME],
+    tx_frame: &'a mut [u8; MAX_SPINEL_FRAME],
     /// The most recently received raw spinel frame, and its length. Response
     /// parsers borrow `rx_frame[..rx_len]` after a `recv_frame`.
-    rx_frame: [u8; MAX_SPINEL_FRAME],
+    rx_frame: &'a mut [u8; MAX_SPINEL_FRAME],
     rx_len: usize,
     /// Received-frame bodies that arrived (as unsolicited `STREAM_RAW`
     /// notifications) while the driver was waiting for a command response, so
@@ -434,34 +495,26 @@ pub struct SpinelRadio<T, const RX_QUEUE_DEPTH: usize = DEFAULT_RX_QUEUE_DEPTH> 
     /// the MAC layer — only slow upper-layer retries could recover it. The
     /// reference `SpinelDriver` keeps the same queue (its `MultiFrameBuffer`
     /// of frames saved while `WaitResponse` runs).
-    rx_queue: heapless::Deque<RxFrame, RX_QUEUE_DEPTH>,
+    ///
+    /// A `DequeView`, so the queue depth chosen via [`SpinelRadioResources`]
+    /// does not generify this type.
+    rx_queue: &'a mut heapless::deque::DequeView<RxFrame>,
 }
 
-impl<T> SpinelRadio<T>
+impl<'a, T> SpinelRadio<'a, T>
 where
     T: SpinelTransport,
 {
-    /// Create a new `SpinelRadio` over `transport`, with the default RX-queue
-    /// depth ([`DEFAULT_RX_QUEUE_DEPTH`]). The RCP is initialized on the first
-    /// radio operation.
-    pub fn new(transport: T) -> Self {
-        Self::new_with_rx_queue_depth(transport)
-    }
-}
+    /// Create a new `SpinelRadio` over `transport`, with its buffers borrowed
+    /// from `resources` (whose `RX_QUEUE_DEPTH` — see
+    /// [`DEFAULT_RX_QUEUE_DEPTH`] — sizes the RX queue). The RCP is
+    /// initialized on the first radio operation.
+    pub fn new<const RX_QUEUE_DEPTH: usize>(
+        transport: T,
+        resources: &'a mut SpinelRadioResources<RX_QUEUE_DEPTH>,
+    ) -> Self {
+        let (tx_frame, rx_frame, rx_queue) = resources.init();
 
-impl<T, const RX_QUEUE_DEPTH: usize> SpinelRadio<T, RX_QUEUE_DEPTH>
-where
-    T: SpinelTransport,
-{
-    /// Create a new `SpinelRadio` over `transport` with a custom RX-queue
-    /// depth (see [`DEFAULT_RX_QUEUE_DEPTH`] for how to size it):
-    ///
-    /// ```ignore
-    /// let radio = SpinelRadio::<_, 16>::new_with_rx_queue_depth(transport);
-    /// ```
-    ///
-    /// The RCP is initialized on the first radio operation.
-    pub fn new_with_rx_queue_depth(transport: T) -> Self {
         Self {
             transport,
             eui64: None,
@@ -469,10 +522,10 @@ where
             config: None,
             rx_enabled: false,
             next_tid: 1,
-            tx_frame: [0; MAX_SPINEL_FRAME],
-            rx_frame: [0; MAX_SPINEL_FRAME],
+            tx_frame,
+            rx_frame,
             rx_len: 0,
-            rx_queue: heapless::Deque::new(),
+            rx_queue,
         }
     }
 
@@ -534,7 +587,7 @@ where
     /// callers parse `self.rx_frame[..len]`.
     async fn recv_frame(&mut self, timeout: Duration) -> Result<usize, RadioErrorKind> {
         let len = {
-            let recv_fut = self.transport.recv(&mut self.rx_frame);
+            let recv_fut = self.transport.recv(&mut self.rx_frame[..]);
             let mut recv_fut = core::pin::pin!(recv_fut);
             let mut timeout_fut = core::pin::pin!(Timer::after(timeout));
 
@@ -579,7 +632,7 @@ where
         let cmd = CMD_PROP_VALUE_SET;
 
         let frame_len = {
-            let mut n = spinel_frame_prefix(&mut self.tx_frame, tid, cmd, prop)
+            let mut n = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
                 .ok_or(RadioErrorKind::TxFailed)?;
             if n + payload.len() > self.tx_frame.len() {
                 return Err(RadioErrorKind::TxFailed);
@@ -589,10 +642,12 @@ where
             n
         };
 
-        // Copy the frame out of `self.tx_frame` so we don't hold the borrow.
-        let mut frame = [0u8; MAX_SPINEL_FRAME];
-        frame[..frame_len].copy_from_slice(&self.tx_frame[..frame_len]);
-        self.send_frame(&frame[..frame_len]).await?;
+        // Send straight out of `self.tx_frame`: the transport borrow and the
+        // frame borrow are disjoint fields.
+        self.transport
+            .send(&self.tx_frame[..frame_len])
+            .await
+            .map_err(|_| RadioErrorKind::TxFailed)?;
 
         self.await_response(tid, timeout).await
     }
@@ -656,11 +711,12 @@ where
         let tid = self.alloc_tid();
         let cmd = CMD_PROP_VALUE_GET;
 
-        let frame_len = spinel_frame_prefix(&mut self.tx_frame, tid, cmd, prop)
+        let frame_len = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
             .ok_or(RadioErrorKind::TxFailed)?;
-        let mut frame = [0u8; MAX_SPINEL_FRAME];
-        frame[..frame_len].copy_from_slice(&self.tx_frame[..frame_len]);
-        self.send_frame(&frame[..frame_len]).await?;
+        self.transport
+            .send(&self.tx_frame[..frame_len])
+            .await
+            .map_err(|_| RadioErrorKind::TxFailed)?;
 
         let (_prop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
         let len = self.rx_len;
@@ -746,15 +802,14 @@ where
             let cmd = CMD_RESET;
             let reset_arg = RESET_STACK;
 
-            let mut n = spinel_frame_prefix(&mut self.tx_frame, tid, cmd, reset_arg)
+            // RESET is a bare command; the "prop" slot below carries the reset
+            // kind as a packed-uint argument.
+            let n = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, reset_arg)
                 .ok_or(RadioErrorKind::Other)?;
-            // RESET is a bare command; the "prop" slot above already carried the
-            // reset kind as a packed-uint argument. Truncate any stray bytes.
-            let frame_len = n.min(self.tx_frame.len());
-            n = frame_len;
-            let mut frame = [0u8; MAX_SPINEL_FRAME];
-            frame[..n].copy_from_slice(&self.tx_frame[..n]);
-            self.send_frame(&frame[..n]).await?;
+            self.transport
+                .send(&self.tx_frame[..n])
+                .await
+                .map_err(|_| RadioErrorKind::TxFailed)?;
 
             // Wait for a LAST_STATUS in the reset range (best-effort).
             let begin = STATUS_RESET_BEGIN;
@@ -998,7 +1053,7 @@ where
     }
 }
 
-impl<T, const RX_QUEUE_DEPTH: usize> Radio for SpinelRadio<T, RX_QUEUE_DEPTH>
+impl<T> Radio for SpinelRadio<'_, T>
 where
     T: SpinelTransport,
 {

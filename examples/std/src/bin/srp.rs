@@ -16,7 +16,9 @@ use embassy_executor::{Executor, Spawner};
 
 use log::info;
 
-use openthread::spinel::{SerialPort, SpinelRadio, UartSpinelTransport};
+use openthread::spinel::{
+    SerialPort, SpinelRadio, SpinelRadioResources, UartSpinelTransport, UartTransportResources,
+};
 use openthread::{
     BytesFmt, OpenThread, OtResources, OtSrpResources, OtUdpResources, SimpleRamSettings, SrpConf,
     SrpService, UdpSocket,
@@ -25,7 +27,7 @@ use openthread::{
 use rand::rngs::StdRng;
 use rand::{RngCore, SeedableRng};
 
-use static_cell::StaticCell;
+use static_cell::{ConstStaticCell, StaticCell};
 
 // Linked for its `utoa`/`strtoul` C symbols, which OpenThread's C references.
 use tinyrlibc as _;
@@ -102,8 +104,18 @@ async fn main_task(spawner: Spawner) {
     )
     .unwrap();
 
+    // The radio/transport buffers, in `const`-constructed statics (`.bss`), so
+    // they never travel through the stack.
+    static RADIO_RESOURCES: ConstStaticCell<SpinelRadioResources> =
+        ConstStaticCell::new(SpinelRadioResources::new());
+    static UART_RESOURCES: ConstStaticCell<UartTransportResources> =
+        ConstStaticCell::new(UartTransportResources::new());
+
     let serial = SerialPort::open(&serial_path, baud).expect("open RCP serial");
-    let radio = SpinelRadio::new(UartSpinelTransport::new(serial));
+    let radio = SpinelRadio::new(
+        UartSpinelTransport::new(serial, UART_RESOURCES.take()),
+        RADIO_RESOURCES.take(),
+    );
 
     spawner.spawn(run_ot(ot.clone(), radio).unwrap());
     spawner.spawn(run_ot_info(ot.clone()).unwrap());
@@ -170,7 +182,10 @@ async fn main_task(spawner: Spawner) {
 }
 
 #[embassy_executor::task]
-async fn run_ot(ot: OpenThread<'static>, radio: SpinelRadio<UartSpinelTransport<SerialPort>>) -> ! {
+async fn run_ot(
+    ot: OpenThread<'static>,
+    radio: SpinelRadio<'static, UartSpinelTransport<'static, SerialPort>>,
+) -> ! {
     ot.run(radio).await
 }
 

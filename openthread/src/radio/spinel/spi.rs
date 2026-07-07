@@ -21,11 +21,16 @@
 //! receive-alignment allowance, a plain retry-until-accepted loop rather than the
 //! reference's backoff) — deliberate scope cuts, not correctness gaps.
 
+use core::mem::MaybeUninit;
+
 use super::{SpinelTransport, MAX_SPINEL_FRAME};
 
 /// SPI framing header size (flag byte + accept-len + data-len, all before the
 /// payload). See [`SpiSpinelTransport`] for the layout.
 const SPI_HEADER_SIZE: usize = 5;
+
+/// The size of one full SPI transfer buffer (header + max payload).
+const SPI_BUF_SIZE: usize = SPI_HEADER_SIZE + MAX_SPINEL_FRAME;
 
 /// Flag-byte constants (from OpenThread's `spi_frame.hpp`).
 const SPI_FLAG_RESET: u8 = 1 << 7;
@@ -80,22 +85,28 @@ pub enum IntPolarity {
 /// ```ignore
 /// // `spi: embedded_hal_async::spi::SpiDevice`,
 /// // `int: embedded_hal_async::digital::Wait + embedded_hal::digital::InputPin`
-/// let transport = SpiSpinelTransport::new(spi, int, IntPolarity::ActiveLow);
-/// let radio = SpinelRadio::new(transport);
+/// static SPI_RESOURCES: ConstStaticCell<SpiTransportResources> =
+///     ConstStaticCell::new(SpiTransportResources::new());
+/// static RADIO_RESOURCES: ConstStaticCell<SpinelRadioResources> =
+///     ConstStaticCell::new(SpinelRadioResources::new());
+///
+/// let transport =
+///     SpiSpinelTransport::new(spi, int, IntPolarity::ActiveLow, SPI_RESOURCES.take());
+/// let radio = SpinelRadio::new(transport, RADIO_RESOURCES.take());
 /// ```
-pub struct SpiSpinelTransport<S, I> {
+pub struct SpiSpinelTransport<'a, S, I> {
     spi: S,
     int: I,
     /// Which `int` level means "the RCP has a frame for us".
     int_polarity: IntPolarity,
     /// Full SPI transfer buffers (header + payload), reused every transaction.
-    tx_buf: [u8; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
-    rx_buf: [u8; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
+    tx_buf: &'a mut [u8; SPI_BUF_SIZE],
+    rx_buf: &'a mut [u8; SPI_BUF_SIZE],
     /// A single queued outbound spinel frame waiting to be accepted by the RCP.
     tx_pending: Option<usize>,
     /// A single received spinel frame not yet handed to `recv`, `[.. len]` of
     /// `rx_frame`.
-    rx_frame: [u8; MAX_SPINEL_FRAME],
+    rx_frame: &'a mut [u8; MAX_SPINEL_FRAME],
     rx_ready: Option<usize>,
     /// The RCP's last-advertised pending data length (learned from a prior header
     /// so the next transfer is sized to fit it).
@@ -105,20 +116,27 @@ pub struct SpiSpinelTransport<S, I> {
     send_reset: bool,
 }
 
-impl<S, I> SpiSpinelTransport<S, I> {
+impl<'a, S, I> SpiSpinelTransport<'a, S, I> {
     /// Create an SPI spinel transport over SPI device `spi` and interrupt line
     /// `int`, whose asserted polarity (which level means "the RCP has a frame for
     /// us") is given by `int_polarity` — [`IntPolarity::ActiveLow`] for a stock
-    /// `ot-rcp`.
-    pub const fn new(spi: S, int: I, int_polarity: IntPolarity) -> Self {
+    /// `ot-rcp` — with its buffers borrowed from `resources`.
+    pub fn new(
+        spi: S,
+        int: I,
+        int_polarity: IntPolarity,
+        resources: &'a mut SpiTransportResources,
+    ) -> Self {
+        let (tx_buf, rx_buf, rx_frame) = resources.init();
+
         Self {
             spi,
             int,
             int_polarity,
-            tx_buf: [0; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
-            rx_buf: [0; SPI_HEADER_SIZE + MAX_SPINEL_FRAME],
+            tx_buf,
+            rx_buf,
             tx_pending: None,
-            rx_frame: [0; MAX_SPINEL_FRAME],
+            rx_frame,
             rx_ready: None,
             rcp_data_len: 0,
             send_reset: true,
@@ -126,7 +144,7 @@ impl<S, I> SpiSpinelTransport<S, I> {
     }
 }
 
-impl<S, I> SpiSpinelTransport<S, I>
+impl<S, I> SpiSpinelTransport<'_, S, I>
 where
     S: embedded_hal_async::spi::SpiDevice,
     I: embedded_hal_async::digital::Wait + embedded_hal::digital::InputPin,
@@ -216,7 +234,7 @@ where
     }
 }
 
-impl<S, I> SpinelTransport for SpiSpinelTransport<S, I>
+impl<S, I> SpinelTransport for SpiSpinelTransport<'_, S, I>
 where
     S: embedded_hal_async::spi::SpiDevice,
     I: embedded_hal_async::digital::Wait + embedded_hal::digital::InputPin,
@@ -278,6 +296,58 @@ where
 
             self.push_pull().await?;
         }
+    }
+}
+
+/// The resources (buffers) needed by a [`SpiSpinelTransport`].
+///
+/// A separate type so that the (large) buffers can be allocated separately
+/// from the transport itself — e.g. in a `static` — rather than travel by
+/// value inside the transport through constructor returns, risking transient
+/// stack blow-ups on small MCUs.
+///
+/// `new` is `const`, and the buffers start their life as `MaybeUninit`, so a
+/// `SpiTransportResources` can be statically-allocated (e.g. in a
+/// `static_cell::ConstStaticCell`) without any stack traffic; they are
+/// initialized in-place by [`SpiSpinelTransport::new`].
+pub struct SpiTransportResources {
+    /// Full SPI transfer buffers (header + payload), reused every transaction.
+    tx_buf: MaybeUninit<[u8; SPI_BUF_SIZE]>,
+    rx_buf: MaybeUninit<[u8; SPI_BUF_SIZE]>,
+    /// A received spinel frame not yet handed to `recv`.
+    rx_frame: MaybeUninit<[u8; MAX_SPINEL_FRAME]>,
+}
+
+impl SpiTransportResources {
+    /// Create a new `SpiTransportResources` instance.
+    pub const fn new() -> Self {
+        Self {
+            tx_buf: MaybeUninit::uninit(),
+            rx_buf: MaybeUninit::uninit(),
+            rx_frame: MaybeUninit::uninit(),
+        }
+    }
+
+    /// Initialize the resources, as they start their life as `MaybeUninit` so
+    /// as to avoid mem-moves.
+    fn init(
+        &mut self,
+    ) -> (
+        &mut [u8; SPI_BUF_SIZE],
+        &mut [u8; SPI_BUF_SIZE],
+        &mut [u8; MAX_SPINEL_FRAME],
+    ) {
+        (
+            self.tx_buf.write([0; SPI_BUF_SIZE]),
+            self.rx_buf.write([0; SPI_BUF_SIZE]),
+            self.rx_frame.write([0; MAX_SPINEL_FRAME]),
+        )
+    }
+}
+
+impl Default for SpiTransportResources {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

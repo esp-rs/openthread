@@ -9,7 +9,16 @@
 //! This path is validated against a real `ot-rcp` over USB CDC-ACM (see the
 //! [`super`] module docs).
 
+use core::mem::MaybeUninit;
+
 use super::{SpinelTransport, MAX_SPINEL_FRAME};
+
+/// The HDLC-encode scratch size: worst case every payload byte escaped, plus
+/// the two flag bytes and the (possibly escaped) 2-byte FCS.
+const TX_HDLC_SIZE: usize = MAX_SPINEL_FRAME * 2 + 4;
+
+/// The size of the chunk buffer that UART reads are pulled into.
+const RX_CHUNK_SIZE: usize = 128;
 
 // ---------------------------------------------------------------------------
 // HDLC framing (RFC 1662 byte-stuffing + CRC-16/X.25 FCS).
@@ -167,6 +176,59 @@ impl HdlcDecoder {
 // UartSpinelTransport
 // ---------------------------------------------------------------------------
 
+/// The resources (buffers) needed by a [`UartSpinelTransport`].
+///
+/// A separate type so that the (large) buffers can be allocated separately
+/// from the transport itself — e.g. in a `static` — rather than travel by
+/// value inside the transport through constructor returns, risking transient
+/// stack blow-ups on small MCUs.
+///
+/// `new` is `const`, and the buffers start their life as `MaybeUninit`, so a
+/// `UartTransportResources` can be statically-allocated (e.g. in a
+/// `static_cell::ConstStaticCell`) without any stack traffic; they are
+/// initialized in-place by [`UartSpinelTransport::new`].
+pub struct UartTransportResources {
+    /// HDLC-encode scratch (worst case: every byte escaped, plus flags + FCS).
+    tx_hdlc: MaybeUninit<[u8; TX_HDLC_SIZE]>,
+    /// Incremental decoder for the inbound byte stream (holds a frame buffer).
+    decoder: MaybeUninit<HdlcDecoder>,
+    /// Read scratch pulled from the UART in chunks.
+    rx_chunk: MaybeUninit<[u8; RX_CHUNK_SIZE]>,
+}
+
+impl UartTransportResources {
+    /// Create a new `UartTransportResources` instance.
+    pub const fn new() -> Self {
+        Self {
+            tx_hdlc: MaybeUninit::uninit(),
+            decoder: MaybeUninit::uninit(),
+            rx_chunk: MaybeUninit::uninit(),
+        }
+    }
+
+    /// Initialize the resources, as they start their life as `MaybeUninit` so
+    /// as to avoid mem-moves.
+    fn init(
+        &mut self,
+    ) -> (
+        &mut [u8; TX_HDLC_SIZE],
+        &mut HdlcDecoder,
+        &mut [u8; RX_CHUNK_SIZE],
+    ) {
+        (
+            self.tx_hdlc.write([0; TX_HDLC_SIZE]),
+            self.decoder.write(HdlcDecoder::new()),
+            self.rx_chunk.write([0; RX_CHUNK_SIZE]),
+        )
+    }
+}
+
+impl Default for UartTransportResources {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// A [`SpinelTransport`] over a UART (or any `embedded-io-async` byte stream).
 ///
 /// A UART is a raw, unframed byte stream, so this transport HDLC-frames each
@@ -174,10 +236,17 @@ impl HdlcDecoder {
 /// HDLC decoder on the way in — exactly OpenThread's POSIX `hdlc_interface`.
 ///
 /// Wrap any full-duplex byte stream implementing [`embedded_io_async::Read`] +
-/// [`embedded_io_async::Write`] (e.g. an embassy UART):
+/// [`embedded_io_async::Write`] (e.g. an embassy UART), with the buffers in a
+/// separately-allocated (e.g. static) [`UartTransportResources`]:
 ///
 /// ```ignore
-/// let radio = SpinelRadio::new(UartSpinelTransport::new(uart));
+/// static UART_RESOURCES: ConstStaticCell<UartTransportResources> =
+///     ConstStaticCell::new(UartTransportResources::new());
+/// static RADIO_RESOURCES: ConstStaticCell<SpinelRadioResources> =
+///     ConstStaticCell::new(SpinelRadioResources::new());
+///
+/// let transport = UartSpinelTransport::new(uart, UART_RESOURCES.take());
+/// let radio = SpinelRadio::new(transport, RADIO_RESOURCES.take());
 /// ```
 ///
 /// # Keep the wire drained (choose a buffered/DMA UART)
@@ -193,41 +262,45 @@ impl HdlcDecoder {
 /// `std` host, [`SerialPort`](super::SerialPort) provides this draining via a
 /// background thread; some USB transports — e.g. the ESP32XX USB-Serial-JTAG —
 /// *require* it, wedging the RCP if the host stops reading.)
-pub struct UartSpinelTransport<U> {
+pub struct UartSpinelTransport<'a, U> {
     uart: U,
     /// HDLC-encode scratch (worst case: every byte escaped, plus flags + FCS).
-    tx_hdlc: [u8; MAX_SPINEL_FRAME * 2 + 4],
+    tx_hdlc: &'a mut [u8; TX_HDLC_SIZE],
     /// Incremental decoder for the inbound byte stream.
-    decoder: HdlcDecoder,
+    decoder: &'a mut HdlcDecoder,
     /// Read scratch pulled from the UART in chunks.
-    rx_chunk: [u8; 128],
+    rx_chunk: &'a mut [u8; RX_CHUNK_SIZE],
     /// Bytes buffered in `rx_chunk` not yet fed to the decoder, `[pos, fill)`.
     rx_pos: usize,
     rx_fill: usize,
 }
 
-impl<U> UartSpinelTransport<U> {
-    /// Create a UART spinel transport over `uart`.
-    pub const fn new(uart: U) -> Self {
+impl<'a, U> UartSpinelTransport<'a, U> {
+    /// Create a UART spinel transport over `uart`, with its buffers borrowed
+    /// from `resources`.
+    pub fn new(uart: U, resources: &'a mut UartTransportResources) -> Self {
+        let (tx_hdlc, decoder, rx_chunk) = resources.init();
+
         Self {
             uart,
-            tx_hdlc: [0; MAX_SPINEL_FRAME * 2 + 4],
-            decoder: HdlcDecoder::new(),
-            rx_chunk: [0; 128],
+            tx_hdlc,
+            decoder,
+            rx_chunk,
             rx_pos: 0,
             rx_fill: 0,
         }
     }
 }
 
-impl<U> SpinelTransport for UartSpinelTransport<U>
+impl<U> SpinelTransport for UartSpinelTransport<'_, U>
 where
     U: embedded_io_async::Read + embedded_io_async::Write,
 {
     type Error = UartTransportError<U::Error>;
 
     async fn send(&mut self, frame: &[u8]) -> Result<(), Self::Error> {
-        let n = hdlc_encode(frame, &mut self.tx_hdlc).ok_or(UartTransportError::FrameTooLarge)?;
+        let n =
+            hdlc_encode(frame, &mut self.tx_hdlc[..]).ok_or(UartTransportError::FrameTooLarge)?;
         self.uart
             .write_all(&self.tx_hdlc[..n])
             .await
@@ -251,7 +324,7 @@ where
             // Refill from the UART.
             let n = self
                 .uart
-                .read(&mut self.rx_chunk)
+                .read(&mut self.rx_chunk[..])
                 .await
                 .map_err(UartTransportError::Io)?;
             if n == 0 {
