@@ -70,13 +70,13 @@ use sys::{
     otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND, otError_OT_ERROR_NO_ACK,
     otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize, otInstanceInitSingle, otIp6Address,
     otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
-    otIp6SetEnabled, otIp6SetReceiveCallback, otLinkModeConfig, otMessage, otMessageFree,
-    otMessageGetBufferInfo, otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead,
-    otMessageSettings, otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired,
-    otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame,
-    otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId,
-    otThreadSetEnabled, otThreadSetLinkMode, OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT,
-    OT_RADIO_FRAME_MAX_SIZE,
+    otIp6SetEnabled, otIp6SetReceiveCallback, otIpCounters, otLinkModeConfig, otMacCounters,
+    otMessage, otMessageFree, otMessageGetBufferInfo, otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL,
+    otMessageRead, otMessageSettings, otMleCounters, otOperationalDataset,
+    otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone, otPlatRadioTxDone,
+    otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess,
+    otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode,
+    OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -651,6 +651,91 @@ impl<'a> OpenThread<'a> {
         }
     }
 
+    /// Return the IEEE 802.15.4 MAC-layer counters (`otLinkGetCounters`):
+    /// per-kind TX/RX frame counts and TX/RX error tallies since stack init
+    /// (or the last [`Self::reset_mac_counters`]).
+    pub fn mac_counters(&self) -> MacCounters {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let counters = unsafe { &*sys::otLinkGetCounters(state.ot.instance) };
+        counters.into()
+    }
+
+    /// Reset the IEEE 802.15.4 MAC-layer counters to zero
+    /// (`otLinkResetCounters`).
+    pub fn reset_mac_counters(&self) {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otLinkResetCounters(state.ot.instance) }
+    }
+
+    /// Return the Thread MLE counters (`otThreadGetMleCounters`): role
+    /// transitions, attach attempts, partition/parent changes, and per-role
+    /// time tracking since stack init (or the last
+    /// [`Self::reset_mle_counters`]).
+    pub fn mle_counters(&self) -> MleCounters {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let counters = unsafe { &*sys::otThreadGetMleCounters(state.ot.instance) };
+        counters.into()
+    }
+
+    /// Reset the Thread MLE counters to zero (`otThreadResetMleCounters`).
+    pub fn reset_mle_counters(&self) {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadResetMleCounters(state.ot.instance) }
+    }
+
+    /// Return the IPv6-layer packet counters (`otThreadGetIp6Counters`):
+    /// transmitted/received and failed-to-transmit/receive datagram counts
+    /// since stack init (or the last [`Self::reset_ip_counters`]).
+    pub fn ip_counters(&self) -> IpCounters {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let counters = unsafe { &*sys::otThreadGetIp6Counters(state.ot.instance) };
+        counters.into()
+    }
+
+    /// Reset the IPv6-layer packet counters to zero
+    /// (`otThreadResetIp6Counters`).
+    pub fn reset_ip_counters(&self) {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadResetIp6Counters(state.ot.instance) }
+    }
+
+    /// Return the time since the OpenThread instance was initialized, in
+    /// milliseconds (`otInstanceGetUptime`).
+    pub fn uptime_millis(&self) -> u64 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otInstanceGetUptime(state.ot.instance) }
+    }
+
+    /// Return the OpenThread version string (`otGetVersionString`), e.g.
+    /// `"OPENTHREAD/thread-reference-XXXXXXX; NONE; ..."`. Useful for logging
+    /// and diagnostics reporting.
+    pub fn version() -> &'static str {
+        // SAFETY: `otGetVersionString` returns a pointer to a static,
+        // NUL-terminated, compile-time constant string.
+        let version = unsafe { core::ffi::CStr::from_ptr(sys::otGetVersionString()) };
+        unwrap!(version.to_str(), "Not a valid UTF-8 string")
+    }
+
+    /// Return the Thread specification version implemented by the stack
+    /// (`otThreadGetVersion`), e.g. `4` for Thread 1.3.
+    pub fn thread_version() -> u16 {
+        unsafe { sys::otThreadGetVersion() }
+    }
+
     /// Brings the OpenThread IPv6 interface up or down.
     pub fn enable_ipv6(&self, enable: bool) -> Result<(), OtError> {
         let mut ot = self.activate();
@@ -675,6 +760,56 @@ impl<'a> OpenThread<'a> {
                     otMessageFree(msg);
                 }
             }
+        }
+    }
+
+    /// Subscribe the Thread interface to the IPv6 multicast group
+    /// `multicast_addr` (`otIp6SubscribeMulticastAddress`), so that the node
+    /// starts accepting datagrams sent to that group.
+    ///
+    /// Group membership is a property of the *interface*: once joined, the
+    /// group's datagrams are delivered to every consumer — each native
+    /// [`UdpSocket`](crate::UdpSocket) bound to a matching port, as well as the
+    /// raw IPv6 egress ([`Self::rx`] / the `enet` driver). Needed e.g. for
+    /// Matter group messaging over Thread, where group-addressed commands
+    /// arrive on site-local multicast addresses.
+    ///
+    /// Joining an already-joined group is a no-op (reported as success).
+    pub fn join_multicast(&self, multicast_addr: Ipv6Addr) -> Result<(), OtError> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let addr = otIp6Address {
+            mFields: sys::otIp6Address__bindgen_ty_1 {
+                m8: multicast_addr.octets(),
+            },
+        };
+
+        match ot!(unsafe { sys::otIp6SubscribeMulticastAddress(state.ot.instance, &addr) }) {
+            Err(e) if e.into_inner() == sys::otError_OT_ERROR_ALREADY => Ok(()),
+            other => other,
+        }
+    }
+
+    /// Unsubscribe the Thread interface from the IPv6 multicast group
+    /// `multicast_addr` (`otIp6UnsubscribeMulticastAddress`), stopping the
+    /// delivery of the group's datagrams to all consumers (see
+    /// [`Self::join_multicast`]).
+    ///
+    /// Leaving a group that was not joined is a no-op (reported as success).
+    pub fn leave_multicast(&self, multicast_addr: Ipv6Addr) -> Result<(), OtError> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let addr = otIp6Address {
+            mFields: sys::otIp6Address__bindgen_ty_1 {
+                m8: multicast_addr.octets(),
+            },
+        };
+
+        match ot!(unsafe { sys::otIp6UnsubscribeMulticastAddress(state.ot.instance, &addr) }) {
+            Err(e) if e.into_inner() == sys::otError_OT_ERROR_NOT_FOUND => Ok(()),
+            other => other,
         }
     }
 
@@ -718,6 +853,158 @@ impl<'a> OpenThread<'a> {
         };
 
         ot!(unsafe { otThreadSetLinkMode(state.ot.instance, mode) })
+    }
+
+    /// Return the *effective* data-poll period of a Sleepy End Device, in
+    /// milliseconds (`otLinkGetPollPeriod`).
+    ///
+    /// This is the period OpenThread actually polls at: the keep-alive period
+    /// it derives from the child timeout, further shortened by the explicit
+    /// period if one was set (see [`Self::set_poll_period`]). It can therefore
+    /// read *lower* than the value passed to `set_poll_period`.
+    pub fn poll_period(&self) -> u32 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otLinkGetPollPeriod(state.ot.instance) }
+    }
+
+    /// Set the data-poll period of a Sleepy End Device, in milliseconds
+    /// (`otLinkSetPollPeriod`).
+    ///
+    /// The poll period is how often a Sleepy End Device (a node configured with
+    /// `rx_on_when_idle = false` — see [`Self::set_link_mode`]) wakes up to poll
+    /// its parent for queued frames. It is the main radio-duty-cycle /
+    /// battery-life tuning knob of an SED: shorter periods reduce downlink
+    /// latency, longer periods save power.
+    ///
+    /// Passing `0` restores the automatic behavior, where OpenThread derives
+    /// the period from the child timeout (see [`Self::set_child_timeout`]).
+    /// A non-zero value below OpenThread's minimum poll period
+    /// (`OPENTHREAD_CONFIG_MAC_MINIMUM_POLL_PERIOD`, 10 ms by default) is
+    /// rejected with an `INVALID_ARGS` error; a value above the maximum
+    /// (`2^26 - 1` ms, ~18.6 hours) is silently clamped down to it.
+    pub fn set_poll_period(&self, period_millis: u32) -> Result<(), OtError> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        ot!(unsafe { sys::otLinkSetPollPeriod(state.ot.instance, period_millis) })
+    }
+
+    /// Return the Thread child timeout, in seconds (`otThreadGetChildTimeout`).
+    pub fn child_timeout(&self) -> u32 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadGetChildTimeout(state.ot.instance) }
+    }
+
+    /// Set the Thread child timeout, in seconds (`otThreadSetChildTimeout`).
+    ///
+    /// The child timeout is how long this node's parent waits without hearing
+    /// from it before considering it gone and evicting it from the child table.
+    /// A Sleepy End Device must poll (or otherwise transmit) at least once per
+    /// timeout; when no explicit poll period is set, OpenThread derives the
+    /// automatic poll period from this value. Takes effect on the next attach
+    /// or MLE exchange with the parent.
+    pub fn set_child_timeout(&self, timeout_secs: u32) {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otThreadSetChildTimeout(state.ot.instance, timeout_secs) }
+    }
+
+    /// Return the child-supervision interval, in seconds
+    /// (`otChildSupervisionGetInterval`). Zero means supervision is disabled.
+    pub fn child_supervision_interval(&self) -> u16 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otChildSupervisionGetInterval(state.ot.instance) }
+    }
+
+    /// Set the child-supervision interval, in seconds
+    /// (`otChildSupervisionSetInterval`); `0` disables supervision.
+    ///
+    /// Child supervision is a keepalive in the parent→child direction,
+    /// complementing the child's own polls: the child asks its parent (via MLE)
+    /// to send it a supervision message at least this often, and checks their
+    /// arrival with the check timeout (see
+    /// [`Self::set_child_supervision_check_timeout`]). This lets a Sleepy End
+    /// Device detect a vanished/rebooted parent much sooner than the child
+    /// timeout would, at the cost of the parent queuing periodic messages.
+    pub fn set_child_supervision_interval(&self, interval_secs: u16) {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otChildSupervisionSetInterval(state.ot.instance, interval_secs) }
+    }
+
+    /// Return the child-supervision check timeout, in seconds
+    /// (`otChildSupervisionGetCheckTimeout`). Zero means the check is disabled.
+    pub fn child_supervision_check_timeout(&self) -> u16 {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otChildSupervisionGetCheckTimeout(state.ot.instance) }
+    }
+
+    /// Set the child-supervision check timeout, in seconds
+    /// (`otChildSupervisionSetCheckTimeout`); `0` disables the check.
+    ///
+    /// If the child hears nothing from its parent for this long (no supervision
+    /// message, no ack) it treats the link as lost and re-attaches. See
+    /// [`Self::set_child_supervision_interval`].
+    pub fn set_child_supervision_check_timeout(&self, timeout_secs: u16) {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        unsafe { sys::otChildSupervisionSetCheckTimeout(state.ot.instance, timeout_secs) }
+    }
+
+    /// Gracefully detach from the Thread network
+    /// (`otThreadDetachGracefully`): notify the mesh that this node is leaving
+    /// (releasing its child/router role immediately), then stop the Thread
+    /// protocol as if [`Self::enable_thread`]`(false)` had been called.
+    ///
+    /// This is the correct way to decommission a node or "forget" a network:
+    /// unlike a bare `enable_thread(false)`, the parent/neighbors learn of the
+    /// departure right away instead of having to time the node out.
+    ///
+    /// Completes when OpenThread reports the detach as done (including when the
+    /// node was not attached to begin with). Fails with a `BUSY` error if
+    /// another graceful detach is already in progress.
+    pub async fn detach_gracefully(&self) -> Result<(), OtError> {
+        {
+            let mut ot = self.activate();
+            let state = ot.state();
+
+            // Clear any stale completion left over from a prior detach whose
+            // future was dropped after the callback signalled but before the
+            // wait below consumed it.
+            state.ot.detach_done.reset();
+
+            ot!(unsafe {
+                sys::otThreadDetachGracefully(
+                    state.ot.instance,
+                    Some(Self::plat_c_detach_gracefully_callback),
+                    state.ot.instance as *mut _,
+                )
+            })?;
+        }
+
+        poll_fn(move |cx| self.activate().state().ot.detach_done.poll_wait(cx)).await;
+
+        Ok(())
+    }
+
+    unsafe extern "C" fn plat_c_detach_gracefully_callback(context: *mut c_void) {
+        let instance = context as *mut otInstance;
+
+        let mut ot = OtContext::callback(instance);
+        let state = ot.state();
+
+        state.ot.detach_done.signal(());
     }
 
     /// Gets the list of IPv6 addresses currently assigned to the Thread interface
@@ -1383,6 +1670,7 @@ impl OtResources {
             settings,
             scan_callback: None,
             scan_done: Signal::new(),
+            detach_done: Signal::new(),
             #[cfg(feature = "dns-client")]
             dns_callback: None,
             #[cfg(feature = "dns-client")]
@@ -1555,6 +1843,214 @@ pub struct BufferInfo {
     pub reassembly_messages: u16,
     /// Buffers currently held by the 6LoWPAN reassembly queue.
     pub reassembly_buffers: u16,
+}
+
+/// IEEE 802.15.4 MAC-layer counters (`otLinkGetCounters`), as reported by
+/// [`OpenThread::mac_counters`].
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct MacCounters {
+    /// Total number of transmissions.
+    pub tx_total: u32,
+    /// Number of unicast transmissions.
+    pub tx_unicast: u32,
+    /// Number of broadcast transmissions.
+    pub tx_broadcast: u32,
+    /// Number of transmissions with ack request.
+    pub tx_ack_requested: u32,
+    /// Number of transmissions that were acked.
+    pub tx_acked: u32,
+    /// Number of transmissions without ack request.
+    pub tx_no_ack_requested: u32,
+    /// Number of transmitted data frames.
+    pub tx_data: u32,
+    /// Number of transmitted data poll frames.
+    pub tx_data_poll: u32,
+    /// Number of transmitted beacon frames.
+    pub tx_beacon: u32,
+    /// Number of transmitted beacon request frames.
+    pub tx_beacon_request: u32,
+    /// Number of transmitted other types of frames.
+    pub tx_other: u32,
+    /// Number of retransmission times.
+    pub tx_retry: u32,
+    /// Number of expired retransmission retries for direct messages.
+    pub tx_direct_max_retry_expiry: u32,
+    /// Number of expired retransmission retries for indirect messages.
+    pub tx_indirect_max_retry_expiry: u32,
+    /// Number of CCA failures.
+    pub tx_err_cca: u32,
+    /// Number of frame transmission failures due to abort error.
+    pub tx_err_abort: u32,
+    /// Number of frames that were dropped due to a busy channel.
+    pub tx_err_busy_channel: u32,
+    /// Total number of received frames.
+    pub rx_total: u32,
+    /// Number of received unicast frames.
+    pub rx_unicast: u32,
+    /// Number of received broadcast frames.
+    pub rx_broadcast: u32,
+    /// Number of received data frames.
+    pub rx_data: u32,
+    /// Number of received data poll frames.
+    pub rx_data_poll: u32,
+    /// Number of received beacon frames.
+    pub rx_beacon: u32,
+    /// Number of received beacon request frames.
+    pub rx_beacon_request: u32,
+    /// Number of received other types of frames.
+    pub rx_other: u32,
+    /// Number of received frames filtered by allow/deny-list.
+    pub rx_address_filtered: u32,
+    /// Number of received frames filtered by destination check.
+    pub rx_dest_addr_filtered: u32,
+    /// Number of received duplicated frames.
+    pub rx_duplicated: u32,
+    /// Number of received frames with no or malformed content.
+    pub rx_err_no_frame: u32,
+    /// Number of received frames from an unknown neighbor.
+    pub rx_err_unknown_neighbor: u32,
+    /// Number of received frames whose source address is invalid.
+    pub rx_err_invalid_src_addr: u32,
+    /// Number of received frames with security error.
+    pub rx_err_sec: u32,
+    /// Number of received frames with FCS error.
+    pub rx_err_fcs: u32,
+    /// Number of received frames with other error.
+    pub rx_err_other: u32,
+}
+
+impl From<&otMacCounters> for MacCounters {
+    fn from(c: &otMacCounters) -> Self {
+        Self {
+            tx_total: c.mTxTotal,
+            tx_unicast: c.mTxUnicast,
+            tx_broadcast: c.mTxBroadcast,
+            tx_ack_requested: c.mTxAckRequested,
+            tx_acked: c.mTxAcked,
+            tx_no_ack_requested: c.mTxNoAckRequested,
+            tx_data: c.mTxData,
+            tx_data_poll: c.mTxDataPoll,
+            tx_beacon: c.mTxBeacon,
+            tx_beacon_request: c.mTxBeaconRequest,
+            tx_other: c.mTxOther,
+            tx_retry: c.mTxRetry,
+            tx_direct_max_retry_expiry: c.mTxDirectMaxRetryExpiry,
+            tx_indirect_max_retry_expiry: c.mTxIndirectMaxRetryExpiry,
+            tx_err_cca: c.mTxErrCca,
+            tx_err_abort: c.mTxErrAbort,
+            tx_err_busy_channel: c.mTxErrBusyChannel,
+            rx_total: c.mRxTotal,
+            rx_unicast: c.mRxUnicast,
+            rx_broadcast: c.mRxBroadcast,
+            rx_data: c.mRxData,
+            rx_data_poll: c.mRxDataPoll,
+            rx_beacon: c.mRxBeacon,
+            rx_beacon_request: c.mRxBeaconRequest,
+            rx_other: c.mRxOther,
+            rx_address_filtered: c.mRxAddressFiltered,
+            rx_dest_addr_filtered: c.mRxDestAddrFiltered,
+            rx_duplicated: c.mRxDuplicated,
+            rx_err_no_frame: c.mRxErrNoFrame,
+            rx_err_unknown_neighbor: c.mRxErrUnknownNeighbor,
+            rx_err_invalid_src_addr: c.mRxErrInvalidSrcAddr,
+            rx_err_sec: c.mRxErrSec,
+            rx_err_fcs: c.mRxErrFcs,
+            rx_err_other: c.mRxErrOther,
+        }
+    }
+}
+
+/// Thread MLE counters (`otThreadGetMleCounters`), as reported by
+/// [`OpenThread::mle_counters`].
+///
+/// The `*_time_millis` fields track the cumulative time spent in each device
+/// role (they rely on the OpenThread uptime tracking, see
+/// [`OpenThread::uptime_millis`]).
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct MleCounters {
+    /// Number of times the device entered the disabled role.
+    pub disabled_role: u16,
+    /// Number of times the device entered the detached role.
+    pub detached_role: u16,
+    /// Number of times the device entered the child role.
+    pub child_role: u16,
+    /// Number of times the device entered the router role.
+    pub router_role: u16,
+    /// Number of times the device entered the leader role.
+    pub leader_role: u16,
+    /// Number of attach attempts while the device was detached.
+    pub attach_attempts: u16,
+    /// Number of changes to the partition ID.
+    pub partition_id_changes: u16,
+    /// Number of attempts to attach to a better partition.
+    pub better_partition_attach_attempts: u16,
+    /// Number of attempts to find a better parent (parent search).
+    pub better_parent_attach_attempts: u16,
+    /// Number of times the device changed its parent.
+    pub parent_changes: u16,
+    /// Cumulative time spent in the disabled role, in milliseconds.
+    pub disabled_time_millis: u64,
+    /// Cumulative time spent in the detached role, in milliseconds.
+    pub detached_time_millis: u64,
+    /// Cumulative time spent in the child role, in milliseconds.
+    pub child_time_millis: u64,
+    /// Cumulative time spent in the router role, in milliseconds.
+    pub router_time_millis: u64,
+    /// Cumulative time spent in the leader role, in milliseconds.
+    pub leader_time_millis: u64,
+    /// Total time tracked by the `*_time_millis` counters, in milliseconds.
+    pub tracked_time_millis: u64,
+}
+
+impl From<&otMleCounters> for MleCounters {
+    fn from(c: &otMleCounters) -> Self {
+        Self {
+            disabled_role: c.mDisabledRole,
+            detached_role: c.mDetachedRole,
+            child_role: c.mChildRole,
+            router_role: c.mRouterRole,
+            leader_role: c.mLeaderRole,
+            attach_attempts: c.mAttachAttempts,
+            partition_id_changes: c.mPartitionIdChanges,
+            better_partition_attach_attempts: c.mBetterPartitionAttachAttempts,
+            better_parent_attach_attempts: c.mBetterParentAttachAttempts,
+            parent_changes: c.mParentChanges,
+            disabled_time_millis: c.mDisabledTime,
+            detached_time_millis: c.mDetachedTime,
+            child_time_millis: c.mChildTime,
+            router_time_millis: c.mRouterTime,
+            leader_time_millis: c.mLeaderTime,
+            tracked_time_millis: c.mTrackedTime,
+        }
+    }
+}
+
+/// IPv6-layer packet counters (`otThreadGetIp6Counters`), as reported by
+/// [`OpenThread::ip_counters`].
+#[derive(Copy, Clone, Debug, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct IpCounters {
+    /// Number of IPv6 packets successfully transmitted.
+    pub tx_success: u32,
+    /// Number of IPv6 packets successfully received.
+    pub rx_success: u32,
+    /// Number of IPv6 packets that failed to transmit.
+    pub tx_failure: u32,
+    /// Number of IPv6 packets that failed to receive.
+    pub rx_failure: u32,
+}
+
+impl From<&otIpCounters> for IpCounters {
+    fn from(c: &otIpCounters) -> Self {
+        Self {
+            tx_success: c.mTxSuccess,
+            rx_success: c.mRxSuccess,
+            tx_failure: c.mTxFailure,
+            rx_failure: c.mRxFailure,
+        }
+    }
 }
 
 /// The device role in the OpenThread network.
@@ -2240,6 +2736,8 @@ struct OtState<'a> {
     scan_callback: Option<&'a mut dyn FnMut(Option<&ScanResult>)>,
     /// Indicate that scanning has completed
     scan_done: Signal<()>,
+    /// Indicate that a graceful detach (`OpenThread::detach_gracefully`) has completed
+    detach_done: Signal<()>,
     /// The callback to invoke from a DNS client browse/resolve response.
     /// Holds a lifetime-erased reference to the user closure for the duration of
     /// the in-flight query (cleared when the query completes). See `dns.rs`.
