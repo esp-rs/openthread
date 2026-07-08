@@ -38,10 +38,6 @@ critical-section = { version = "1.2", features = ["std"] }
 # The `std` feature pulls in `rcp` + the host `SerialPort` transport.
 openthread = { path = "../../openthread", features = ["std", "udp", "srp", "dns-client", "embassy-net-driver-channel", "isupper", "log"] }
 
-[patch.crates-io]
-# Necessary for some memory alignment issues which are only solved in the not-released-yet mbedtls-rs
-mbedtls-rs-sys = { git = "https://github.com/esp-rs/mbedtls-rs", rev = "e1dee7437dca4eb4649f7ef319bc9b2cd98b1422" }
-
 [[bin]]
 path = "./src/bin/basic_udp.rs"
 name = "basic_udp"
