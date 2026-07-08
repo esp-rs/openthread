@@ -206,6 +206,19 @@ impl OpenThreadBuilder {
             .cflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128")
             .cxxflag("-DOPENTHREAD_CONFIG_NUM_MESSAGE_BUFFERS=128");
 
+        // Enum ABI (see the matching `bindgen` note in `generate_bindings`): on
+        // ARM-embedded (`-none-eabi*`) targets, force short enums on the C/C++
+        // build so the produced `.a` carries `Tag_ABI_enum_size: small`. This is
+        // a fixed ecosystem policy, NOT the compiler default — clang defaults to
+        // 4-byte `int` enums for `--target=thumbv*-none-eabi`, which would make
+        // OpenThread ABI-incompatible with the Nordic `libmpsl`/SoftDevice
+        // Controller blobs (stamped `small`) and with `nrf-802154-sys` (which
+        // already forces `-fshort-enums`) when they all link into one firmware
+        // image, and would desync struct layouts (enum fields) against bindgen.
+        if self.short_enums() {
+            config.cflag("-fshort-enums").cxxflag("-fshort-enums");
+        }
+
         // When using the external MbedTLS provided by `mbedtls-rs-sys`, add its
         // include directories so OpenThread compiles against that config. When
         // the feature is off, OpenThread builds its own bundled MbedTLS (the
