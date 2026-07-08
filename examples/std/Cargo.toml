@@ -15,6 +15,11 @@ default = []
 # Regenerate the OpenThread bindings on the fly (needed until the committed
 # host-target bindings match the active feature set).
 force-generate-bindings = ["openthread/force-generate-bindings"]
+# FTD (router-capable) device; needed by the `form` example (a network is
+# formed by its first router, the Leader).
+ftd = ["openthread/ftd"]
+# Thread-native (MeshCoP) commissioning; needed by the `joiner` example.
+joiner = ["openthread/joiner"]
 
 [dependencies]
 embassy-executor = { version = "0.10", features = ["platform-std", "executor-thread"] }
@@ -48,3 +53,17 @@ name = "srp"
 [[bin]]
 path = "./src/bin/dns.rs"
 name = "dns"
+
+[[bin]]
+path = "./src/bin/ping.rs"
+name = "ping"
+
+[[bin]]
+path = "./src/bin/form.rs"
+name = "form"
+required-features = ["ftd"]
+
+[[bin]]
+path = "./src/bin/joiner.rs"
+name = "joiner"
+required-features = ["joiner"]

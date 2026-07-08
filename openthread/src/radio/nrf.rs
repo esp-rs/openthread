@@ -89,6 +89,13 @@ impl Radio for NrfRadio<'_> {
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
         // The nRF radio has no PHY or MAC offloading capabilities of its own;
         // OpenThread / `MacRadio` handle everything in software.
+        //
+        // No `ENERGY_SCAN` (and no `Radio::energy_scan` impl) either: the nRF
+        // RADIO peripheral can sample channel energy (EDSAMPLE), but
+        // `embassy-nrf`'s IEEE 802.15.4 driver does not expose it (as of 0.10;
+        // energy detection is only used internally as a CCA mode). Until it
+        // does, energy scans on this radio yield no measurements (see
+        // `Radio::energy_scan`).
         Ok(RadioCaps::default())
     }
 

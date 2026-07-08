@@ -36,6 +36,8 @@ pub use fmt::Bytes as BytesFmt;
 pub use nat64::*;
 pub use netdata::*;
 pub use openthread_sys as sys;
+#[cfg(feature = "ping-sender")]
+pub use ping::*;
 pub use radio::*;
 pub use scan::*;
 pub use settings::*;
@@ -51,8 +53,12 @@ mod dataset;
 mod dns;
 #[cfg(feature = "embassy-net-driver-channel")]
 pub mod enet;
+#[cfg(feature = "joiner")]
+mod joiner;
 mod nat64;
 mod netdata;
+#[cfg(feature = "ping-sender")]
+mod ping;
 mod platform;
 mod radio;
 mod scan;
@@ -73,10 +79,11 @@ use sys::{
     otIp6SetEnabled, otIp6SetReceiveCallback, otIpCounters, otLinkModeConfig, otMacCounters,
     otMessage, otMessageFree, otMessageGetBufferInfo, otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL,
     otMessageRead, otMessageSettings, otMleCounters, otOperationalDataset,
-    otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioReceiveDone, otPlatRadioTxDone,
-    otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess,
-    otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode,
-    OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
+    otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioEnergyScanDone,
+    otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame,
+    otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId,
+    otThreadSetEnabled, otThreadSetLinkMode, OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT,
+    OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -1527,6 +1534,68 @@ impl<'a> OpenThread<'a> {
                             }
                         }
                     }
+                    RadioCommand::EnergyScan(_, duration_millis) => {
+                        let channel = cmd.conf().channel;
+
+                        trace!("Energy scan: channel {}, {} ms", channel, duration_millis);
+
+                        let result = {
+                            let mut new_cmd = pin!(radio_cmd());
+                            let mut scan = pin!(radio.energy_scan(channel, duration_millis));
+
+                            embassy_futures::select::select(&mut new_cmd, &mut scan).await
+                        };
+
+                        match result {
+                            Either::First(new_cmd) => {
+                                let mut ot = self.activate();
+
+                                // Report an aborted scan (no valid measurement)
+                                // because we got interrupted by a new command
+                                {
+                                    let state = ot.state();
+                                    unsafe {
+                                        otPlatRadioEnergyScanDone(
+                                            state.ot.instance,
+                                            OT_RADIO_RSSI_INVALID as i8,
+                                        );
+                                    }
+                                }
+
+                                ot.process_tasklets();
+
+                                trace!("Energy scan interrupted by new command: {:?}", new_cmd);
+
+                                cmd = new_cmd;
+                            }
+                            Either::Second(result) => {
+                                let mut ot = self.activate();
+
+                                {
+                                    let state = ot.state();
+
+                                    let max_rssi = match result {
+                                        Ok(max_rssi) => {
+                                            trace!("Energy scan done, max RSSI: {}", max_rssi);
+                                            max_rssi
+                                        }
+                                        Err(err) => {
+                                            warn!("Energy scan failed: {:?}", err);
+                                            OT_RADIO_RSSI_INVALID as i8
+                                        }
+                                    };
+
+                                    unsafe {
+                                        otPlatRadioEnergyScanDone(state.ot.instance, max_rssi);
+                                    }
+                                }
+
+                                ot.process_tasklets();
+
+                                break;
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -1670,7 +1739,15 @@ impl OtResources {
             settings,
             scan_callback: None,
             scan_done: Signal::new(),
+            energy_scan_callback: None,
+            energy_scan_done: Signal::new(),
             detach_done: Signal::new(),
+            #[cfg(feature = "joiner")]
+            join_done: Signal::new(),
+            #[cfg(feature = "ping-sender")]
+            ping_callback: None,
+            #[cfg(feature = "ping-sender")]
+            ping_done: Signal::new(),
             #[cfg(feature = "dns-client")]
             dns_callback: None,
             #[cfg(feature = "dns-client")]
@@ -1685,7 +1762,24 @@ impl OtResources {
             changes: Signal::new(),
             radio: Signal::new(),
             radio_conf: Config::new(),
-            radio_caps: OT_RADIO_CAPS_ACK_TIMEOUT as otRadioCaps,
+            // The *initial* radio capabilities, before the actual radio is
+            // brought up by `run_radio` and reports its real set.
+            //
+            // NOTE: capabilities which decide whether OpenThread routes an
+            // operation to the platform radio at all MUST be advertised here:
+            // OpenThread's `SubMac` snapshots `otPlatRadioGetCaps` when the
+            // instance is constructed (`sub_mac.cpp`), which in this crate's
+            // architecture happens before a `Radio` instance is even known.
+            //
+            // `ENERGY_SCAN` is therefore always advertised: scan requests are
+            // always routed to the `Radio` trait, whose default `energy_scan`
+            // implementation reports "no measurement" (invalid RSSI) for
+            // radios that cannot measure channel energy — OpenThread then
+            // omits those channels from the scan results. The alternative
+            // (OpenThread's software sampling fallback) cannot work here
+            // anyway, as it needs a synchronous RSSI read (`otPlatRadioGetRssi`)
+            // which is unimplementable on top of an async radio.
+            radio_caps: (OT_RADIO_CAPS_ACK_TIMEOUT | sys::OT_RADIO_CAPS_ENERGY_SCAN) as otRadioCaps,
             pending_rx_when_idle: None,
         }));
 
@@ -2451,7 +2545,15 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_get_rssi(&mut self) -> i8 {
-        let rssi = -128; // TODO
+        // This is a *synchronous* platform API, but the radio is an async
+        // driver owned by the radio runner task - there is no way to sample it
+        // from here. Report "invalid" (the value the API defines for "no
+        // measurement available"), so consumers - most notably OpenThread's
+        // software energy scan, used when the radio does not advertise
+        // `Capabilities::ENERGY_SCAN` - see honest invalid readings rather
+        // than fake ones. Radios that can measure energy advertise
+        // `ENERGY_SCAN` and serve scans via `Radio::energy_scan` instead.
+        let rssi = OT_RADIO_RSSI_INVALID as i8;
         trace!("Plat radio get RSSI callback, RSSI: {}", rssi);
 
         rssi
@@ -2542,7 +2644,17 @@ impl<'a> OtContext<'a> {
             "Plat radio energy scan callback, channel {}, duration {}",
             channel, duration
         );
-        unreachable!()
+
+        let state = self.state();
+
+        let mut conf = state.ot.radio_conf.clone();
+        conf.channel = channel;
+        state
+            .ot
+            .radio
+            .signal(RadioCommand::EnergyScan(conf, duration));
+
+        Ok(())
     }
 
     fn plat_radio_sleep(&mut self) -> Result<(), OtError> {
@@ -2736,8 +2848,27 @@ struct OtState<'a> {
     scan_callback: Option<&'a mut dyn FnMut(Option<&ScanResult>)>,
     /// Indicate that scanning has completed
     scan_done: Signal<()>,
+    /// The callback to invoke when energy scanning is in progress
+    #[allow(clippy::type_complexity)]
+    energy_scan_callback: Option<&'a mut dyn FnMut(Option<&EnergyScanResult>)>,
+    /// Indicate that energy scanning has completed
+    energy_scan_done: Signal<()>,
     /// Indicate that a graceful detach (`OpenThread::detach_gracefully`) has completed
     detach_done: Signal<()>,
+    /// Carries the terminal `otError` of an in-flight join (`OpenThread::join`)
+    /// back to the awaiting future (signaled from the joiner C callback).
+    #[cfg(feature = "joiner")]
+    join_done: Signal<otError>,
+    /// The callback to invoke for each received ping reply. Holds a
+    /// lifetime-erased reference to the user closure for the duration of the
+    /// in-flight ping (cleared when the ping completes). See `ping.rs`.
+    #[cfg(feature = "ping-sender")]
+    #[allow(clippy::type_complexity)]
+    ping_callback: Option<&'a mut dyn FnMut(&PingReply)>,
+    /// Carries the final statistics of an in-flight ping back to the awaiting
+    /// future (signaled from the ping-statistics C callback).
+    #[cfg(feature = "ping-sender")]
+    ping_done: Signal<PingStatistics>,
     /// The callback to invoke from a DNS client browse/resolve response.
     /// Holds a lifetime-erased reference to the user closure for the duration of
     /// the in-flight query (cleared when the query completes). See `dns.rs`.
@@ -2792,12 +2923,18 @@ enum RadioCommand {
     /// Once the frame is received, it will be copied to `OtData::radio_resources.rcv_frame` and `OtData::radio_resources.rcv_psdu`
     /// and OpenThread C will be signalled by calling `otPlatRadioReceiveDone`
     Rx(Config),
+    /// Perform an energy scan on the channel in the provided configuration, for
+    /// the provided duration in milliseconds
+    ///
+    /// Once the scan completes (or an error occurs) OpenThread C will be
+    /// signalled by calling `otPlatRadioEnergyScanDone`
+    EnergyScan(Config, u16),
 }
 
 impl RadioCommand {
     const fn conf(&self) -> &Config {
         match self {
-            Self::Tx(conf) | Self::Rx(conf) => conf,
+            Self::Tx(conf) | Self::Rx(conf) | Self::EnergyScan(conf, _) => conf,
         }
     }
 }
