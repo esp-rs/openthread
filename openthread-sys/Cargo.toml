@@ -40,15 +40,14 @@ exclude = [
 ]
 
 [features]
-# The default profile is `matter` (= the committed prebuilt `.a` config), so
-# existing consumers and the prebuilt libraries apply as-is. Select individual
-# feature knobs to compile in more OpenThread functionality (forces an
-# on-the-fly rebuild — `--gc-sections` cannot drop unused-but-enabled features
-# because `ot::Instance` aggregates them all). See `gen/features.rs`.
-default = ["matter", "mbedtls-rs-sys"]
-
-# Use the external MbedTLS provided by the `mbedtls-rs-sys` crate, rather than
-# OpenThread's own bundled MbedTLS. See `gen/builder.rs`.
+default = ["matter"]
+# Build OpenThread against the external MbedTLS (`mbedtls-rs-sys`) rather than
+# using the bundled MbedTLS.
+# WARNING: do NOT combine a default (bundled-MbedTLS) OpenThread with a separate
+# `mbedtls-rs-sys` elsewhere in the same firmware — that links two MbedTLS copies
+# defining the same `mbedtls_*` symbols (duplicate-symbol link error at best,
+# silent cross-wiring at worst). If your graph needs `mbedtls-rs-sys`, enable this
+# feature so OpenThread reuses it instead of building its own.
 mbedtls-rs-sys = ["dep:mbedtls-rs-sys"]
 
 # ---------------------------------------------------------------------------
@@ -136,7 +135,7 @@ use-gcc = []
 # The exact profile the committed per-target prebuilt libraries are built with
 # (see `xtask`). It MUST equal `default` so the committed `.a` libraries match
 # what default consumers build.
-prebuilt = ["matter", "mbedtls-rs-sys"]
+prebuilt = ["matter"]
 
 # Barebones profile for Matter: SRP client (service registration), SLAAC
 # (address autoconfig), ECDSA, ping, and the DNS client (operational discovery —

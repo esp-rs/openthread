@@ -15,9 +15,26 @@ readme = "README.md"
 harness = false
 
 [features]
-default = ["matter", "mbedtls-rs-sys"]
+default = ["matter"]
+# Host-side helpers that require `std`. Currently: a ready-to-use serial
+# [`SerialPort`] transport for the RCP driver (async serial over a `/dev/tty*`
+# device on Unix), so a Linux/macOS host can drive an `ot-rcp` over USB. Implies
+# `rcp` (the serial transport is only useful with the spinel driver). Windows
+# serial support is a planned addition (its handles need overlapped I/O, unlike
+# the readiness-based `async-io` path used on Unix).
+std = ["rcp", "dep:async-io", "dep:nix", "embedded-io-async/std"]
+# Build OpenThread against the external MbedTLS (`mbedtls-rs-sys`) rather than
+# using the bundled MbedTLS.
+# WARNING: do NOT combine a default (bundled-MbedTLS) OpenThread with a separate
+# `mbedtls-rs-sys` elsewhere in the same firmware — that links two MbedTLS copies
+# defining the same `mbedtls_*` symbols (duplicate-symbol link error at best,
+# silent cross-wiring at worst). If your graph needs `mbedtls-rs-sys`, enable this
+# feature so OpenThread reuses it instead of building its own.
+mbedtls-rs-sys = ["openthread-sys/mbedtls-rs-sys"]
+
 udp = [] # For backwards compatibility
 srp = ["srp-client"] # For backwards compatibility
+
 # SRP client: gates the Rust SRP API and compiles in OpenThread's SRP client.
 srp-client = ["openthread-sys/srp-client"]
 # Device-type / radio-location selection (additive; absence = the default).
@@ -36,17 +53,6 @@ rcp = ["openthread-sys/rcp", "dep:embedded-io-async", "dep:embedded-hal", "dep:e
 # standalone bench tool, not part of normal Thread operation, and the RCP
 # firmware must itself be built with diagnostics support.
 diag = ["rcp"]
-# Host-side helpers that require `std`. Currently: a ready-to-use serial
-# [`SerialPort`] transport for the RCP driver (async serial over a `/dev/tty*`
-# device on Unix), so a Linux/macOS host can drive an `ot-rcp` over USB. Implies
-# `rcp` (the serial transport is only useful with the spinel driver). Windows
-# serial support is a planned addition (its handles need overlapped I/O, unlike
-# the readiness-based `async-io` path used on Unix).
-std = ["rcp", "dep:async-io", "dep:nix", "embedded-io-async/std"]
-# Build OpenThread against the external MbedTLS (`mbedtls-rs-sys`) rather than
-# its own bundled MbedTLS. On by default; omit (with `default-features = false`)
-# to use the bundled MbedTLS and drop the `mbedtls-rs-sys` dependency.
-mbedtls-rs-sys = ["openthread-sys/mbedtls-rs-sys"]
 # Heap configuration (see `openthread-sys`). OpenThread keeps one fixed-size
 # internal heap buffer, shared by its own code and (by default) MbedTLS. Three
 # independent axes tune it:

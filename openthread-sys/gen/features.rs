@@ -179,9 +179,9 @@ pub fn dtls_active() -> bool {
 
 /// Whether OpenThread is built against the external MbedTLS (`mbedtls-rs-sys`
 /// feature) rather than its own bundled MbedTLS. This is part of the prebuilt
-/// fingerprint: the committed libraries are built with the external MbedTLS (the
-/// `prebuilt` profile includes `mbedtls-rs-sys`), so a build that uses the
-/// bundled MbedTLS must not reuse them.
+/// fingerprint: the committed libraries are built with the BUNDLED MbedTLS (the
+/// `prebuilt` profile does NOT include `mbedtls-rs-sys`), so a build that uses
+/// the external MbedTLS must not reuse them.
 pub fn use_external_mbedtls() -> bool {
     std::env::var_os("CARGO_FEATURE_MBEDTLS_RS_SYS").is_some()
 }
@@ -299,6 +299,20 @@ pub fn device_link_libs() -> Vec<&'static str> {
     libs.push("openthread-platform-utils-static");
     libs.push("support");
 
+    // Bundled MbedTLS (the default): OpenThread compiled its own vendored MbedTLS
+    // into these archives (from `third_party/mbedtls`). They define the
+    // `mbedtls_*` / `psa_*` symbols the core stack references, so they must be
+    // linked LAST (most-depended-upon). With the external `mbedtls-rs-sys` those
+    // symbols come from that crate's own linkage instead, and these archives are
+    // neither built nor linked. Order within the group: mbedtls (TLS/X.509
+    // callers) -> mbedx509 -> mbedcrypto (the leaf), then the crypto backends
+    // mbedcrypto references (everest = Curve25519, p256m = P-256).
+    if !use_external_mbedtls() {
+        for lib in ["mbedtls", "mbedx509", "mbedcrypto", "everest", "p256m"] {
+            libs.push(lib);
+        }
+    }
+
     libs
 }
 
@@ -308,7 +322,7 @@ pub fn device_link_libs() -> Vec<&'static str> {
 /// describing the difference so the caller can rebuild and explain why. The
 /// fingerprint is the `OT_*` knob set (`+OT_X`/`-OT_X` for a knob enabled here
 /// but not in the prebuilt, or vice-versa) *and* the MbedTLS backend (the
-/// prebuilt uses the external `mbedtls-rs-sys`; an internal-MbedTLS build cannot
+/// prebuilt uses the bundled MbedTLS; an external-`mbedtls-rs-sys` build cannot
 /// reuse it even if the knobs match).
 pub fn prebuilt_validity() -> Result<(), String> {
     let active = active_knob_settings();
@@ -327,11 +341,12 @@ pub fn prebuilt_validity() -> Result<(), String> {
         }
     }
 
-    // The prebuilt is built with the external MbedTLS (`prebuilt` ⊇
-    // `mbedtls-rs-sys`); a bundled-MbedTLS build is a different OpenThread
-    // compilation and must not reuse it.
-    if !use_external_mbedtls() {
-        parts.push("-mbedtls-rs-sys (bundled MbedTLS)".to_string());
+    // The prebuilt is built with the bundled MbedTLS (`prebuilt` does NOT include
+    // `mbedtls-rs-sys`); an external-MbedTLS build is a different OpenThread
+    // compilation (different config headers; the vendored mbedtls archives are
+    // absent) and must not reuse it.
+    if use_external_mbedtls() {
+        parts.push("+mbedtls-rs-sys (external MbedTLS)".to_string());
     }
 
     // The `rcp` feature compiles the spinel codec shim (`spinel_codec.c`,
