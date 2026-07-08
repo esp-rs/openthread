@@ -42,6 +42,7 @@ exclude = [
 [features]
 default = ["matter"]
 # Build OpenThread against the external MbedTLS (`mbedtls-rs-sys`) rather than
+# using the bundled MbedTLS.
 # WARNING: do NOT combine a default (bundled-MbedTLS) OpenThread with a separate
 # `mbedtls-rs-sys` elsewhere in the same firmware — that links two MbedTLS copies
 # defining the same `mbedtls_*` symbols (duplicate-symbol link error at best,
