@@ -154,8 +154,8 @@ extern "C" fn otPlatRadioSetShortAddress(instance: *const otInstance, address: u
 // its old (child) RLOC16 and its new (router) RLOC16. OpenThread hands the radio
 // the old address here so frames addressed to it keep being received for a short
 // window (`kAlternateRloc16Timeout`, ~8s), after which the stack clears it (calls
-// this with `OT_RADIO_INVALID_SHORT_ADDR`. It is invoked unconditionally in the
-//FTD `Mac` path (never on MTD, where `--gc-sections` drops it).
+// this with `OT_RADIO_INVALID_SHORT_ADDR`). It is invoked unconditionally in the
+// FTD `Mac` path (never on MTD, where `--gc-sections` drops it).
 #[no_mangle]
 extern "C" fn otPlatRadioSetAlternateShortAddress(instance: *const otInstance, address: u16) {
     OtContext::callback(instance).plat_radio_set_alternate_short_address(address);
