@@ -63,3 +63,8 @@ required-features = ["ftd"]
 path = "./src/bin/joiner.rs"
 name = "joiner"
 required-features = ["joiner"]
+
+[[bin]]
+path = "./src/bin/become_router.rs"
+name = "become_router"
+required-features = ["ftd"]

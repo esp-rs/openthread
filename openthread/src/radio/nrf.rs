@@ -88,7 +88,13 @@ impl Radio for NrfRadio<'_> {
 
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
         // The nRF radio has no PHY or MAC offloading capabilities of its own;
-        // OpenThread / `MacRadio` handle everything in software.
+        // OpenThread / `MacRadio` handle everything in software. (This includes
+        // address filtering, so `Config::alt_short_addr` — the alternate short
+        // address an FTD accepts during a child-to-router transition — is honored
+        // here for free: the `MacRadio` software filter accepts both the primary
+        // and the alternate. Radios that offload short-address filtering to
+        // hardware/firmware only honor the alternate if that layer supports a
+        // second address; this one always does, in software.)
         //
         // No `ENERGY_SCAN` (and no `Radio::energy_scan` impl) either: the nRF
         // RADIO peripheral can sample channel energy (EDSAMPLE), but

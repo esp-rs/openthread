@@ -6,7 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
-* The default MbedTLS backend is now OpenThread's own **bundled** MbedTLS, not the external `mbedtls-rs-sys` crate. A default-features build reuses the committed prebuilt libraries and needs **no C toolchain** (clang/cmake/ninja).
+* Advertise **Thread 1.4** instead of Thread 1.1 (#103)
+  * The stack now reports Thread version 1.4 (`OpenThread::thread_version` returns 4; the highest the vendored OpenThread supports). Thread 1.3+ is the floor Matter-over-Thread expects; for a plain node (no Border Router, no TREL) the on-air/radio contract is unchanged past 1.2, so this is effectively a version bump plus a few benign internal behaviors (e.g. a more thorough parent search at attach).
+  * CSL is deliberately **not** compiled in: both `OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE` (which otherwise defaults on at >= 1.2) and `OT_CSL_RECEIVER` are forced off. This keeps the radio-platform contract identical to 1.1 — no `EnableCsl` / `ReceiveAt` / `GetCslAccuracy` callbacks are referenced — so every existing `Radio` driver keeps working unchanged. Low-power CSL (SSED) remains a future opt-in.
+  * HW-validated over an RCP: attach, SRP registration, and a `ping-stress` datapath sweep against a live Border Router.
+* Alternate short address support (Thread 1.4 FTD) (#103)
+  * Implements `otPlatRadioSetAlternateShortAddress`, which OpenThread calls during a child-to-router role transition so the node keeps receiving frames addressed to its previous RLOC16 for a short window (~8s). Surfaced as `Config::alt_short_addr`.
+  * Honored by the software `MacRadio` filter, so radios with no MAC offload (e.g. `NrfRadio`) accept both the primary and alternate short address for free. `SpinelRadio` programs the RCP's alternate-short-address property, but only when the RCP advertises the `ALT_SHORT_ADDR` capability (stock RCPs without it fall back to the primary only). `EspRadio` does not yet honor it: `esp-radio` exposes no public multi-PAN / second-short-address API, so the alternate is dropped by the hardware filter for now. In all unsupported cases the alternate is a reliability optimization — peers relearn the new RLOC16 within the window and higher layers retransmit.
+* New APIs for calling into OpenThread directly (#103)
+  * `OpenThread::with_instance`: an `unsafe` escape hatch that runs a closure with the raw `*mut otInstance`, inside an active state scope, for calling OpenThread C APIs this crate does not yet wrap.
+  * `OpenThread::become_router` (`ftd`): request an immediate router upgrade (`otThreadBecomeRouter`) instead of waiting for OpenThread's jittered automatic one. New std example `become_router` demonstrates it (and deterministically exercises the alternate-short-address transition).
+* NRF52: Fix a corruption issue where Clang compiled the C code with `short-enums = false`, while bindgen generated bindings with `short-enums = true` (#102)
+* The default MbedTLS backend is now OpenThread's own **bundled** MbedTLS, not the external `mbedtls-rs-sys` crate. A default-features build reuses the committed prebuilt libraries and needs **no C toolchain** (clang/cmake/ninja). (#101)
   * To build OpenThread against the external `mbedtls-rs-sys` instead, enable the `mbedtls-rs-sys` feature. Do this when another crate in the graph already provides `mbedtls-rs-sys` (e.g. `rs-matter`), so a single MbedTLS serves both, or when you need the HW accel capabilities of `mbedtls-rs-sys`.
   * WARNING: do not combine a default (bundled-MbedTLS) OpenThread with a separate `mbedtls-rs-sys` in the same firmware — that links two MbedTLS copies. If your graph needs `mbedtls-rs-sys`, enable this feature so OpenThread reuses it.
 * Address the Tier 2 API gaps:

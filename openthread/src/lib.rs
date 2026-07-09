@@ -621,6 +621,24 @@ impl<'a> OpenThread<'a> {
         }
     }
 
+    /// Request that this node become a router (`otThreadBecomeRouter`).
+    ///
+    /// Sends an Address Solicit to the leader to obtain a router ID, promoting a
+    /// router-eligible child to the router role without waiting for OpenThread's
+    /// automatic (jittered) router upgrade. Only meaningful on a Full Thread
+    /// Device that is currently a child and [`router_eligible`](Self::router_eligible).
+    ///
+    /// Returns an error if the node is not eligible or not in a state from which
+    /// it can become a router (e.g. detached, disabled, or already a router or
+    /// leader) — OpenThread reports `OT_ERROR_INVALID_STATE` / `OT_ERROR_NOT_CAPABLE`.
+    #[cfg(feature = "ftd")]
+    pub fn become_router(&self) -> Result<(), OtError> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        ot!(unsafe { sys::otThreadBecomeRouter(state.ot.instance) })
+    }
+
     /// Return whether this node is router-eligible (`otThreadIsRouterEligible`).
     ///
     /// Only available on a Full Thread Device (`ftd` feature); a Minimal Thread
@@ -1040,6 +1058,36 @@ impl<'a> OpenThread<'a> {
         }
 
         f(None)
+    }
+
+    /// Run a closure with direct access to the raw `otInstance` pointer.
+    ///
+    /// An escape hatch for calling OpenThread C APIs (`otXxx`) this crate does
+    /// not yet wrap. The closure runs inside an *active* scope — the same state
+    /// activation every high-level method uses — so the platform callbacks
+    /// OpenThread may invoke during the call (alarm, radio, settings, …) are
+    /// wired to this instance. Because activation is scoped to the call, the
+    /// pointer must NOT escape the closure: it is only valid for the duration of
+    /// `f`. The closure's return value is passed back out.
+    ///
+    /// # Safety
+    ///
+    /// The pointer is a live `*mut otInstance`; misusing the C API through it can
+    /// violate the invariants the safe wrapper upholds. In particular:
+    /// - Do not stash the pointer for later use (it is only valid within `f`).
+    /// - Do not re-enter this crate's API from within `f` (e.g. call another
+    ///   `OpenThread` method), as the state is already active — that would
+    ///   attempt a re-entrant activation.
+    /// - Calling an OpenThread API that expects a different device build (e.g. an
+    ///   FTD-only API on an MTD image) is undefined, exactly as in C.
+    pub fn with_instance<F, R>(&self, f: F) -> R
+    where
+        F: FnOnce(*mut otInstance) -> R,
+    {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        f(state.ot.instance)
     }
 
     /// Wait for the OpenThread stack to change its state.
@@ -2626,6 +2674,24 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.short_addr != Some(address) {
             state.ot.radio_conf.short_addr = Some(address);
+        }
+    }
+
+    fn plat_radio_set_alternate_short_address(&mut self, address: u16) {
+        // OpenThread clears the alternate with `OT_RADIO_INVALID_SHORT_ADDR`
+        // (0xfffe); map that to `None` (no alternate). Any other value is the
+        // second short address the radio should also accept.
+        let alt = (address != crate::sys::OT_RADIO_INVALID_SHORT_ADDR as u16).then_some(address);
+
+        info!(
+            "Plat radio set alternate short address callback, addr: {:?}",
+            alt
+        );
+
+        let state = self.state();
+
+        if state.ot.radio_conf.alt_short_addr != alt {
+            state.ot.radio_conf.alt_short_addr = alt;
         }
     }
 
