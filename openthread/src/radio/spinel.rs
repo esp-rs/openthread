@@ -160,6 +160,10 @@ const PROP_PHY_CHAN: u32 = 0x21;
 const PROP_PHY_TX_POWER: u32 = 0x25;
 const PROP_MAC_15_4_LADDR: u32 = 0x34;
 const PROP_MAC_15_4_SADDR: u32 = 0x35;
+/// `SPINEL_PROP_MAC_15_4_ALT_SADDR` (`MAC__BEGIN + 12`) — a *second* short
+/// address the RCP's hardware filter should also accept. Only meaningful when the
+/// RCP advertises `OT_RADIO_CAPS_ALT_SHORT_ADDR`; sent only in that case.
+const PROP_MAC_15_4_ALT_SADDR: u32 = 0x3c;
 const PROP_MAC_15_4_PANID: u32 = 0x36;
 const PROP_MAC_RAW_STREAM_ENABLED: u32 = 0x37;
 const PROP_MAC_PROMISCUOUS_MODE: u32 = 0x38;
@@ -952,6 +956,9 @@ where
         let rx_when_idle = [config.rx_when_idle as u8];
         let pan_id = config.pan_id.unwrap_or(0xffff).to_le_bytes();
         let short_addr = config.short_addr.unwrap_or(0xffff).to_le_bytes();
+        // Alternate short address: `0xfffe` (`OT_RADIO_INVALID_SHORT_ADDR`) is the
+        // "no alternate / clear" wire value the RCP expects.
+        let alt_short_addr = config.alt_short_addr.unwrap_or(0xfffe).to_le_bytes();
         // The spinel `MAC_15_4_LADDR` property carries the extended address in
         // *reversed* byte order relative to the bytes `otPlatRadioSetExtendedAddress`
         // hands the platform — which is what `Config::ext_addr` holds, as
@@ -962,7 +969,7 @@ where
         // this order.
         let ext_addr = config.ext_addr.unwrap_or(0).to_be_bytes();
 
-        let mut batch: [(u32, &[u8]); 7] = [(0, &[]); 7];
+        let mut batch: [(u32, &[u8]); 8] = [(0, &[]); 8];
         let mut count = 0;
 
         if changed(|c| c.channel as u64) {
@@ -990,6 +997,16 @@ where
         }
         if changed(|c| c.short_addr.unwrap_or(0xffff) as u64) {
             batch[count] = (PROP_MAC_15_4_SADDR, &short_addr);
+            count += 1;
+        }
+        // Alternate short address — only if the RCP advertises the capability
+        // (mirrors upstream `RadioSpinel::SetAlternateShortAddress`, which gates
+        // the property set on `OT_RADIO_CAPS_ALT_SHORT_ADDR`). Stock RCPs without
+        // it simply never receive the property.
+        if self.caps.contains(Capabilities::ALT_SHORT_ADDR)
+            && changed(|c| c.alt_short_addr.unwrap_or(0xfffe) as u64)
+        {
+            batch[count] = (PROP_MAC_15_4_ALT_SADDR, &alt_short_addr);
             count += 1;
         }
         if changed(|c| c.ext_addr.unwrap_or(0)) {

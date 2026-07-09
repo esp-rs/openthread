@@ -204,6 +204,19 @@ pub struct Config {
     /// Short address filter
     /// Disregarded if the radio is not capable of filtering by short address.
     pub short_addr: Option<u16>,
+    /// Alternate short address filter.
+    ///
+    /// A *second* short address the radio should also accept frames for, in
+    /// addition to [`short_addr`](Config::short_addr). Used by an FTD during a
+    /// child-to-router role transition, when it is briefly reachable at both its
+    /// old (child) and new (router) RLOC16 (OpenThread sets it via
+    /// `otPlatRadioSetAlternateShortAddress` and clears it ~8s later). `None`
+    /// means "no alternate" — the common case.
+    ///
+    /// Honored by the software [`MacRadio`] filter and by radios that can match a
+    /// second short address; disregarded by radios whose hardware/co-processor
+    /// short-address filter accepts only a single address (see each driver).
+    pub alt_short_addr: Option<u16>,
     /// Extended address filter
     /// Disregarded if the radio is not capable of filtering by extended address.
     pub ext_addr: Option<u64>,
@@ -224,6 +237,7 @@ impl Config {
             rx_when_idle: true,
             pan_id: None,
             short_addr: None,
+            alt_short_addr: None,
             ext_addr: None,
         }
     }
@@ -467,6 +481,10 @@ pub struct MacRadio<R, T> {
     pan_id: u16,
     /// The short address to filter by, if the filter policy allows it.
     short_addr: u16,
+    /// The alternate short address to *also* accept, or `BROADCAST_SHORT_ADDR`
+    /// (`0xffff`) when there is none. A real destination address never equals
+    /// the broadcast sentinel, so an unset alternate never matches — a no-op.
+    alt_short_addr: u16,
     /// The extended address to filter by, if the filter policy allows it.
     ext_addr: u64,
 }
@@ -504,6 +522,7 @@ where
             promiscuous: false,
             pan_id: MacHeader::BROADCAST_PAN_ID,
             short_addr: MacHeader::BROADCAST_SHORT_ADDR,
+            alt_short_addr: MacHeader::BROADCAST_SHORT_ADDR,
             ext_addr: MacHeader::BROADCAST_EXT_ADDR,
         }
     }
@@ -539,6 +558,9 @@ where
         self.promiscuous = config.promiscuous;
         self.pan_id = config.pan_id.unwrap_or(MacHeader::BROADCAST_PAN_ID);
         self.short_addr = config.short_addr.unwrap_or(MacHeader::BROADCAST_SHORT_ADDR);
+        self.alt_short_addr = config
+            .alt_short_addr
+            .unwrap_or(MacHeader::BROADCAST_SHORT_ADDR);
         self.ext_addr = config.ext_addr.unwrap_or(MacHeader::BROADCAST_EXT_ADDR);
 
         Ok(())
@@ -666,6 +688,7 @@ where
                     if !self.mac_caps.contains(MacCapabilities::FILTER_SHORT_ADDR)
                         && self.mac_header.dst_short_addr != MacHeader::BROADCAST_SHORT_ADDR
                         && self.mac_header.dst_short_addr != self.short_addr
+                        && self.mac_header.dst_short_addr != self.alt_short_addr
                     {
                         trace!(
                             "MacRadio, filtering out frame: {}, short address does not match",

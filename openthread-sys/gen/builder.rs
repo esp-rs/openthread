@@ -232,8 +232,35 @@ impl OpenThreadBuilder {
             });
         }
 
+        // Thread protocol version advertised and spoken by the stack.
+        //
+        // 1.4 (the latest; 1.3.1 is an alias) — Matter-over-Thread requires >= 1.3,
+        // and for a plain node (no Border Router, no TREL) the on-air/radio
+        // contract does NOT change anywhere past 1.2: no new `otPlatRadio*`
+        // callback is referenced at 1.3/1.4, and the only deltas are benign
+        // internal C++ behaviors (a more thorough parent search at attach,
+        // delay-aware tx-queue management). See `thread-version-and-frame-support`.
+        //
+        // The two CSL flags below are the important part of pinning ">=1.2
+        // WITHOUT the CSL machinery". `OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE`
+        // otherwise DEFAULTS ON at >= 1.2 (see the vendored `src/core/config/mac.h`)
+        // and is a SEPARATE axis from the receiver: the transmitter is the
+        // *parent* side (an FTD scheduling indirect frames to CSL children),
+        // the receiver is the *child* (SSED) side. We want neither yet:
+        //   - CSL_RECEIVER off  -> this node is never a CSL sleepy child.
+        //   - CSL_TRANSMITTER off -> an FTD here never tries to parent CSL
+        //     children, so OT never calls the CSL-parent radio hooks
+        //     (`otPlatRadioGetCslAccuracy`/`GetCslUncertainty`) at runtime.
+        // Together they keep the radio-platform contract identical to 1.1: no
+        // `EnableCsl`/`ReceiveAt`/`GetCsl*` callbacks are referenced or invoked,
+        // so every existing `Radio` driver keeps working unchanged. Enabling CSL
+        // (low-power SSED) is a deliberate future opt-in that also needs the
+        // `Radio` trait to grow the CSL/enh-ACK-security surface.
         config
-            .define("OT_THREAD_VERSION", "1.1")
+            .define("OT_THREAD_VERSION", "1.4")
+            .cflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
+            .cxxflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
+            .define("OT_CSL_RECEIVER", "OFF")
             .define("OT_LOG_LEVEL", "NOTE")
             // Build BOTH device types so the prebuilt cache covers MTD and FTD.
             // The actual archives shipped/linked are chosen by the umbrella

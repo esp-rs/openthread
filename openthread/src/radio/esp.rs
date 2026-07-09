@@ -88,6 +88,26 @@ impl<'a> EspRadio<'a> {
             },
             pan_id: config.pan_id,
             short_addr: config.short_addr,
+            // `config.alt_short_addr` (the second short address an FTD accepts
+            // during a child-to-router role transition) is NOT programmed here.
+            //
+            // The ESP 802.15.4 MAC *does* have the hardware for it — up to 4
+            // multi-PAN address-filter slots, so the alternate could live in slot
+            // 1 alongside the primary in slot 0, keeping full hardware filtering
+            // (and hence `MacCapabilities::all()`). But `esp-radio` (0.18) exposes
+            // neither a second short address on `Config` nor its `set_multipan_*`
+            // / `set_short_address(index, …)` primitives publicly (they are in a
+            // private `raw` module). So there is no way to reach slot 1 from here.
+            //
+            // Because `EspRadio` advertises full HW MAC offload, the software
+            // `MacRadio` filter is bypassed too — so on ESP the alternate RLOC16
+            // is simply not honored, and frames to it during the ~8 s transition
+            // window are dropped (recovered by higher-layer retransmission).
+            //
+            // TODO: implement once `esp-radio` gains a public multi-PAN /
+            // second-short-address API (an upstream `esp-radio` addition, akin to
+            // exposing the HW security registers) — then program slot 1 with the
+            // alternate + the primary PAN ID and enable slots 0 and 1.
             ext_addr: config.ext_addr,
             rx_queue_size: self.rx_queue_size,
             ..Default::default()
