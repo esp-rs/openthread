@@ -6,6 +6,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+* Fix FTD Routers silently dropping mesh-local unicasts (#106)
+  * Report OpenThread's default receive sensitivity (-110 dBm) instead of 0 dBm as the noise floor for link-quality grading
 * Advertise **Thread 1.4** instead of Thread 1.1 (#103)
   * The stack now reports Thread version 1.4. Note that Thread 1.3+ is the floor Matter-over-Thread expects; for a plain node (no Border Router, no TREL) the on-air/radio contract is unchanged past 1.2, so this is effectively a version bump plus a few benign internal behaviors (e.g. a more thorough parent search at attach).
   * CSL is deliberately **not** compiled in: both `OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE` (which otherwise defaults on at >= 1.2) and `OT_CSL_RECEIVER` are forced off. This keeps the radio-platform contract identical to 1.1 — no `EnableCsl` / `ReceiveAt` / `GetCslAccuracy` callbacks are referenced — so every existing `Radio` driver keeps working unchanged. Low-power CSL (SSED) remains a future opt-in.
