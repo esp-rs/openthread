@@ -112,7 +112,7 @@ extern "C" fn otPlatRadioGetRssi(instance: *const otInstance) -> i8 {
 
 #[no_mangle]
 extern "C" fn otPlatRadioGetReceiveSensitivity(instance: *const otInstance) -> i8 {
-    OtContext::callback(instance).plat_radio_receive_sensititivy()
+    OtContext::callback(instance).plat_radio_receive_sensitivity()
 }
 
 #[no_mangle]

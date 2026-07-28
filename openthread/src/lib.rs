@@ -2607,9 +2607,10 @@ impl<'a> OtContext<'a> {
         rssi
     }
 
-    // from https://github.com/espressif/esp-idf/blob/release/v5.3/components/openthread/src/port/esp_openthread_radio.c#L35
-    fn plat_radio_receive_sensititivy(&mut self) -> i8 {
-        let sens = 0; // TODO
+    fn plat_radio_receive_sensitivity(&mut self) -> i8 {
+        // The C stack's `kDefaultReceiveSensitivity` (`radio/radio.hpp`) as the
+        // noise floor for grading neighbors, until drivers can report real figures.
+        let sens = -110;
         trace!(
             "Plat radio receive sensitivity callback, sensitivity: {}",
             sens
