@@ -5,7 +5,7 @@ members = [
     "openthread-sys",
 ]
 
-exclude = ["examples", "xtask"]
+exclude = ["examples", "xtask", "tests"]
 
 [workspace.dependencies]
 log = { version = "0.4", default-features = false }

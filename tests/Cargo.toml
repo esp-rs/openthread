@@ -1,0 +1,40 @@
+[package]
+name = "openthread-tests"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+publish = false
+description = "Host-side integration-test binaries for `openthread`: simulation nodes wire-compatible with the upstream OpenThread simulation platform and test harness"
+repository = "https://github.com/esp-rs/openthread"
+license = "MIT OR Apache-2.0"
+rust-version = "1.84"
+
+[features]
+default = []
+# Regenerate the OpenThread bindings on the fly (needed until the committed
+# host-target bindings match the active feature set).
+force-generate-bindings = ["openthread/force-generate-bindings"]
+
+[dependencies]
+embassy-executor = { version = "0.10", features = ["platform-std", "executor-thread"] }
+embassy-time = { version = "0.5", features = ["std"] }
+embassy-futures = "0.1"
+log = "0.4"
+env_logger = "0.11"
+rand = { version = "0.9", features = ["std", "std_rng", "os_rng"] }
+static_cell = "2.1"
+async-io = "2"
+socket2 = { version = "0.5", features = ["all"] }
+# C symbols OpenThread's C references;
+# `critical-section` with `std` supplies a host `critical-section` impl.
+tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "strtoul"] }
+critical-section = { version = "1.2", features = ["std"] }
+
+# `ftd` because the test topologies need router-capable nodes (a network is
+# formed by its first router, the Leader). No `std`: that feature is the RCP
+# serial transport, and these nodes use a local (simulated) radio instead.
+openthread = { path = "../openthread", default-features = false, features = ["ftd", "isupper", "log"] }
+
+[[bin]]
+path = "./src/bin/sim_node.rs"
+name = "sim_node"
