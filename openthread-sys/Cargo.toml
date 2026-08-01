@@ -114,6 +114,15 @@ heap-int-65536 = []
 # ---------------------------------------------------------------------------
 ftd = []
 rcp = []
+# Compile OpenThread's C CLI library (`openthread-cli-{mtd,ftd}`, normally
+# stubbed out - see `CMakeLists.txt`) and link the flavor matching `ftd`,
+# plus the small C shim bridging the CLI's `va_list` output callback to Rust
+# (`gen/support/src/cli_shim.c`, surfaced as `otr_cli_init`). The CLI is the
+# standard control surface of OpenThread test/DUT binaries: the upstream test
+# harness (`tests/scripts/thread-cert`, THCI) drives devices through it.
+# Forces an on-the-fly OpenThread rebuild (the prebuilt libraries do not
+# include the CLI archives).
+cli = []
 
 # Always generate the bindings during build, even if pre-built bindings for the build target are available
 force-generate-bindings = []

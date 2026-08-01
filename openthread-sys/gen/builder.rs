@@ -378,6 +378,15 @@ impl OpenThreadBuilder {
             config.define(setting.knob, if setting.on { "ON" } else { "OFF" });
         }
 
+        // The C CLI is a build-structure toggle rather than an `OT_*` config
+        // knob (see `CMakeLists.txt`): `ON` builds the real CLI libraries plus
+        // the `cli_shim.c` output bridge in `libsupport.a`; `OFF` (the
+        // default) stubs the CLI targets out.
+        config.define(
+            "OT_RS_CLI",
+            if features::cli_active() { "ON" } else { "OFF" },
+        );
+
         // OpenThread's DTLS code (`secure_transport`) gates its key-export
         // callback declaration on `#ifdef MBEDTLS_SSL_EXPORT_KEYS`, but invokes
         // `mbedtls_ssl_set_export_keys_cb` unconditionally on MbedTLS >= 3.0

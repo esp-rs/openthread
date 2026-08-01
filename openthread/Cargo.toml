@@ -47,6 +47,15 @@ srp-client = ["openthread-sys/srp-client"]
 #              the crate docs / `OpenThread` RCP-host API).
 ftd = ["openthread-sys/ftd"]
 rcp = ["openthread-sys/rcp", "dep:embedded-io-async", "dep:embedded-hal", "dep:embedded-hal-async"]
+# The OpenThread C CLI, surfaced on the Rust API (`OpenThread::cli_init` /
+# `OpenThread::cli_input_line`). The CLI is the standard control surface of
+# OpenThread test/DUT binaries: the upstream test harness
+# (`tests/scripts/thread-cert`) and the Thread certification harness (THCI)
+# drive devices by sending CLI lines and parsing the textual output. Forces an
+# on-the-fly OpenThread build (see `openthread-sys`); not supported in
+# combination with `tcp` under the trimmed bundled-MbedTLS profile (the CLI's
+# TCP+TLS code needs X.509).
+cli = ["openthread-sys/cli"]
 # RCP manufacturing/RF diagnostics: adds `SpinelRadio::diag`, a bench/bring-up
 # utility that sends `diag …` commands to the radio co-processor's firmware (RF
 # tone, PER tests, channel/power setup). Implies `rcp`. Off by default — it is a

@@ -177,6 +177,16 @@ pub fn dtls_active() -> bool {
         .any(|f| std::env::var_os(format!("CARGO_FEATURE_{f}")).is_some())
 }
 
+/// Whether the `cli` feature is active: build OpenThread's C CLI libraries
+/// (normally stubbed out; see `CMakeLists.txt`) and the `cli_shim.c` output
+/// bridge in `libsupport.a`. Not an `OT_*` config knob but a build-structure
+/// toggle like the device-type selection - except that, unlike those, the CLI
+/// archives are NOT part of the prebuilt artifacts, so it also forces an
+/// on-the-fly build (see [`prebuilt_validity`]).
+pub fn cli_active() -> bool {
+    std::env::var_os("CARGO_FEATURE_CLI").is_some()
+}
+
 /// Whether OpenThread is built against the external MbedTLS (`mbedtls-rs-sys`
 /// feature) rather than its own bundled MbedTLS. This is part of the prebuilt
 /// fingerprint: the committed libraries are built with the BUNDLED MbedTLS (the
@@ -285,6 +295,16 @@ pub fn device_link_libs() -> Vec<&'static str> {
         libs.push("openthread-spinel-rcp");
     }
 
+    // The C CLI references the core stack, so its archive precedes the core's
+    // (and `tcplp`'s, further below, for the CLI's TCP commands).
+    if cli_active() {
+        libs.push(if ftd {
+            "openthread-cli-ftd"
+        } else {
+            "openthread-cli-mtd"
+        });
+    }
+
     libs.push(core);
 
     // TCPlp (OpenThread's TCP implementation) is its own archive and is only
@@ -356,6 +376,13 @@ pub fn prebuilt_validity() -> Result<(), String> {
     // firmware link would fail with undefined `ot_spinel_*` symbols.
     if std::env::var_os("CARGO_FEATURE_RCP").is_some() {
         parts.push("+rcp (spinel codec shim)".to_string());
+    }
+
+    // The `cli` feature needs the CLI archives and the `cli_shim.c` bridge in
+    // `libsupport.a`; the prebuilt artifacts (built with `OT_RS_CLI=OFF`)
+    // contain neither, so the build must be produced on the fly.
+    if cli_active() {
+        parts.push("+cli (C CLI library)".to_string());
     }
 
     // The prebuilt is built with OpenThread's default heap configuration (no

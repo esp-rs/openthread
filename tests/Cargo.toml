@@ -31,10 +31,16 @@ tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "st
 critical-section = { version = "1.2", features = ["std"] }
 
 # `ftd` because the test topologies need router-capable nodes (a network is
-# formed by its first router, the Leader). No `std`: that feature is the RCP
-# serial transport, and these nodes use a local (simulated) radio instead.
-openthread = { path = "../openthread", default-features = false, features = ["ftd", "isupper", "log"] }
+# formed by its first router, the Leader). `cli` for the harness-driveable DUT
+# binary (`cli_ftd`). No `std`: that feature is the RCP serial transport, and
+# these nodes use a local (simulated) radio instead.
+openthread = { path = "../openthread", default-features = false, features = ["ftd", "cli", "isupper", "log"] }
+embassy-sync = "0.8"
 
 [[bin]]
 path = "./src/bin/sim_node.rs"
 name = "sim_node"
+
+[[bin]]
+path = "./src/bin/cli_ftd.rs"
+name = "cli_ftd"

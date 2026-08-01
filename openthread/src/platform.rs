@@ -106,6 +106,42 @@ extern "C" fn otPlatRadioSetPromiscuous(instance: *const otInstance, enable: boo
 }
 
 #[no_mangle]
+extern "C" fn otPlatRadioGetTransmitPower(instance: *const otInstance, power: *mut i8) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_get_transmit_power(unsafe { power.as_mut() })
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetTransmitPower(instance: *const otInstance, power: i8) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_set_transmit_power(power)
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetCcaEnergyDetectThreshold(
+    instance: *const otInstance,
+    threshold: *mut i8,
+) -> otError {
+    let _ = threshold;
+    OtContext::callback(instance)
+        .plat_radio_cca_energy_detect_threshold_unsupported()
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetCcaEnergyDetectThreshold(
+    instance: *const otInstance,
+    threshold: i8,
+) -> otError {
+    let _ = threshold;
+    OtContext::callback(instance)
+        .plat_radio_cca_energy_detect_threshold_unsupported()
+        .into_ot_code()
+}
+
+#[no_mangle]
 extern "C" fn otPlatRadioGetRssi(instance: *const otInstance) -> i8 {
     OtContext::callback(instance).plat_radio_get_rssi()
 }

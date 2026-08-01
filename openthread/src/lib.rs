@@ -48,6 +48,8 @@ pub use udp::*;
 // This mod MUST go first, so that the others see its macros.
 pub(crate) mod fmt;
 
+#[cfg(feature = "cli")]
+mod cli;
 mod dataset;
 #[cfg(feature = "dns-client")]
 mod dns;
@@ -2650,6 +2652,41 @@ impl<'a> OtContext<'a> {
         if state.ot.radio_conf.promiscuous != promiscuous {
             state.ot.radio_conf.promiscuous = promiscuous;
         }
+    }
+
+    fn plat_radio_get_transmit_power(&mut self, power: Option<&mut i8>) -> Result<(), OtError> {
+        let Some(power) = power else {
+            return Err(OtError::new(crate::sys::otError_OT_ERROR_INVALID_ARGS));
+        };
+
+        *power = self.state().ot.radio_conf.power;
+
+        trace!("Plat radio get transmit power callback, power: {}", *power);
+
+        Ok(())
+    }
+
+    fn plat_radio_set_transmit_power(&mut self, power: i8) -> Result<(), OtError> {
+        info!("Plat radio set transmit power callback, power: {}", power);
+
+        let state = self.state();
+
+        if state.ot.radio_conf.power != power {
+            state.ot.radio_conf.power = power;
+        }
+
+        Ok(())
+    }
+
+    /// The CCA energy-detect threshold is not plumbed through the `Radio`
+    /// trait: its `Cca` config carries a raw device-unit threshold, not the
+    /// dBm value this platform API speaks. Report both accessors unsupported
+    /// (as many radio platforms do); OpenThread and its CLI handle that
+    /// gracefully.
+    fn plat_radio_cca_energy_detect_threshold_unsupported(&mut self) -> Result<(), OtError> {
+        info!("Plat radio get/set CCA energy detect threshold callback: unsupported");
+
+        Err(OtError::new(crate::sys::otError_OT_ERROR_NOT_IMPLEMENTED))
     }
 
     fn plat_radio_set_extended_address(&mut self, address: u64) {

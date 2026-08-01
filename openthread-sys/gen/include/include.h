@@ -74,6 +74,7 @@
 #include "openthread/backbone_router_ftd.h"
 
 // Diagnostics / management
+#include "openthread/cli.h"
 #include "openthread/ping_sender.h"
 #include "openthread/link_metrics.h"
 #include "openthread/jam_detection.h"

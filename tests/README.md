@@ -26,7 +26,12 @@ radio medium as upstream `ot-cli-ftd` / `ot-rcp` simulation binaries, and its fr
 - [`sim_node`](src/bin/sim_node.rs) — a full `openthread` stack on `SimRadio`
   (wrapped in `MacRadio`, i.e. ACKs/filtering in software, like on PHY-only real
   radios). Spawned as `sim_node <node id>`, mirroring `ot-cli-ftd <node id>`;
-  reports `role: <role>` lines on stdout.
+  driven via the crate API, reports `role: <role>` lines on stdout.
+- [`cli_ftd`](src/bin/cli_ftd.rs) — the same stack driven exclusively through
+  OpenThread's **C CLI** (the `cli` feature of `openthread`/`openthread-sys`):
+  stdin lines to the interpreter, its output to stdout. This is the DUT shape
+  the upstream harness spawns over a pty (`OT_CLI_PATH`), verified to hold up
+  under pexpect (echo, `Done` terminators, `state` polling).
 
 ## Tests
 
@@ -37,16 +42,21 @@ cargo test
 - [`formation`](tests/formation.rs) — two `sim_node` processes must form a Thread
   network on localhost (Leader + attached Child), proving the whole radio/alarm/
   tasklet path end-to-end.
+- [`cli`](tests/cli.rs) — a `cli_ftd` node is driven harness-style
+  (`dataset set active` / `ifconfig up` / `thread start` / `state` polling) to
+  Leader, and an API-driven `sim_node` attaches to it — the mixed
+  CLI-node/API-node topology.
 
-Each test run picks its own `PORT_BASE`, so parallel runs use disjoint media.
+Each test file picks its own `PORT_BASE` range, so parallel runs use disjoint
+media.
 
 ## Roadmap
 
-1. ~~`SimRadio` + multi-process network-formation smoke test~~ (this crate)
-2. A `cli` feature in `openthread-sys`/`openthread` linking the upstream C CLI
-   (`otCliInit`/`otCliInputLine` over stdio), turning `sim_node` into a drop-in
-   DUT for the upstream harness (`OT_CLI_PATH=… tests/scripts/thread-cert/…`,
-   expect suite via `$OT_SIMULATION_APPS`), including mixed Rust/C-node topologies.
-3. Real-time-mode subset of the upstream suites in CI (an `xtask itest` runner).
+1. ~~`SimRadio` + multi-process network-formation smoke test~~
+2. ~~A `cli` feature in `openthread-sys`/`openthread` linking the upstream C CLI,
+   plus the `cli_ftd` drop-in DUT binary~~
+3. Real-time-mode subset of the upstream suites (`tests/scripts/expect`,
+   `thread-cert` via `OT_CLI_PATH`/`$OT_SIMULATION_APPS`) run by an
+   `xtask itest` runner, in CI; mixed Rust/C-node topologies.
 4. Virtual-time support (a custom embassy-time driver speaking the simulator's
    event protocol) to unlock the full `thread-cert` suite as upstream runs it.
