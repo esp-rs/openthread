@@ -8,11 +8,22 @@
 //! DUT shape the upstream test harness spawns (`OT_CLI_PATH`, a pty via
 //! pexpect), making this binary its drop-in node.
 //!
-//! Invocation: `cli_ftd <node id>`; the port base of the simulated radio
-//! medium comes from `PORT_BASE`/`PORT_OFFSET` (harness convention). Exits
-//! on stdin EOF, like when the harness tears the pty down.
+//! Invocation: `cli_ftd [-L<addr>] <node id>` - the upstream simulation
+//! binaries' shape (`-L` selects the local interface address; the expect
+//! suite always passes it). The port base of the simulated radio medium
+//! comes from `PORT_BASE`/`PORT_OFFSET` (harness convention). Exits on stdin
+//! EOF, like when the harness tears the pty down.
+//!
+//! The CLI `reset`/`factoryreset` commands are honored by re-executing the
+//! process: the platform cannot reset the C stack in place (see the crate's
+//! `otPlatReset`), while a re-exec keeps the pty/stdio fds - so the
+//! harness's session survives - and starts a genuinely fresh stack. Settings
+//! live in RAM, so until a file-backed `Settings` exists, `reset` behaves
+//! like `factoryreset` (no dataset survives).
 
-use std::io::{BufRead, Write};
+use std::io::{BufRead, IsTerminal, Write};
+use std::net::Ipv4Addr;
+use std::os::unix::process::CommandExt;
 
 use embassy_executor::{Executor, Spawner};
 
@@ -41,20 +52,76 @@ static INPUT: Channel<CriticalSectionRawMutex, String, 8> = Channel::new();
 static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 fn main() {
-    env_logger::builder()
-        .filter_level(log::LevelFilter::Warn)
-        .parse_default_env()
-        .init();
+    let args = NodeArgs::parse();
 
-    let node_id = std::env::args()
-        .nth(1)
-        .and_then(|arg| arg.parse::<u16>().ok())
-        .expect("usage: cli_ftd <node id>");
+    // Logs MUST NOT go where the CLI conversation runs: under thread-cert's
+    // `PopenSpawn` even stderr is merged into the stream the harness parses.
+    // With `CLI_FTD_LOG=<path>` set, logs go to `<path>.<node id>` instead
+    // (one file per node; level via `RUST_LOG` as usual).
+    let mut builder = env_logger::builder();
+    builder
+        .filter_level(log::LevelFilter::Warn)
+        .parse_default_env();
+
+    if let Ok(path) = std::env::var("CLI_FTD_LOG") {
+        let file = std::fs::File::create(format!("{path}.{}", args.node_id))
+            .expect("create CLI_FTD_LOG file");
+        builder.target(env_logger::Target::Pipe(Box::new(file)));
+    }
+
+    builder.init();
 
     std::thread::spawn(read_stdin);
 
     let executor = EXECUTOR.init(Executor::new());
-    executor.run(move |spawner| spawner.spawn(main_task(spawner, node_id).unwrap()));
+    executor.run(move |spawner| spawner.spawn(main_task(spawner, args).unwrap()));
+}
+
+/// The upstream simulation binaries' command line: `[-L<addr>] <node id>`.
+#[derive(Clone, Copy)]
+struct NodeArgs {
+    node_id: u16,
+    local: Ipv4Addr,
+}
+
+impl NodeArgs {
+    fn parse() -> Self {
+        let mut node_id = None;
+        let mut local = Ipv4Addr::LOCALHOST;
+
+        let mut args = std::env::args().skip(1);
+        while let Some(arg) = args.next() {
+            if let Some(addr) = arg.strip_prefix("-L") {
+                let addr = if addr.is_empty() {
+                    args.next().unwrap_or_default()
+                } else {
+                    addr.to_string()
+                };
+                local = addr.parse().expect("-L: not an IPv4 address");
+            } else if arg.starts_with('-') {
+                // Tolerate harness-passed options this node does not model,
+                // so a harness update doesn't silently kill every node.
+                eprintln!("cli_ftd: ignoring unsupported option `{arg}`");
+            } else {
+                node_id = Some(arg.parse().expect("node id: not a number"));
+            }
+        }
+
+        Self {
+            node_id: node_id.expect("usage: cli_ftd [-L<addr>] <node id>"),
+            local,
+        }
+    }
+}
+
+/// Re-execute this process with its original command line: the `reset` /
+/// `factoryreset` implementation (fresh stack, same pty/stdio fds).
+fn reexec() -> ! {
+    let mut args = std::env::args_os();
+    let argv0 = args.next().unwrap();
+
+    let err = std::process::Command::new(argv0).args(args).exec();
+    panic!("re-exec for reset failed: {err}");
 }
 
 /// Pump stdin lines into `INPUT`; on EOF, exit the process (the harness closed
@@ -89,7 +156,9 @@ fn cli_output(output: &[u8]) {
 }
 
 #[embassy_executor::task]
-async fn main_task(spawner: Spawner, node_id: u16) {
+async fn main_task(spawner: Spawner, args: NodeArgs) {
+    let node_id = args.node_id;
+
     info!("CLI simulation node {node_id} starting");
 
     static RNG: StaticCell<StdRng> = StaticCell::new();
@@ -110,7 +179,12 @@ async fn main_task(spawner: Spawner, node_id: u16) {
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
     let radio = MacRadio::new(
-        SimRadio::new(node_id).expect("create simulation radio"),
+        SimRadio::new_with(
+            node_id,
+            openthread_tests::sim_radio::port_base_from_env(),
+            args.local,
+        )
+        .expect("create simulation radio"),
         EmbassyTimeTimer,
     );
 
@@ -118,8 +192,32 @@ async fn main_task(spawner: Spawner, node_id: u16) {
 
     ot.cli_init(cli_output);
 
+    // The harness expects its command lines echoed back. On a pty (the
+    // expect suite, THCI) the kernel's terminal echo provides that; on plain
+    // pipes (thread-cert's PopenSpawn) the DUT must echo itself - which is
+    // what the upstream CLI app's console layer does too.
+    let echo = !std::io::stdin().is_terminal();
+
     loop {
         let line = INPUT.receive().await;
+
+        if echo {
+            cli_output(format!("{line}\r\n").as_bytes());
+        }
+
+        // A reset is a process re-exec (see the module docs); earlier
+        // commands have all been processed at this point, matching the
+        // sequential semantics of the real CLI.
+        if matches!(line.trim(), "reset" | "factoryreset") {
+            reexec();
+        }
+
+        // `exit` terminates the node - the upstream simulation binaries'
+        // behavior, which the harness teardown relies on (it sends `exit`
+        // and waits for EOF).
+        if line.trim() == "exit" {
+            std::process::exit(0);
+        }
 
         if let Err(err) = ot.cli_input_line(&line) {
             // Over-long line; report like the CLI itself reports failures.

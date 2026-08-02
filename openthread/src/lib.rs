@@ -1335,6 +1335,25 @@ impl<'a> OpenThread<'a> {
             frame.mInfo.mRxInfo.mRssi = rssi;
             frame.mInfo.mRxInfo.mLqi = rssi_to_lqi(rssi);
             frame.mInfo.mRxInfo.mTimestamp = Instant::now().as_micros(); // TODO: Not precise
+
+            // Whether the ACK sent back for this frame carried Frame Pending.
+            // The flag is what makes the stack serve a sleepy child's data
+            // poll from its indirect queue - without it the child is presumed
+            // asleep and nothing is sent. `MacRadio`'s software ACK sets FP
+            // for every ack-requesting MAC command frame (data polls are
+            // command frames); this mirrors that rule, since `PsduMeta` does
+            // not carry the radio's actual decision.
+            // TODO: Radios with RX-ACK offload may decide differently
+            // (typically via their source-match table); plumb the real
+            // outcome through `PsduMeta`.
+            let fcf0 = psdu.first().copied().unwrap_or(0);
+            let acked_with_fp = (fcf0 & 0x07) == 0x03 && (fcf0 & 0x20) != 0;
+            unsafe {
+                frame
+                    .mInfo
+                    .mRxInfo
+                    .set_mAckedWithFramePending(acked_with_fp);
+            }
         }
 
         let mut radio = MacRadio::new(radio, timer);
@@ -2475,7 +2494,18 @@ impl<'a> OtContext<'a> {
     //
 
     fn plat_reset(&mut self) -> Result<(), OtError> {
-        todo!()
+        // A software reset cannot be performed here: the C instance cannot be
+        // re-created in-place under its own callback, and this crate has no
+        // way to reboot the platform. Consumers provide reset semantics one
+        // level up - an MCU firmware reboots the chip, a hosted test binary
+        // intercepts the CLI `reset`/`factoryreset` commands and re-executes
+        // itself (fresh process = fresh stack). As the library-level
+        // fallback, warn and continue: the instance keeps running (with its
+        // settings already wiped when the reset came from
+        // `otInstanceFactoryReset`).
+        warn!("Plat reset callback: not supported; the instance keeps running");
+
+        Ok(())
     }
 
     fn plat_entropy_get(&mut self, buf: &mut [u8]) -> Result<(), OtError> {

@@ -12,6 +12,7 @@ use log::{info, LevelFilter};
 
 use tempfile::TempDir;
 
+mod itest;
 mod ping_stress;
 
 #[derive(Parser, Debug)]
@@ -81,6 +82,14 @@ enum Commands {
     /// OpenThread node reachable over IPv6 — the host RCP driver as well as
     /// an MCU with its native radio. See `xtask/src/ping_stress.rs`.
     PingStress(ping_stress::PingStressArgs),
+
+    /// Run upstream OpenThread e2e suites (`thread-cert`, `expect` - taken
+    /// verbatim from the OpenThread submodule) against the Rust-platform
+    /// simulation DUT (`openthread-tests`' `cli_ftd`).
+    ///
+    /// See `xtask/src/itest.rs` for the mechanics and the curated test
+    /// allowlists.
+    Itest(itest::ItestArgs),
 }
 
 fn main() -> Result<()> {
@@ -99,6 +108,10 @@ fn main() -> Result<()> {
 
     if let Some(Commands::PingStress(ping_args)) = &args.command {
         return ping_stress::run(ping_args);
+    }
+
+    if let Some(Commands::Itest(itest_args)) = &args.command {
+        return itest::run(&workspace, itest_args);
     }
 
     if let Some(Commands::Gen {

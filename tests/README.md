@@ -50,13 +50,34 @@ cargo test
 Each test file picks its own `PORT_BASE` range, so parallel runs use disjoint
 media.
 
+## Upstream suites (`cargo xtask itest`)
+
+The repository `xtask` runs *unmodified* upstream OpenThread e2e suites against
+`cli_ftd`:
+
+```
+cargo xtask itest                      # curated thread-cert allowlist, real time
+cargo xtask itest Cert_5_1_01_RouterAttach
+cargo xtask itest --suite expect       # expect suite (needs the `expect` binary)
+```
+
+`thread-cert` scenarios (incl. Thread certification test plan derivatives) run
+with `OT_CLI_PATH` pointing at `cli_ftd`, in real-time mode, with the harness's
+own multicast sniffer verifying MLE exchanges on the wire. Python deps are
+provisioned automatically into `.build/itest/venv` from the suite's pinned
+requirements. See the allowlists in [itest.rs](../xtask/src/itest.rs) for
+what runs and why some tests stay excluded.
+
 ## Roadmap
 
 1. ~~`SimRadio` + multi-process network-formation smoke test~~
 2. ~~A `cli` feature in `openthread-sys`/`openthread` linking the upstream C CLI,
    plus the `cli_ftd` drop-in DUT binary~~
-3. Real-time-mode subset of the upstream suites (`tests/scripts/expect`,
-   `thread-cert` via `OT_CLI_PATH`/`$OT_SIMULATION_APPS`) run by an
-   `xtask itest` runner, in CI; mixed Rust/C-node topologies.
+3. ~~Real-time-mode `thread-cert` subset via `cargo xtask itest`~~ — expand the
+   allowlist over time; run in CI; verify the `expect` suite where the binary
+   is available; mixed Rust/C-node topologies.
 4. Virtual-time support (a custom embassy-time driver speaking the simulator's
-   event protocol) to unlock the full `thread-cert` suite as upstream runs it.
+   event protocol) to unlock the full `thread-cert` suite as upstream runs it
+   (fast, deterministic, no real-time races).
+5. Persistent (file-backed) `Settings` + real reset semantics, unlocking the
+   reboot/reset test groups.

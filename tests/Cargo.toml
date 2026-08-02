@@ -32,9 +32,23 @@ critical-section = { version = "1.2", features = ["std"] }
 
 # `ftd` because the test topologies need router-capable nodes (a network is
 # formed by its first router, the Leader). `cli` for the harness-driveable DUT
-# binary (`cli_ftd`). No `std`: that feature is the RCP serial transport, and
-# these nodes use a local (simulated) radio instead.
-openthread = { path = "../openthread", default-features = false, features = ["ftd", "cli", "isupper", "log"] }
+# binary (`cli_ftd`). `mac-filter` is how the upstream harness builds
+# multi-hop topologies (`macfilter` allowlists); `ping-sender` backs the CLI
+# `ping` command many of its tests use; the rest widen the CLI surface toward
+# what the upstream simulation build offers. No `std`: that feature is the
+# RCP serial transport, and these nodes use a local (simulated) radio instead.
+openthread = { path = "../openthread", default-features = false, features = [
+    "ftd",
+    "cli",
+    "isupper",
+    "log",
+    "mac-filter",
+    "ping-sender",
+    "slaac",
+    "ecdsa",
+    "dns-client",
+    "srp-client",
+] }
 embassy-sync = "0.8"
 
 [[bin]]

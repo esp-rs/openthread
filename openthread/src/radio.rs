@@ -638,8 +638,11 @@ where
 
                 trace!("MacRadio, transmitted with ACK");
 
-                //Ok(Some(ack_meta)) TODO
-                Ok(None)
+                // Report the received ACK: the stack reads more than "it was
+                // acked" out of it - notably the Frame Pending bit, which
+                // tells a sleepy child whether to stay awake for a frame its
+                // parent has queued.
+                Ok(Some(ack_meta))
             } else {
                 trace!("MacRadio, transmitted without ACK");
 
@@ -711,7 +714,18 @@ where
                     if !self.mac_caps.contains(MacCapabilities::RX_ACK)
                         && self.mac_header.needs_ack()
                     {
-                        let ack_len = self.mac_header.prep_ack(&mut self.ack_psdu_buf);
+                        // Ack MAC command frames with Frame Pending set: a
+                        // sleepy child's data poll is a command frame, and the
+                        // FP bit is what keeps the child awake for the queued
+                        // indirect frame. Conservative - like the C simulation
+                        // radio with source matching disabled: a spurious FP
+                        // only keeps a child listening briefly when nothing
+                        // is queued.
+                        let frame_pending = self.mac_header.is_command();
+
+                        let ack_len = self
+                            .mac_header
+                            .prep_ack(&mut self.ack_psdu_buf, frame_pending);
                         let ack_psdu = &mut self.ack_psdu_buf[..ack_len];
 
                         trace!("MacRadio, about to transmit ACK: {}", Bytes(ack_psdu));
@@ -1437,16 +1451,32 @@ mod mac {
             (self.fcf & Self::FCF_ACK_REQ_BIT) != 0
         }
 
+        /// Return `true` if the frame is a MAC command frame.
+        ///
+        /// A sleepy child's Data Request (data poll) is one; its command ID
+        /// sits in the (potentially encrypted) MAC payload, so the frame
+        /// *type* is as precise as header-level parsing can get.
+        #[inline(always)]
+        pub fn is_command(&self) -> bool {
+            matches!(FrameType::get(self.fcf), Some(FrameType::Command))
+        }
+
         /// Prepare an ACK PSDU.
         /// Assumes that the parsed frame header indicates that ACK is necessary (`self.needs_ack` returns `true`)
+        ///
+        /// `frame_pending` sets the ACK's Frame Pending bit - the "stay awake,
+        /// data follows" hint a parent gives a polling sleepy child.
         #[inline(always)]
-        pub fn prep_ack(&self, ack_buf: &mut [u8]) -> usize {
+        pub fn prep_ack(&self, ack_buf: &mut [u8], frame_pending: bool) -> usize {
             assert!(ack_buf.len() >= Self::ACK_PSDU_LEN);
 
             let ack_fcf = Self::FCF_FRAME_TYPE_ACK
                 | (self.fcf & Self::FCF_FRAME_VERSION_MASK)
-                //| (src_fcf & Self::FCF_PENDING_MASK)
-                ;
+                | if frame_pending {
+                    Self::FCF_PENDING_BIT
+                } else {
+                    0
+                };
 
             ack_buf[0] = ack_fcf.to_le_bytes()[0];
             ack_buf[1] = ack_fcf.to_le_bytes()[1];

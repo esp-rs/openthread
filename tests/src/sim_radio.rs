@@ -44,7 +44,8 @@ use socket2::{Domain, Protocol, Socket, Type};
 /// The multicast group of the simulated radio medium.
 const GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 116);
 
-/// The interface the simulation runs on.
+/// The interface the simulation runs on by default (the C platform's `-L`
+/// option selects another).
 const LOCAL: Ipv4Addr = Ipv4Addr::LOCALHOST;
 
 /// The default port base (`PORT_BASE` env var overrides, as in the C platform).
@@ -117,24 +118,31 @@ impl SimRadio {
     /// Create a radio for simulation node `node_id` on an explicit port base
     /// (i.e. an explicit, isolated instance of the radio medium).
     pub fn new_with_port_base(node_id: u16, port_base: u16) -> Result<Self, SimRadioError> {
+        Self::new_with(node_id, port_base, LOCAL)
+    }
+
+    /// Create a radio for simulation node `node_id` on an explicit port base
+    /// and local interface address (the C platform's `-L` option; the
+    /// harness uses distinct loopback addresses to model multiple hosts).
+    pub fn new_with(node_id: u16, port_base: u16, local: Ipv4Addr) -> Result<Self, SimRadioError> {
         Ok(Self {
             node_id,
             port_base,
-            rx: Async::new(Self::rx_socket(port_base)?)?,
-            tx: Async::new(Self::tx_socket(port_base + node_id)?)?,
+            rx: Async::new(Self::rx_socket(port_base, local)?)?,
+            tx: Async::new(Self::tx_socket(port_base + node_id, local)?)?,
             config: Config::new(),
         })
     }
 
-    fn rx_socket(port_base: u16) -> io::Result<UdpSocket> {
+    fn rx_socket(port_base: u16, local: Ipv4Addr) -> io::Result<UdpSocket> {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
 
         // All nodes (and the harness sniffer) bind the same group port.
         socket.set_reuse_address(true)?;
         socket.set_reuse_port(true)?;
 
-        socket.set_multicast_if_v4(&LOCAL)?;
-        socket.join_multicast_v4(&GROUP, &LOCAL)?;
+        socket.set_multicast_if_v4(&local)?;
+        socket.join_multicast_v4(&GROUP, &local)?;
 
         // Bound to the group address itself, so the socket receives exactly
         // the simulation traffic and no stray unicast.
@@ -143,17 +151,17 @@ impl SimRadio {
         Ok(socket.into())
     }
 
-    fn tx_socket(port: u16) -> io::Result<UdpSocket> {
+    fn tx_socket(port: u16, local: Ipv4Addr) -> io::Result<UdpSocket> {
         let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
 
-        socket.set_multicast_if_v4(&LOCAL)?;
+        socket.set_multicast_if_v4(&local)?;
         // All nodes live on this one host: without loopback the datagrams
         // would reach nobody. The price is that a node receives its own
         // frames too - discarded in `receive` by source port.
         socket.set_multicast_loop_v4(true)?;
 
         // The source port is the node's identity on the medium.
-        socket.bind(&SocketAddrV4::new(LOCAL, port).into())?;
+        socket.bind(&SocketAddrV4::new(local, port).into())?;
 
         Ok(socket.into())
     }
