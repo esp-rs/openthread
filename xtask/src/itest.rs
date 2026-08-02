@@ -55,7 +55,9 @@ const CERT_TESTS: &[&str] = &[
     "Cert_5_3_01_LinkLocal",
     // Realm-local pings across a topology incl. an SED.
     "Cert_5_3_02_RealmLocal",
-    // EID-to-RLOC address queries across 5 nodes (slow: ~6 min real time).
+    // EID-to-RLOC address queries across 5 nodes. Slow: the script sleeps
+    // out a 700s router-id expiry (`simulator.go(700)`), which real-time
+    // mode serves at 1x - see `test_timeout`.
     "Cert_5_3_03_AddressQuery",
     // NOT enabled - the known-marginal near-misses, for the record:
     // - Cert_5_3_04_AddressMapCache: an SED-originated ping races the SED
@@ -77,10 +79,19 @@ const EXPECT_TESTS: &[&str] = &[
     "cli-ping",
 ];
 
-/// Wall-clock budget per test; a test exceeding it is killed and failed.
-/// Sized for real-time mode, where the scripts' simulated waits pass at 1x
-/// (the slowest allowlisted test needs ~6 minutes).
-const TEST_TIMEOUT: Duration = Duration::from_secs(600);
+/// Wall-clock budget for a test; exceeding it kills and fails the test.
+///
+/// Sized for real-time mode, where every `simulator.go(N)` in a script is a
+/// literal N-second sleep - a test's budget is roughly its summed waits plus
+/// setup/teardown slack. The default covers the corpus's common shape;
+/// scripts that sleep out long protocol timeouts get their own entry.
+fn test_timeout(test: &str) -> Duration {
+    match test {
+        // Sleeps out a 700s router-id expiry.
+        "Cert_5_3_03_AddressQuery" => Duration::from_secs(1200),
+        _ => Duration::from_secs(600),
+    }
+}
 
 /// Arguments of the `itest` xtask subcommand.
 #[derive(clap::Args, Debug)]
@@ -373,7 +384,8 @@ fn run_logged(mut command: Command, log_path: &Path, test: &str) -> Result<Outco
         .spawn()
         .with_context(|| format!("spawning {test}"))?;
 
-    let deadline = Instant::now() + TEST_TIMEOUT;
+    let timeout = test_timeout(test);
+    let deadline = Instant::now() + timeout;
 
     let status = loop {
         if let Some(status) = child.try_wait()? {
@@ -396,7 +408,7 @@ fn run_logged(mut command: Command, log_path: &Path, test: &str) -> Result<Outco
         .status();
 
     let outcome = match status {
-        None => Outcome::Failed(format!("timed out after {}s", TEST_TIMEOUT.as_secs())),
+        None => Outcome::Failed(format!("timed out after {}s", timeout.as_secs())),
         Some(status) if status.success() => Outcome::Passed,
         Some(status) if status.code() == Some(77) => Outcome::Skipped,
         Some(status) => Outcome::Failed(format!("exit status {status}")),

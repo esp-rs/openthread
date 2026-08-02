@@ -55,9 +55,12 @@ fn main() {
     let args = NodeArgs::parse();
 
     // Logs MUST NOT go where the CLI conversation runs: under thread-cert's
-    // `PopenSpawn` even stderr is merged into the stream the harness parses.
-    // With `CLI_FTD_LOG=<path>` set, logs go to `<path>.<node id>` instead
-    // (one file per node; level via `RUST_LOG` as usual).
+    // `PopenSpawn` even stderr is merged into the stream the harness parses,
+    // so a stray log line can derail its line matching. With
+    // `CLI_FTD_LOG=<path>` set, logs go to `<path>.<node id>` (one file per
+    // node; level via `RUST_LOG` as usual); without it, when driven by a
+    // harness (stdin is not a tty), logs are discarded outright. Only an
+    // interactive (tty) session logs to stderr.
     let mut builder = env_logger::builder();
     builder
         .filter_level(log::LevelFilter::Warn)
@@ -67,6 +70,8 @@ fn main() {
         let file = std::fs::File::create(format!("{path}.{}", args.node_id))
             .expect("create CLI_FTD_LOG file");
         builder.target(env_logger::Target::Pipe(Box::new(file)));
+    } else if !std::io::stdin().is_terminal() {
+        builder.target(env_logger::Target::Pipe(Box::new(std::io::sink())));
     }
 
     builder.init();

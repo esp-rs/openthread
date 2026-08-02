@@ -146,6 +146,7 @@ impl CliNode {
 
         let deadline = Instant::now() + timeout;
         let mut output = Vec::new();
+        let mut echoed = false;
 
         loop {
             let remaining = deadline
@@ -166,6 +167,13 @@ impl CliNode {
             }
 
             if line.is_empty() {
+                continue;
+            }
+
+            // The node echoes the command when driven over pipes (as the
+            // upstream harness expects); the echo is not output.
+            if !echoed && line == cmd {
+                echoed = true;
                 continue;
             }
 
