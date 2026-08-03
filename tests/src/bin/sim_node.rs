@@ -14,12 +14,13 @@
 //! stdio) is the planned replacement of this protocol; the smoke tests only
 //! need role observations.
 
-use embassy_executor::{Executor, Spawner};
+use embassy_executor::Spawner;
 
 use log::info;
 
 use openthread::{EmbassyTimeTimer, MacRadio, OpenThread, OtResources, SimpleRamSettings};
 
+use openthread_tests::executor::{self, Mode};
 use openthread_tests::sim_radio::SimRadio;
 
 use rand::rngs::StdRng;
@@ -29,8 +30,6 @@ use static_cell::StaticCell;
 
 // Linked for its `utoa`/`strtoul` C symbols, which OpenThread's C references.
 use tinyrlibc as _;
-
-static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 fn main() {
     env_logger::builder()
@@ -43,8 +42,9 @@ fn main() {
         .and_then(|arg| arg.parse::<u16>().ok())
         .expect("usage: sim_node <node id>");
 
-    let executor = EXECUTOR.init(Executor::new());
-    executor.run(move |spawner| spawner.spawn(main_task(spawner, node_id).unwrap()));
+    executor::run(Mode::RealTime, move |spawner| {
+        spawner.spawn(main_task(spawner, node_id).unwrap())
+    });
 }
 
 #[embassy_executor::task]

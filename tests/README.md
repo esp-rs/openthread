@@ -68,6 +68,22 @@ provisioned automatically into `.build/itest/venv` from the suite's pinned
 requirements. See the allowlists in [itest.rs](../xtask/src/itest.rs) for
 what runs and why some tests stay excluded.
 
+## Virtual time
+
+`cargo xtask itest --virtual-time` runs the same tests under the upstream
+simulator's lockstep protocol: the node binaries switch (via the inherited
+`VIRTUAL_TIME=1`) to an event-driven clock ([executor.rs](src/executor.rs))
+and an event-transported radio ([vt.rs](src/vt.rs)). Scripted delays pass
+instantly - the whole allowlist takes ~10 seconds instead of ~25 minutes,
+deterministically enough for tight CI loops.
+
+The executor's quiescence detection is the load-bearing subtlety: a sleep
+event may only be advertised once a poll round completes with no pending
+task wake, or the simulator schedules the node's next alarm off a stale
+deadline (see the comment in `executor.rs::run`). A C reference build for
+differential debugging lives in `.build/itest/ot-c-vt` (cmake with
+`-DOT_SIMULATION_VIRTUAL_TIME=ON -DOT_MAC_FILTER=ON ...`).
+
 ## Roadmap
 
 1. ~~`SimRadio` + multi-process network-formation smoke test~~
@@ -76,8 +92,8 @@ what runs and why some tests stay excluded.
 3. ~~Real-time-mode `thread-cert` subset via `cargo xtask itest`~~ — expand the
    allowlist over time; run in CI; verify the `expect` suite where the binary
    is available; mixed Rust/C-node topologies.
-4. Virtual-time support (a custom embassy-time driver speaking the simulator's
-   event protocol) to unlock the full `thread-cert` suite as upstream runs it
-   (fast, deterministic, no real-time races).
+4. ~~Virtual-time support: lockstep executor/clock/radio + `--virtual-time`,
+   stabilized (5x consecutive full-allowlist green)~~ — grow the allowlist
+   toward the wider `thread-cert` corpus now that runs cost seconds.
 5. Persistent (file-backed) `Settings` + real reset semantics, unlocking the
    reboot/reset test groups.

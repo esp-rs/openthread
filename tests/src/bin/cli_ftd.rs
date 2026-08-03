@@ -25,7 +25,7 @@ use std::io::{BufRead, IsTerminal, Write};
 use std::net::Ipv4Addr;
 use std::os::unix::process::CommandExt;
 
-use embassy_executor::{Executor, Spawner};
+use embassy_executor::Spawner;
 
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::channel::Channel;
@@ -34,7 +34,9 @@ use log::info;
 
 use openthread::{EmbassyTimeTimer, MacRadio, OpenThread, OtResources, SimpleRamSettings};
 
+use openthread_tests::executor::{self, Mode};
 use openthread_tests::sim_radio::SimRadio;
+use openthread_tests::vt::{VtLink, VtRadio};
 
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -48,8 +50,6 @@ use tinyrlibc as _;
 /// executor (the CLI must run on the executor thread, where the OpenThread
 /// singleton lives).
 static INPUT: Channel<CriticalSectionRawMutex, String, 8> = Channel::new();
-
-static EXECUTOR: StaticCell<Executor> = StaticCell::new();
 
 fn main() {
     let args = NodeArgs::parse();
@@ -78,8 +78,21 @@ fn main() {
 
     std::thread::spawn(read_stdin);
 
-    let executor = EXECUTOR.init(Executor::new());
-    executor.run(move |spawner| spawner.spawn(main_task(spawner, args).unwrap()));
+    // Virtual-time mode when the harness says so (the env var is set for the
+    // whole test run; simulation nodes inherit it). The event link doubles as
+    // the executor's clock source and the radio's frame transport.
+    let virtual_time = std::env::var("VIRTUAL_TIME").as_deref() == Ok("1");
+
+    let (mode, radio_link) = if virtual_time {
+        let link = VtLink::new(args.node_id).expect("bind simulator event link");
+        (Mode::Virtual(link.clone()), Some(link))
+    } else {
+        (Mode::RealTime, None)
+    };
+
+    executor::run(mode, move |spawner| {
+        spawner.spawn(main_task(spawner, args, radio_link).unwrap())
+    });
 }
 
 /// The upstream simulation binaries' command line: `[-L<addr>] <node id>`.
@@ -161,7 +174,7 @@ fn cli_output(output: &[u8]) {
 }
 
 #[embassy_executor::task]
-async fn main_task(spawner: Spawner, args: NodeArgs) {
+async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>) {
     let node_id = args.node_id;
 
     info!("CLI simulation node {node_id} starting");
@@ -183,17 +196,24 @@ async fn main_task(spawner: Spawner, args: NodeArgs) {
 
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
-    let radio = MacRadio::new(
-        SimRadio::new_with(
-            node_id,
-            openthread_tests::sim_radio::port_base_from_env(),
-            args.local,
-        )
-        .expect("create simulation radio"),
-        EmbassyTimeTimer,
-    );
-
-    spawner.spawn(run_ot(ot.clone(), radio).unwrap());
+    match radio_link {
+        Some(link) => {
+            let radio = MacRadio::new(VtRadio::new(link), EmbassyTimeTimer);
+            spawner.spawn(run_ot_vt(ot.clone(), radio).unwrap());
+        }
+        None => {
+            let radio = MacRadio::new(
+                SimRadio::new_with(
+                    node_id,
+                    openthread_tests::sim_radio::port_base_from_env(),
+                    args.local,
+                )
+                .expect("create simulation radio"),
+                EmbassyTimeTimer,
+            );
+            spawner.spawn(run_ot_rt(ot.clone(), radio).unwrap());
+        }
+    }
 
     ot.cli_init(cli_output);
 
@@ -232,6 +252,11 @@ async fn main_task(spawner: Spawner, args: NodeArgs) {
 }
 
 #[embassy_executor::task]
-async fn run_ot(ot: OpenThread<'static>, radio: MacRadio<SimRadio, EmbassyTimeTimer>) -> ! {
+async fn run_ot_rt(ot: OpenThread<'static>, radio: MacRadio<SimRadio, EmbassyTimeTimer>) -> ! {
+    ot.run(radio).await
+}
+
+#[embassy_executor::task]
+async fn run_ot_vt(ot: OpenThread<'static>, radio: MacRadio<VtRadio, EmbassyTimeTimer>) -> ! {
     ot.run(radio).await
 }

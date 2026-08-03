@@ -58,10 +58,10 @@ const DEFAULT_PORT_BASE: u16 = 9000;
 const MAX_NETWORK_SIZE: u16 = 33;
 
 /// The RSSI the C simulation platform stamps on every received frame.
-const SIM_RSSI: i8 = -20;
+pub(crate) const SIM_RSSI: i8 = -20;
 
 /// Maximum PSDU size of an 802.15.4 frame (FCS included).
-const PSDU_MAX: usize = openthread::sys::OT_RADIO_FRAME_MAX_SIZE as usize;
+pub(crate) const PSDU_MAX: usize = openthread::sys::OT_RADIO_FRAME_MAX_SIZE as usize;
 
 /// The error type of [`SimRadio`].
 #[derive(Debug)]
@@ -268,7 +268,7 @@ fn env_u16(name: &str) -> Option<u16> {
 /// platform does on every transmitted frame - the OpenThread stack hands the
 /// PSDU over with the FCS bytes unfilled (real radio hardware computes the
 /// FCS itself on the way out).
-fn patch_fcs(psdu: &mut [u8]) {
+pub(crate) fn patch_fcs(psdu: &mut [u8]) {
     let fcs_offset = psdu.len() - 2;
 
     let mut fcs = 0_u16;

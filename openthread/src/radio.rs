@@ -477,6 +477,12 @@ pub struct MacRadio<R, T> {
     /// to send or receive ACKs in software.
     // TODO: Inject from outside
     ack_psdu_buf: [u8; OT_RADIO_FRAME_MAX_SIZE as _],
+    /// Frames accepted (and ACKed) while `transmit` was waiting for its own
+    /// ACK, parked here until subsequent `receive` calls deliver them. Sized
+    /// for the realistic burst - a fragmented datagram's few back-to-back
+    /// frames crossing the wait window; anything beyond is dropped like on a
+    /// saturated real radio.
+    pending_rx: heapless::Deque<(PsduMeta, [u8; OT_RADIO_FRAME_MAX_SIZE as _]), 4>,
     /// The PAN ID to filter by, if the filter policy allows it.
     pan_id: u16,
     /// The short address to filter by, if the filter policy allows it.
@@ -494,10 +500,17 @@ where
     R: Radio,
     T: MacRadioTimer,
 {
-    /// The waiting timeout for a TX ACK to be received.
-    /// See https://github.com/openthread/openthread/blob/9398342b49a03cd140fae910b81cddf9084293a0/src/core/mac/sub_mac.hpp#L528
-    /// Currently much longer than what specified there
-    const TX_ACK_WAIT_US: u64 = 500 * 1000; //16 * 1000 * 10;
+    /// The waiting timeout for a TX ACK to be received: OpenThread's own
+    /// SubMac ACK timeout (`kAckTimeout`, 16ms).
+    ///
+    /// Besides matching the stack's expectations, keeping this short bounds
+    /// a structural cost of this wrapper: a frame that crosses our
+    /// transmission is ACKed and parked during the wait (see `transmit`),
+    /// but reaches the stack only once the wait resolves - so on ACK loss,
+    /// this timeout is the worst-case added latency for the crossing
+    /// frame's processing (and thus for our reply to it). A real radio's
+    /// independent RX path has no such serialization.
+    const TX_ACK_WAIT_US: u64 = 16 * 1000;
     /// The waiting timeout for an RX ACK to be sent.
     // TODO: Should be 190us, but we need to be more precise
     // and not use `embassy-time` with the NRF...
@@ -519,12 +532,106 @@ where
             mac_caps: MacCapabilities::empty(),
             mac_header: MacHeader::new(),
             ack_psdu_buf: [0; OT_RADIO_FRAME_MAX_SIZE as _],
+            pending_rx: heapless::Deque::new(),
             promiscuous: false,
             pan_id: MacHeader::BROADCAST_PAN_ID,
             short_addr: MacHeader::BROADCAST_SHORT_ADDR,
             alt_short_addr: MacHeader::BROADCAST_SHORT_ADDR,
             ext_addr: MacHeader::BROADCAST_EXT_ADDR,
         }
+    }
+
+    /// Screen an incoming frame: apply the software address filters the
+    /// wrapped radio does not offload and - for an accepted frame that
+    /// requests one - send the ACK. Returns whether the frame is for us and
+    /// should be delivered to the stack.
+    ///
+    /// Shared by the `receive` path and by `transmit`'s ACK wait, so that a
+    /// frame crossing our transmission is served all the same (see there).
+    ///
+    /// `psdu` must not alias `self`'s buffers (callers pass caller-owned or
+    /// stack copies).
+    async fn screen_incoming(&mut self, psdu: &[u8]) -> Result<bool, MacRadioError<R::Error>> {
+        if self.mac_caps == MacCapabilities::all() {
+            return Ok(true);
+        }
+
+        if self.mac_header.load(psdu).is_none() {
+            trace!(
+                "MacRadio, received frame with invalid MAC header, dropping: {}",
+                Bytes(psdu)
+            );
+            return Ok(false);
+        }
+
+        if !self.mac_caps.contains(MacCapabilities::PROMISCUOUS) && !self.promiscuous {
+            if !self.mac_caps.contains(MacCapabilities::FILTER_PAN_ID)
+                && self.mac_header.pan_id != MacHeader::BROADCAST_PAN_ID
+                && self.mac_header.pan_id != self.pan_id
+            {
+                trace!(
+                    "MacRadio, filtering out frame: {}, PAN ID does not match",
+                    Bytes(psdu)
+                );
+                return Ok(false);
+            }
+
+            if !self.mac_caps.contains(MacCapabilities::FILTER_SHORT_ADDR)
+                && self.mac_header.dst_short_addr != MacHeader::BROADCAST_SHORT_ADDR
+                && self.mac_header.dst_short_addr != self.short_addr
+                && self.mac_header.dst_short_addr != self.alt_short_addr
+            {
+                trace!(
+                    "MacRadio, filtering out frame: {}, short address does not match",
+                    Bytes(psdu)
+                );
+                return Ok(false);
+            }
+
+            if !self.mac_caps.contains(MacCapabilities::FILTER_EXT_ADDR)
+                && self.mac_header.dst_ext_addr != MacHeader::BROADCAST_EXT_ADDR
+                && self.mac_header.dst_ext_addr != self.ext_addr
+            {
+                trace!(
+                    "MacRadio, filtering out frame: {}, extended address does not match",
+                    Bytes(psdu)
+                );
+                return Ok(false);
+            }
+
+            if !self.mac_caps.contains(MacCapabilities::RX_ACK) && self.mac_header.needs_ack() {
+                let ack_at = self.timer.now() + Self::RX_ACK_SEND_US;
+
+                // Ack MAC command frames with Frame Pending set: a
+                // sleepy child's data poll is a command frame, and the
+                // FP bit is what keeps the child awake for the queued
+                // indirect frame. Conservative - like the C simulation
+                // radio with source matching disabled: a spurious FP
+                // only keeps a child listening briefly when nothing
+                // is queued.
+                let frame_pending = self.mac_header.is_command();
+
+                let ack_len = self
+                    .mac_header
+                    .prep_ack(&mut self.ack_psdu_buf, frame_pending);
+
+                trace!(
+                    "MacRadio, about to transmit ACK: {}",
+                    Bytes(&self.ack_psdu_buf[..ack_len])
+                );
+
+                if self.timer.now() < ack_at {
+                    self.timer.wait(ack_at).await;
+                }
+
+                self.radio
+                    .transmit(&self.ack_psdu_buf[..ack_len], false, None)
+                    .await
+                    .map_err(MacRadioError::TxAckFailed)?;
+            }
+        }
+
+        Ok(true)
     }
 }
 
@@ -607,30 +714,59 @@ where
 
                 trace!("MacRadio, about to receive transmit ACK");
 
-                let result = {
-                    let mut ack = pin!(self.radio.receive(&mut self.ack_psdu_buf));
-                    let mut timeout = pin!(self.timer.wait(sent_at + Self::TX_ACK_WAIT_US));
+                // Wait for the matching ACK until the deadline, SERVING the
+                // medium meanwhile: on a receive-everything PHY, other frames
+                // routinely land in this window (a neighbor's broadcast, a
+                // crossing transmission), and they must be screened, ACKed
+                // and parked for `receive` just as if no wait were running -
+                // which is what a real radio's independent RX path (and the C
+                // simulation radio in TX wait) does. Merely dropping them
+                // makes two nodes retransmitting to each other mutually deaf
+                // - each sitting in its own ACK wait, ACKing nothing - until
+                // their MAC retry budgets run out.
+                let ack_meta = loop {
+                    let result = {
+                        let mut ack = pin!(self.radio.receive(&mut self.ack_psdu_buf));
+                        let mut timeout = pin!(self.timer.wait(sent_at + Self::TX_ACK_WAIT_US));
 
-                    select(&mut ack, &mut timeout).await
-                };
+                        select(&mut ack, &mut timeout).await
+                    };
 
-                let ack_meta = match result {
-                    Either::First(result) => result.map_err(Self::Error::RxAckFailed)?,
-                    Either::Second(_) => {
-                        trace!("MacRadio, transmit ACK timeout");
+                    let meta = match result {
+                        Either::First(result) => result.map_err(Self::Error::RxAckFailed)?,
+                        Either::Second(_) => {
+                            trace!("MacRadio, transmit ACK timeout");
 
-                        Err(Self::Error::RxAckTimeout)?
+                            Err(Self::Error::RxAckTimeout)?
+                        }
+                    };
+
+                    let psdu = &self.ack_psdu_buf[..meta.len];
+                    if self
+                        .mac_header
+                        .load(psdu)
+                        .is_some_and(|()| self.mac_header.ack_for(psdu_seq))
+                    {
+                        break meta;
+                    }
+
+                    // A crossing frame: screen it off a stack copy (the ACK
+                    // buffer is about to be reused for both the ACK we may
+                    // send and the wait's next read).
+                    let mut crossing = [0; OT_RADIO_FRAME_MAX_SIZE as _];
+                    crossing[..meta.len].copy_from_slice(&self.ack_psdu_buf[..meta.len]);
+
+                    if self.screen_incoming(&crossing[..meta.len]).await?
+                        && self.pending_rx.push_back((meta, crossing)).is_err()
+                    {
+                        trace!(
+                            "MacRadio, crossing-frame queue full, dropped: {}",
+                            Bytes(&crossing[..meta.len])
+                        );
                     }
                 };
 
                 let ack_psdu = &self.ack_psdu_buf[..ack_meta.len];
-                self.mac_header
-                    .load(ack_psdu)
-                    .ok_or(MacRadioError::RxAckInvalid)?;
-
-                if !self.mac_header.ack_for(psdu_seq) {
-                    Err(MacRadioError::RxAckInvalid)?;
-                }
 
                 if let Some(ack_psdu_buf) = ack_psdu_buf {
                     ack_psdu_buf[..ack_psdu.len()].copy_from_slice(ack_psdu);
@@ -652,6 +788,19 @@ where
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+        // A frame screened - and already ACKed - during a transmission's ACK
+        // wait is delivered first.
+        if let Some((psdu_meta, psdu)) = self.pending_rx.pop_front() {
+            psdu_buf[..psdu_meta.len].copy_from_slice(&psdu[..psdu_meta.len]);
+
+            trace!(
+                "MacRadio, delivering frame parked during an ACK wait: {}",
+                Bytes(&psdu_buf[..psdu_meta.len])
+            );
+
+            return Ok(psdu_meta);
+        }
+
         loop {
             trace!("MacRadio, about to receive");
 
@@ -661,90 +810,20 @@ where
                 .await
                 .map_err(Self::Error::Io)?;
 
-            let ack_at = self.timer.now() + Self::RX_ACK_SEND_US;
+            trace!(
+                "MacRadio, received: {}, meta: {:?}",
+                Bytes(&psdu_buf[..psdu_meta.len]),
+                psdu_meta
+            );
 
-            let psdu = &psdu_buf[..psdu_meta.len];
+            if self.screen_incoming(&psdu_buf[..psdu_meta.len]).await? {
+                trace!(
+                    "MacRadio, received frame: {}",
+                    Bytes(&psdu_buf[..psdu_meta.len])
+                );
 
-            trace!("MacRadio, received: {}, meta: {:?}", Bytes(psdu), psdu_meta);
-
-            if self.mac_caps != MacCapabilities::all() {
-                if self.mac_header.load(psdu).is_none() {
-                    trace!(
-                        "MacRadio, received frame with invalid MAC header, dropping: {}",
-                        Bytes(psdu)
-                    );
-                    continue;
-                }
-
-                if !self.mac_caps.contains(MacCapabilities::PROMISCUOUS) && !self.promiscuous {
-                    if !self.mac_caps.contains(MacCapabilities::FILTER_PAN_ID)
-                        && self.mac_header.pan_id != MacHeader::BROADCAST_PAN_ID
-                        && self.mac_header.pan_id != self.pan_id
-                    {
-                        trace!(
-                            "MacRadio, filtering out frame: {}, PAN ID does not match",
-                            Bytes(psdu)
-                        );
-                        continue;
-                    }
-
-                    if !self.mac_caps.contains(MacCapabilities::FILTER_SHORT_ADDR)
-                        && self.mac_header.dst_short_addr != MacHeader::BROADCAST_SHORT_ADDR
-                        && self.mac_header.dst_short_addr != self.short_addr
-                        && self.mac_header.dst_short_addr != self.alt_short_addr
-                    {
-                        trace!(
-                            "MacRadio, filtering out frame: {}, short address does not match",
-                            Bytes(psdu)
-                        );
-                        continue;
-                    }
-
-                    if !self.mac_caps.contains(MacCapabilities::FILTER_EXT_ADDR)
-                        && self.mac_header.dst_ext_addr != MacHeader::BROADCAST_EXT_ADDR
-                        && self.mac_header.dst_ext_addr != self.ext_addr
-                    {
-                        trace!(
-                            "MacRadio, filtering out frame: {}, extended address does not match",
-                            Bytes(psdu)
-                        );
-                        continue;
-                    }
-
-                    if !self.mac_caps.contains(MacCapabilities::RX_ACK)
-                        && self.mac_header.needs_ack()
-                    {
-                        // Ack MAC command frames with Frame Pending set: a
-                        // sleepy child's data poll is a command frame, and the
-                        // FP bit is what keeps the child awake for the queued
-                        // indirect frame. Conservative - like the C simulation
-                        // radio with source matching disabled: a spurious FP
-                        // only keeps a child listening briefly when nothing
-                        // is queued.
-                        let frame_pending = self.mac_header.is_command();
-
-                        let ack_len = self
-                            .mac_header
-                            .prep_ack(&mut self.ack_psdu_buf, frame_pending);
-                        let ack_psdu = &mut self.ack_psdu_buf[..ack_len];
-
-                        trace!("MacRadio, about to transmit ACK: {}", Bytes(ack_psdu));
-
-                        if self.timer.now() < ack_at {
-                            self.timer.wait(ack_at).await;
-                        }
-
-                        self.radio
-                            .transmit(ack_psdu, false /*TODO: or true?*/, None)
-                            .await
-                            .map_err(Self::Error::TxAckFailed)?;
-                    }
-                }
+                break Ok(psdu_meta);
             }
-
-            trace!("MacRadio, received frame: {}", Bytes(psdu));
-
-            break Ok(psdu_meta);
         }
     }
 }

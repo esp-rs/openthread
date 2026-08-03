@@ -59,10 +59,14 @@ const CERT_TESTS: &[&str] = &[
     // out a 700s router-id expiry (`simulator.go(700)`), which real-time
     // mode serves at 1x - see `test_timeout`.
     "Cert_5_3_03_AddressQuery",
-    // NOT enabled - the known-marginal near-misses, for the record:
-    // - Cert_5_3_04_AddressMapCache: an SED-originated ping races the SED
-    //   poll latency against the ping deadline; deterministic under virtual
-    //   time, marginal in real time. Revisit with virtual-time support.
+];
+
+/// Additional `thread-cert` tests run only in virtual time: green there,
+/// but known-marginal under real-time pacing.
+const CERT_TESTS_VT_EXTRA: &[&str] = &[
+    // An SED-originated ping races the SED poll latency against the ping
+    // deadline - deterministic under virtual time, marginal at 1x.
+    "Cert_5_3_04_AddressMapCache",
 ];
 
 /// The `expect` tests run by default.
@@ -99,6 +103,13 @@ pub struct ItestArgs {
     /// The upstream suite to run the tests from.
     #[arg(long, value_enum, default_value_t = Suite::Cert)]
     suite: Suite,
+
+    /// Run the `cert` suite in virtual time: the upstream Python simulator
+    /// coordinates a lockstep event protocol instead of real-time waits, so
+    /// scripted delays pass instantly and runs are deterministic. The DUT
+    /// switches modes via the inherited `VIRTUAL_TIME` env var.
+    #[arg(long)]
+    virtual_time: bool,
 
     /// Skip (re)building the DUT binaries.
     #[arg(long)]
@@ -138,7 +149,15 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
             Suite::Cert => CERT_TESTS,
             Suite::Expect => EXPECT_TESTS,
         };
-        defaults.iter().map(|t| t.to_string()).collect()
+        let extra = match args.suite {
+            Suite::Cert if args.virtual_time => CERT_TESTS_VT_EXTRA,
+            _ => &[][..],
+        };
+        defaults
+            .iter()
+            .chain(extra)
+            .map(|t| t.to_string())
+            .collect()
     } else {
         args.tests
             .iter()
@@ -156,7 +175,14 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
         info!("Running {test} ({}/{})", index + 1, tests.len());
 
         let outcome = match args.suite {
-            Suite::Cert => run_cert_test(&ot_root, &build_dir, &cli_ftd, test, index)?,
+            Suite::Cert => run_cert_test(
+                &ot_root,
+                &build_dir,
+                &cli_ftd,
+                test,
+                index,
+                args.virtual_time,
+            )?,
             Suite::Expect => run_expect_test(&ot_root, &build_dir, &cli_ftd, test)?,
         };
 
@@ -275,6 +301,7 @@ fn run_cert_test(
     cli_ftd: &Path,
     test: &str,
     index: usize,
+    virtual_time: bool,
 ) -> Result<Outcome> {
     let thread_cert = ot_root.join("tests").join("scripts").join("thread-cert");
     let python = ensure_venv(build_dir, &thread_cert)?;
@@ -298,8 +325,9 @@ fn run_cert_test(
         .env("PYTHONPATH", &thread_cert)
         // The DUT: node.py spawns `$OT_CLI_PATH <node id>` under a pexpect pty.
         .env("OT_CLI_PATH", cli_ftd)
-        // Real time; the DUT has no virtual-time event support (yet).
-        .env("VIRTUAL_TIME", "0")
+        // Real or virtual time - for the harness AND, via inheritance, the
+        // spawned DUT nodes (which switch their clock/radio accordingly).
+        .env("VIRTUAL_TIME", if virtual_time { "1" } else { "0" })
         // Matches the wrapped OpenThread's `OT_THREAD_VERSION` - and keeps
         // node.py off its 1.1-compatibility binary paths.
         .env("THREAD_VERSION", "1.4")
