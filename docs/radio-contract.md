@@ -209,6 +209,16 @@ states. Concretely:
    use is an integration decision, not something the crate applies
    implicitly.
 
+The `Radio` trait's "Contract" section now carries these, renumbered:
+items 1-3 and 5 above are trait contract points 1-4. Item 4 (auto-return
+to Receive) is deliberately NOT a trait obligation - the crate's runner
+discharges it (plan step 1), and a driver owes nothing there beyond item
+2's continuity. Item 6 is an architecture principle, not a per-driver
+obligation. The trait text also spells out the two personalities hiding
+in points 1 and 2: without `TX_ACK`/`RX_ACK` they collapse to pure send /
+pure wait, with `MacRadio` polyfilling the full semantics. The table
+below keeps THIS list's numbering.
+
 ## Per-driver conformance
 
 | Driver | MAC | Ob.1 (tx=full seq) | Ob.2 (rx continuity) | Ob.4 (auto-RX) | Ob.5 (sleep) |
@@ -273,3 +283,11 @@ exposed all of this are the safety net for fixing it.
   (esp-radio and RCP firmwares have their own power states).
 - Whether to tolerate (ignore) a late `TxDone` after a C5 abort in the
   crate's glue, for robustness against drivers that report one anyway.
+- RX timestamps: the glue stamps `mRxInfo.mTimestamp` at *delivery*
+  (`Instant::now()` in `plat_radio_receive_done`, already marked "not
+  precise"), and `PsduMeta` has no arrival-time field, so frames parked
+  during a transmit sequence get stamped up to ~20 ms late. Unused by
+  anything the stack does today (MLE-level operation ignores it), but CSL
+  sync, Link Metrics and time-sync IEs all consume it - when any of those
+  land, `PsduMeta` needs an arrival timestamp captured below the trait,
+  independent of (but amplified by) the parked-delivery latency.

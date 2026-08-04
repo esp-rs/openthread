@@ -285,37 +285,53 @@ pub struct PsduMeta {
 /// The IEEE 802.15.4 PHY Radio trait.
 ///
 /// While the trait models the PHY layer of the radio, it might implement some "MAC-offloading"
-/// capabilities as well - namely - the ability to automatically send and receive ACK frames
-/// and the ability to filter received frames by PAN ID, short address, and extended address.
+/// capabilities as well - namely - the ability to automatically send and receive ACK frames,
+/// the ability to filter received frames by PAN ID, short address, and extended address and others.
 ///
-/// If some of these capabilities are not available, `OpenThread` will emulate those in software.
+/// If some of these capabilities are not available, this crate emulates them in
+/// software (via the [`MacRadio`] wrapper).
 ///
 /// # Contract
 ///
 /// OpenThread drives the radio as a small state machine - Sleep, Receive,
 /// Energy Scan, and the transmit sequence as an excursion out of Receive -
 /// and holds the platform to semantics that are easy to violate from the
-/// signatures alone (see `docs/radio-contract.md` for the full derivation
-/// from the OpenThread sources). An implementation MUST uphold:
+/// signatures alone (see `docs/radio-contract.md`).
 ///
+/// An implementation MUST uphold:
 /// 1. **`transmit` is the complete transmit sequence** per the declared
 ///    capabilities - CSMA/CCA, the transmission, and, for frames requesting
 ///    one, the ACK wait - resolved without the caller concurrently polling
 ///    `receive`. The matching ACK is consumed by `transmit` and reported in
 ///    its result; it must never surface via `receive`.
+///
+///    `transmit` is only allowed to be a pure "send this frame" without waiting
+///    for an ACK when `MacCapabilities::TX_ACK` is NOT set. In that case, the
+///    full semantics of "`transmit` is the complete transmit sequence" are
+///    automatically polyfilled by this crate, via the [`MacRadio`] software
+///    emulation.
+///
 /// 2. **Reception outlives the calls**: frames arriving while no `receive`
 ///    is pending - including during `transmit`'s listening phases - are
 ///    neither lost nor silently consumed; they are delivered by subsequent
 ///    `receive` calls (typically from a driver-internal queue). A bounded
 ///    queue that drops on overflow is acceptable saturation behavior.
+///
+///    `receive` is only allowed to be a pure "wait and receive a frame now" -
+///    without sending any ACKs and without accumulating anything outside the
+///    `receive` method ONLY when BOTH `MacCapabilities::RX_ACK` and
+///    `MacCapabilities::TX_ACK` are NOT set. After all, it is `transmit`'s
+///    ACK wait that forces accumulation of RX frames outside of `receive`
+///    in the first place. In case when `MacCapabilities::RX_ACK` is not set,
+///    the full semantics of "Reception outlives the calls" are automatically
+///    polyfilled by this crate, via the [`MacRadio`] software emulation.
+///
 /// 3. **Cancellation is a sanctioned abort**: the `transmit` future may be
 ///    dropped mid-sequence (OpenThread aborts an ACK wait this way). The
 ///    frame may already be on the air; the radio must simply return to
 ///    receiving.
-/// 4. **After the transmit sequence the radio returns to Receive on its
-///    own** - OpenThread does not re-issue a receive command on every path
-///    (notably not during an active scan).
-/// 5. **A sleeping radio misses frames** ([`Radio::sleep`]): frames arriving
+///
+/// 4. **A sleeping radio misses frames** ([`Radio::sleep`]): frames arriving
 ///    while asleep are dropped, not buffered for later - a sleepy child
 ///    provably missing traffic is protocol behavior, not lost data.
 ///
@@ -377,6 +393,13 @@ pub trait Radio {
 
     /// Transmit a radio frame.
     ///
+    /// If the radio _does_ support `MacCapabilities::TX_ACK`:
+    /// - The implementation of this method should automatically wait for an ACK frame to be received and return
+    ///   the meta-data associated with the received ACK frame;
+    /// - The implementation of this method should auto-ACK and accumulate any frames received while waiting for
+    ///   the ACK frame and return them on subsequent `receive` calls. Note that this does mean that the radio should
+    ///   support `MacCapabilities::RX_ACK` as well. Support for one but not the other is typically not very useful.
+    ///
     /// Arguments:
     /// - `psdu`: The PSDU to transmit as part of the frame.
     /// - `cca`: Whether to perform clear channel assessment (CCA) before transmitting the frame.
@@ -392,7 +415,12 @@ pub trait Radio {
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error>;
 
-    /// Receive a radio frame.
+    /// Retrieve an already received radio frame, or wait for one to arrive.
+    ///
+    /// A frame might already be received and waiting in the radio's internal queue when the radio implementation declares
+    /// `MacCapabilities::TX_ACK` and the `transmit` method did get one or multiple RX frames while waiting for an ACK frame
+    /// to be received. In that case, the implementation of this method might return such an already received frame instead
+    /// of waiting for a new one to arrive.
     ///
     /// Arguments:
     /// - `psdu_buf`: The buffer to store the received PSDU.
@@ -405,7 +433,7 @@ pub trait Radio {
     /// next operation.
     ///
     /// Frames arriving while asleep MUST be dropped, not buffered - the
-    /// stack relies on a sleeping radio missing traffic (contract point 5;
+    /// stack relies on a sleeping radio missing traffic (contract point 4;
     /// a sleepy child's parent buffers for it on exactly that assumption).
     /// A driver with an internal RX queue that keeps filling autonomously
     /// (hardware, IRQ handlers, simulation event pumps) should flush

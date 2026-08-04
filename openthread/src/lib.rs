@@ -1411,7 +1411,7 @@ impl<'a> OpenThread<'a> {
 
                         // Let the driver stop reception / power down; frames
                         // arriving while asleep must be missed, not queued
-                        // (contract point 5). A failure here is logged and
+                        // (contract point 4). A failure here is logged and
                         // tolerated - the runner is parked either way.
                         if let Err(err) = radio.sleep().await {
                             warn!("Radio sleep failed: {:?}", err);
