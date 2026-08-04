@@ -71,7 +71,8 @@ impl<'a> EspRadio<'a> {
             enhance_ack_tx: true,
             promiscuous: config.promiscuous,
             coordinator: false,
-            rx_when_idle: config.rx_when_idle,
+            // esp-radio speaks rx-on-when-idle; `Config` speaks auto-sleep
+            rx_when_idle: !config.auto_sleep,
             txpower: config.power,
             channel: config.channel,
             cca_threshold: match config.cca {
@@ -142,7 +143,7 @@ impl Radio for EspRadio<'_> {
         // this radio yield no measurements (see `Radio::energy_scan`).
         Ok(RadioCaps {
             phy: Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF),
-            // .union(Capabilities::RX_ON_WHEN_IDLE) TODO: Depends on coex being off in ESP-IDF
+            // .union(Capabilities::AUTO_SLEEP) TODO: Depends on coex being off in ESP-IDF
             mac: MacCapabilities::all(),
         })
     }

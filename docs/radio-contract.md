@@ -110,6 +110,19 @@ queueing + Frame Pending), not an optimization.
    capability exists chiefly for RCPs, where per-boundary commands would
    cost a UART round-trip each.
 
+   The upstream names invert the semantics they carry: every radio can
+   *receive* when idle (capability absent = the trivial default, staying
+   in RX), so the capability's entire content is in the FALSE direction of
+   the toggle - permission to power down, plus the burden of identifying
+   "idle", which is a MAC-transaction concept, not a PHY state (upstream's
+   own doc opens with "it's hard and costly for the SubMac to identify
+   these situations"). The crate therefore surfaces this dimension as
+   `Capabilities::AUTO_SLEEP` and `Config::auto_sleep` - polarity inverted
+   (`auto_sleep = !rx_on_when_idle`, so `true` is the direction with
+   content and the `Config` default is the natural `false`) - and keeps
+   the OT vocabulary only at the translation boundaries (the plat glue,
+   the spinel `RX_ON_WHEN_IDLE_MODE` property, esp-radio's config field).
+
 **C8. Energy scan is the fourth commanded state.** `otPlatRadioEnergyScan`
 (with the `ENERGY_SCAN` capability) is a bounded operation completed via
 `otPlatRadioEnergyScanDone`, after which the core re-commands the radio.
@@ -250,9 +263,12 @@ exposed all of this are the safety net for fixing it.
 - Sleep-drop mechanics for internally-queued drivers: gate at arrival vs
   flush on wake. (The C radio gates at arrival; flushing on wake is
   indistinguishable to the stack but simpler for queue-below drivers.)
-- Does `Config::rx_when_idle` remain in `Config` (as the C7-dimension-2
+- ~~Does `Config::rx_when_idle` remain in `Config` (as the C7-dimension-2
   policy for capability-advertising drivers) or move to a dedicated
-  `set_rx_on_when_idle` call, mirroring the platform API more closely?
+  `set_rx_on_when_idle` call, mirroring the platform API more closely?~~
+  Resolved: it remains in `Config`, renamed to `auto_sleep` with inverted
+  polarity (see the C7 naming note) - it is a standing policy, which is
+  exactly what `Config` fields are.
 - `EspRadio`/`SpinelRadio` sleep behavior needs verification against Ob.5
   (esp-radio and RCP firmwares have their own power states).
 - Whether to tolerate (ignore) a late `TxDone` after a C5 abort in the

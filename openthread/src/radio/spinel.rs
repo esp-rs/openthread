@@ -168,7 +168,8 @@ const PROP_MAC_15_4_PANID: u32 = 0x36;
 const PROP_MAC_RAW_STREAM_ENABLED: u32 = 0x37;
 const PROP_MAC_PROMISCUOUS_MODE: u32 = 0x38;
 /// `SPINEL_PROP_MAC_RX_ON_WHEN_IDLE_MODE` — keep the receiver on between TX/RX
-/// so the RCP hears asynchronous traffic (MLE, parent responses).
+/// so the RCP hears asynchronous traffic (MLE, parent responses). The wire
+/// value is the negation of [`Config::auto_sleep`].
 const PROP_MAC_RX_ON_WHEN_IDLE_MODE: u32 = 0x3b;
 const PROP_STREAM_RAW: u32 = 0x71;
 
@@ -953,7 +954,7 @@ where
         let chan = [config.channel];
         let power = [config.power as u8];
         let promisc = [config.promiscuous as u8];
-        let rx_when_idle = [config.rx_when_idle as u8];
+        let rx_on_when_idle = [!config.auto_sleep as u8];
         let pan_id = config.pan_id.unwrap_or(0xffff).to_le_bytes();
         let short_addr = config.short_addr.unwrap_or(0xffff).to_le_bytes();
         // Alternate short address: `0xfffe` (`OT_RADIO_INVALID_SHORT_ADDR`) is the
@@ -984,11 +985,11 @@ where
             batch[count] = (PROP_MAC_PROMISCUOUS_MODE, &promisc);
             count += 1;
         }
-        if changed(|c| c.rx_when_idle as u64) {
+        if changed(|c| c.auto_sleep as u64) {
             // NOTE: some RCP firmwares (e.g. the nRF `ot-rcp`) do not implement
             // this property and reply with an error LAST_STATUS, which we ignore
             // (the RCP then keeps its default rx-when-idle behaviour). Harmless.
-            batch[count] = (PROP_MAC_RX_ON_WHEN_IDLE_MODE, &rx_when_idle);
+            batch[count] = (PROP_MAC_RX_ON_WHEN_IDLE_MODE, &rx_on_when_idle);
             count += 1;
         }
         if changed(|c| c.pan_id.unwrap_or(0xffff) as u64) {

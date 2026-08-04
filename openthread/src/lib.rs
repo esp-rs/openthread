@@ -2846,14 +2846,16 @@ impl<'a> OtContext<'a> {
     /// `docs/radio-contract.md`, C7): a standing idle-behavior policy for
     /// radios advertising `OT_RADIO_CAPS_RX_ON_WHEN_IDLE` (OpenThread never
     /// calls this otherwise). Forwarded to the driver via the radio
-    /// configuration; the runner's own control flow is driven purely by the
-    /// commanded state machine.
+    /// configuration, negated: OT speaks "keep the receiver on", the driver
+    /// API speaks "may sleep autonomously" ([`Config::auto_sleep`]). The
+    /// runner's own control flow is driven purely by the commanded state
+    /// machine.
     fn plat_radio_set_rx_on_when_idle(&mut self, on: bool) {
         info!("Plat radio set RX on when idle callback, on: {}", on);
 
         let state = self.state();
 
-        state.ot.radio_conf.rx_when_idle = on;
+        state.ot.radio_conf.auto_sleep = !on;
     }
 
     fn plat_settings_init(&mut self, sensitive_keys: &[u16]) {

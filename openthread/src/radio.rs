@@ -107,9 +107,12 @@ pub enum Cca {
 }
 
 bitflags! {
-    /// Radio PHY capabilities.
+    /// Radio capabilities - a mirror of the C `otRadioCaps` flags, reported
+    /// verbatim to the OpenThread stack via `otPlatRadioGetCaps`.
     ///
-    /// Reported to the OpenThread stack via `otPlatRadioGetCaps`.
+    /// Not all of these are PHY-level: several
+    /// (ACK timeout, CSMA backoff, frame security, auto-sleep) describe MAC-layer
+    /// intelligence that a capable radio driver owns below the [`Radio`] trait.
     #[repr(transparent)]
     #[derive(Default)]
     #[cfg_attr(not(feature = "defmt"), derive(Debug, Copy, Clone, Eq, PartialEq, Hash))]
@@ -130,8 +133,9 @@ bitflags! {
         const TRANSMIT_TIMING = OT_RADIO_CAPS_TRANSMIT_TIMING as u16;
         /// Radio supports precise RX timing.
         const RECEIVE_TIMING = OT_RADIO_CAPS_RECEIVE_TIMING as u16;
-        /// Radio supports receiving when idle.
-        const RX_ON_WHEN_IDLE = OT_RADIO_CAPS_RX_ON_WHEN_IDLE as u16;
+        /// Radio supports autonomous receiver power-off during idle periods.
+        /// Requested by OpenThread explicitly via [`Config::auto_sleep`].
+        const AUTO_SLEEP = OT_RADIO_CAPS_RX_ON_WHEN_IDLE as u16;
         /// Radio supports setting the transmit frame power.
         const TRANSMIT_FRAME_POWER = OT_RADIO_CAPS_TRANSMIT_FRAME_POWER as u16;
         /// Radio supports alternative short address.
@@ -140,7 +144,14 @@ bitflags! {
 }
 
 bitflags! {
-    /// Radio MAC capabilities.
+    /// Radio MAC capabilities: the parts of IEEE 802.15.4 MAC processing that
+    /// the radio driver owns natively - whether in hardware, in driver
+    /// software, or a mix is the driver's concern, not this crate's.
+    ///
+    /// Any capability *missing* here is emulated in software by wrapping the
+    /// radio in [`MacRadio`]: `MacCapabilities::all()` means a fully
+    /// offloaded MAC (no software emulation needed), `MacCapabilities::none()`
+    /// a bare PHY-like radio that gets the complete soft-MAC.
     #[repr(transparent)]
     #[derive(Default)]
     #[cfg_attr(not(feature = "defmt"), derive(Debug, Copy, Clone, Eq, PartialEq, Hash))]
@@ -192,17 +203,26 @@ pub struct Config {
     pub cca: Cca,
     /// TBD
     pub sfd: u8,
+    /// Allow the radio to autonomously power its receiver down during idle
+    /// periods, instead of keeping it in RX.
+    /// Disregarded unless the radio advertises [`Capabilities::AUTO_SLEEP`],
+    /// otherwise emulated by OpenThread itself by issuing explicit "go to sleep"
+    /// commands to the radio.
+    ///
+    /// Auto-sleep is only relevant and enabled for MTD devices which are battery
+    /// powered and need to conserve power.
+    pub auto_sleep: bool,
     /// Promiscuous mode (receive all frames regardless of address filtering)
-    /// Disregarded if the radio is not capable of operating in promiscuous mode.
+    /// Disregarded if the radio is not capable of operating in promiscuous mode
+    /// and emulated by [`MacRadio`].
     pub promiscuous: bool,
-    /// Receive during idle state
-    /// Disregarded if the radio is not capable of receiving during idle state.
-    pub rx_when_idle: bool,
     /// PAN ID filter
-    /// Disregarded if the radio is not capable of filtering by PAN ID.
+    /// Disregarded if the radio is not capable of filtering by PAN ID
+    /// and emulated by [`MacRadio`].
     pub pan_id: Option<u16>,
     /// Short address filter
-    /// Disregarded if the radio is not capable of filtering by short address.
+    /// Disregarded if the radio is not capable of filtering by short address
+    /// and emulated by [`MacRadio`].
     pub short_addr: Option<u16>,
     /// Alternate short address filter.
     ///
@@ -218,7 +238,8 @@ pub struct Config {
     /// short-address filter accepts only a single address (see each driver).
     pub alt_short_addr: Option<u16>,
     /// Extended address filter
-    /// Disregarded if the radio is not capable of filtering by extended address.
+    /// Disregarded if the radio is not capable of filtering by extended address
+    /// and emulated by [`MacRadio`].
     pub ext_addr: Option<u64>,
 }
 
@@ -232,9 +253,8 @@ impl Config {
             power: 20,
             cca: Cca::Carrier,
             sfd: 0,
+            auto_sleep: false,
             promiscuous: false,
-            // OpenThread can have bursts of incoming frames, so we need to receive during idle state to not miss them.
-            rx_when_idle: true,
             pan_id: None,
             short_addr: None,
             alt_short_addr: None,
