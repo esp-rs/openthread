@@ -61,27 +61,122 @@ const CERT_TESTS: &[&str] = &[
     "Cert_5_3_03_AddressQuery",
 ];
 
-/// Additional `thread-cert` tests run only in virtual time: green there,
-/// but known-marginal under real-time pacing.
+/// Additional `thread-cert` tests run only in virtual time: verified green
+/// there (each entry survived a full-corpus discovery sweep plus repeated
+/// confirmation batches), while their real-time pacing is either unverified
+/// or known-marginal. Real-time promotion is per-test, by demonstrated
+/// stability at 1x.
+///
+/// The still-excluded remainder of the corpus falls into three buckets:
+/// - Reset persistence (`Cert_5_5_*` reboots/splits, `Cert_6_5_*` child
+///   resets, `Cert_5_1_13`, `Cert_9_2_08`): needs settings to survive
+///   `reset`, which the RAM-settings DUT cannot offer yet.
+/// - Link-quality manipulation (`Cert_5_1_11`, `Cert_6_1_06`): needs
+///   investigation of the harness's RSS shaping against `SimRadio`.
+/// - Individual harness packet-verification asserts (`Cert_5_1_05`,
+///   `Cert_5_3_06/08/09`, `Cert_7_1_06`, three `Cert_8_*`,
+///   `Cert_9_2_15/16`): each needs its own investigation.
 const CERT_TESTS_VT_EXTRA: &[&str] = &[
-    // An SED-originated ping races the SED poll latency against the ping
+    // A SED-originated ping races the SED poll latency against the ping
     // deadline - deterministic under virtual time, marginal at 1x.
     "Cert_5_3_04_AddressMapCache",
+    // MLE attach, router lifecycle and topology formation.
+    "Cert_5_1_03_RouterAddressReallocation",
+    "Cert_5_1_04_RouterAddressReallocation",
+    "Cert_5_1_06_RemoveRouterId",
+    "Cert_5_1_07_MaxChildCount",
+    "Cert_5_1_08_RouterAttachConnectivity",
+    "Cert_5_1_10_RouterAttachLinkQuality",
+    "Cert_5_1_12_NewRouterNeighborSync",
+    "Cert_5_2_03_LeaderReject2Hops",
+    "Cert_5_2_04_REEDUpgrade",
+    "Cert_5_2_05_AddressQuery",
+    "Cert_5_2_06_RouterDowngrade",
+    "Cert_5_2_07_REEDSynchronization",
+    // Network layer: routing, address queries, duplicate detection.
+    "Cert_5_3_05_RoutingLinkQuality",
+    "Cert_5_3_07_DuplicateAddress",
+    "Cert_5_3_10_AddressQuery",
+    "Cert_5_3_11_AddressQueryTimeoutIntervals",
+    // Partition merge (no reset involved, unlike the rest of `Cert_5_5_*`).
+    "Cert_5_5_05_SplitMergeREED",
+    // Network data registration/propagation (the `border-router` DUT feature).
+    "Cert_5_6_01_NetworkDataRegisterBeforeAttachLeader",
+    "Cert_5_6_02_NetworkDataRegisterBeforeAttachRouter",
+    "Cert_5_6_03_NetworkDataRegisterAfterAttachLeader",
+    "Cert_5_6_04_NetworkDataRegisterAfterAttachRouter",
+    "Cert_5_6_05_NetworkDataRegisterAfterAttachRouter",
+    "Cert_5_6_06_NetworkDataExpiration",
+    "Cert_5_6_07_NetworkDataRequestREED",
+    "Cert_5_6_09_NetworkDataForwarding",
+    // TMF network diagnostics (the `netdiag-client` DUT feature).
+    "Cert_5_7_01_CoapDiagCommands",
+    "Cert_5_7_02_CoapDiagCommands",
+    "Cert_5_7_03_CoapDiagCommands",
+    // thrKeySequenceCounter rotation + security policy TLV.
+    "Cert_5_8_02_KeyIncrement",
+    "Cert_5_8_03_KeyIncrementRollOver",
+    "Cert_5_8_04_SecurityPolicyTLV",
+    // The MED/SED (`Cert_6_*`) mirror of the attach / network-layer / key
+    // groups: exercises the sleepy-child paths (indirect messaging, polling,
+    // the radio sleep contract) end to end.
+    "Cert_6_1_01_RouterAttach",
+    "Cert_6_1_02_REEDAttach",
+    "Cert_6_1_03_RouterAttachConnectivity",
+    "Cert_6_1_04_REEDAttachConnectivity",
+    "Cert_6_1_05_REEDAttachConnectivity",
+    "Cert_6_1_07_RouterAttachLinkQuality",
+    "Cert_6_2_01_NewPartition",
+    "Cert_6_2_02_NewPartition",
+    "Cert_6_3_01_OrphanReattach",
+    "Cert_6_3_02_NetworkDataUpdate",
+    "Cert_6_4_01_LinkLocal",
+    "Cert_6_4_02_RealmLocal",
+    "Cert_6_6_01_KeyIncrement",
+    "Cert_6_6_02_KeyIncrementRollOver",
+    // Border-router network data scenarios (the `border-router` DUT feature).
+    "Cert_7_1_01_BorderRouterAsLeader",
+    "Cert_7_1_02_BorderRouterAsRouter",
+    "Cert_7_1_03_BorderRouterAsLeader",
+    "Cert_7_1_04_BorderRouterAsRouter",
+    "Cert_7_1_05_BorderRouterAsRouter",
+    "Cert_7_1_07_BorderRouterAsLeader",
+    "Cert_7_1_08_BorderRouterAsFED",
+    // MeshCoP commissioning (the `commissioner` + `joiner` DUT features:
+    // J-PAKE over DTLS).
+    "Cert_8_1_02_Commissioning",
+    "Cert_8_2_01_JoinerRouter",
+    "Cert_8_2_02_JoinerRouter",
+    "Cert_8_3_01_CommissionerPetition",
+    // MeshCoP active/pending operational datasets (MGMT_*_SET dissemination,
+    // delay timers, announce, energy scan / PAN-id query).
+    "Cert_9_2_01_MGMTCommissionerGet",
+    "Cert_9_2_02_MGMTCommissionerSet",
+    "Cert_9_2_03_ActiveDatasetGet",
+    "Cert_9_2_04_ActiveDataset",
+    "Cert_9_2_05_ActiveDataset",
+    "Cert_9_2_06_DatasetDissemination",
+    "Cert_9_2_07_DelayTimer",
+    "Cert_9_2_09_PendingPartition",
+    "Cert_9_2_10_PendingPartition",
+    "Cert_9_2_11_NetworkKey",
+    "Cert_9_2_12_Announce",
+    "Cert_9_2_13_EnergyScan",
+    "Cert_9_2_14_PanIdQuery",
+    "Cert_9_2_17_Orphan",
+    "Cert_9_2_18_RollBackActiveTimestamp",
+    "Cert_9_2_19_PendingDatasetGet",
 ];
 
-/// The `expect` tests run by default.
+/// The `expect` tests run by default: verified green against the DUT.
 ///
-/// PROVISIONAL: the list compiles from inspection (FTD-only, no posix/RCP
-/// nodes, no diag), but has not run against the DUT yet - the `expect`
-/// binary is not present on the development host. Verify and prune when
-/// enabling in CI (`apt-get install expect`).
-const EXPECT_TESTS: &[&str] = &[
-    "cli-dataset",
-    "cli-networkname",
-    "cli-extaddr",
-    "cli-counters",
-    "cli-ping",
-];
+/// Notable exclusions from verification so far (both get through their
+/// two-node MeshCoP commissioning setup, then fail later):
+/// - `cli-dataset`: `dataset init pending` does not answer the expected
+///   `Error 23: NotFound` - needs investigation.
+/// - `cli-ping`: the rapid-interval ping burst (ten pings ~1.2 ms apart)
+///   loses replies - needs investigation.
+const EXPECT_TESTS: &[&str] = &["cli-extaddr", "cli-counters", "cli-networkname"];
 
 /// Wall-clock budget for a test; exceeding it kills and fails the test.
 ///
@@ -114,6 +209,13 @@ pub struct ItestArgs {
     /// Skip (re)building the DUT binaries.
     #[arg(long)]
     skip_build: bool,
+
+    /// Override the per-test wall-clock timeout, in seconds (default: a
+    /// per-test table sized for real-time pacing - see [`test_timeout`]).
+    /// Useful for discovery sweeps over non-allowlisted tests, where a
+    /// deadlocked test should fail fast.
+    #[arg(long)]
+    timeout: Option<u64>,
 
     /// Test names (file name, extension optional); defaults to the suite's
     /// curated allowlist.
@@ -182,8 +284,11 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
                 test,
                 index,
                 args.virtual_time,
+                args.timeout,
             )?,
-            Suite::Expect => run_expect_test(&ot_root, &build_dir, &cli_ftd, test)?,
+            Suite::Expect => {
+                run_expect_test(&ot_root, &build_dir, &cli_ftd, test, args.timeout)?
+            }
         };
 
         match &outcome {
@@ -302,6 +407,7 @@ fn run_cert_test(
     test: &str,
     index: usize,
     virtual_time: bool,
+    timeout_secs: Option<u64>,
 ) -> Result<Outcome> {
     let thread_cert = ot_root.join("tests").join("scripts").join("thread-cert");
     let python = ensure_venv(build_dir, &thread_cert)?;
@@ -339,7 +445,7 @@ fn run_cert_test(
         // itest <test>` captures a failing node's stack-side view.
         .env("CLI_FTD_LOG", run_dir.join("node"));
 
-    run_logged(command, &run_dir.join("output.log"), test)
+    run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
 }
 
 fn run_expect_test(
@@ -347,6 +453,7 @@ fn run_expect_test(
     build_dir: &Path,
     cli_ftd: &Path,
     test: &str,
+    timeout_secs: Option<u64>,
 ) -> Result<Outcome> {
     if !binary_exists("expect") {
         bail!(
@@ -388,16 +495,25 @@ fn run_expect_test(
     command
         .arg("-f")
         .arg(&script)
-        .current_dir(&run_dir)
+        // The scripts `source tests/scripts/expect/_common.exp` relative to
+        // the cwd, so they must run from the OpenThread repo root. They write
+        // nothing there (our log goes to `run_dir` via an absolute path;
+        // gcov prefixes only materialize for coverage builds).
+        .current_dir(ot_root)
         .env("OT_SIMULATION_APPS", &apps);
 
-    run_logged(command, &run_dir.join("output.log"), test)
+    run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
 }
 
 /// Run a test command with its output captured to `log_path`, a wall-clock
 /// timeout, and the upstream exit-77-means-skip convention. On failure, the
 /// log tail is echoed for immediate diagnosis.
-fn run_logged(mut command: Command, log_path: &Path, test: &str) -> Result<Outcome> {
+fn run_logged(
+    mut command: Command,
+    log_path: &Path,
+    test: &str,
+    timeout_secs: Option<u64>,
+) -> Result<Outcome> {
     let log = fs::File::create(log_path)
         .with_context(|| format!("creating {}", log_path.display()))?;
 
@@ -412,7 +528,7 @@ fn run_logged(mut command: Command, log_path: &Path, test: &str) -> Result<Outco
         .spawn()
         .with_context(|| format!("spawning {test}"))?;
 
-    let timeout = test_timeout(test);
+    let timeout = timeout_secs.map_or_else(|| test_timeout(test), Duration::from_secs);
     let deadline = Instant::now() + timeout;
 
     let status = loop {

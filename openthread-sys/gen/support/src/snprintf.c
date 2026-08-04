@@ -32,6 +32,9 @@ static void write_output(
 static void write_padding(
    char* restrict str, size_t size, size_t* written, size_t len, unsigned long width, unsigned long precision, bool zero_pad, bool is_negative );
 
+static void write_right_padding(
+   char* restrict str, size_t size, size_t* written, size_t len, unsigned long precision, bool is_negative, unsigned long width );
+
 static char upcase(char c);
 
 /* ======================================================================== *
@@ -87,7 +90,8 @@ extern unsigned long int strtoul(const char* str, char** endptr, int base);
  * - c (char)
  * - s (null-terminated string)
  * - % (literal percent sign)
- * - qualifiers: l, ll, z, width, (non-string) precision, left-space-pad, zero-pad
+ * - qualifiers: l, ll, z, width (numeric or `*`), (non-string) precision,
+ *   left-space-pad, zero-pad, `-` (left-justify / right-space-pad)
  *
  * Does not support:
  *
@@ -99,7 +103,7 @@ extern unsigned long int strtoul(const char* str, char** endptr, int base);
  * - f (decimal floating point)
  * - g (the shorter of %e and %f)
  * - G (the shorter of %E and %f)
- * - qualifiers: L, -, +, right-pad, etc
+ * - qualifiers: L, +, etc
  *
  * @param str the output buffer to write to
  * @param size the size of the output buffer
@@ -118,6 +122,7 @@ int vsnprintf(
    unsigned long precision = -1;
    unsigned long width = 0;
    bool zero_pad = false;
+   bool left_pad = false;
 
    while ( *fmt )
    {
@@ -167,10 +172,14 @@ int vsnprintf(
                   ll = va_arg( ap, unsigned int );
                }
                utoa( ll, s, sizeof(s), 10 );
-               write_padding( str, size, &written, strlen(s), width, precision, zero_pad, false );
+               write_padding( str, size, &written, strlen(s), left_pad ? 0 : width, precision, left_pad ? false : zero_pad, false );
                for ( const char* p = s; *p != '\0'; p++ )
                {
                   write_output( *p, str, size, &written );
+               }
+               if ( left_pad )
+               {
+                  write_right_padding( str, size, &written, strlen(s), precision, false, width );
                }
             }
             break;
@@ -197,11 +206,15 @@ int vsnprintf(
                   ll = va_arg( ap, unsigned int );
                }
                utoa( ll, s, sizeof(s), 16 );
-               write_padding( str, size, &written, strlen(s), width, precision, zero_pad, false );
+               write_padding( str, size, &written, strlen(s), left_pad ? 0 : width, precision, left_pad ? false : zero_pad, false );
                for (const char* p = s; *p != '\0'; p++)
                {
                   char output_char = (*fmt == 'X') ? upcase(*p) : *p;
                   write_output( output_char, str, size, &written );
+               }
+               if ( left_pad )
+               {
+                  write_right_padding( str, size, &written, strlen(s), precision, false, width );
                }
             }
             break;
@@ -229,10 +242,14 @@ int vsnprintf(
                bool is_negative = ll < 0;
                ull = is_negative ? -ll : ll;
                utoa( ull, s, sizeof(s), 10 );
-               write_padding( str, size, &written, strlen(s), width, precision, zero_pad, is_negative );
+               write_padding( str, size, &written, strlen(s), left_pad ? 0 : width, precision, left_pad ? false : zero_pad, is_negative );
                for ( const char* p = s; *p != '\0'; p++ )
                {
                   write_output( *p, str, size, &written );
+               }
+               if ( left_pad )
+               {
+                  write_right_padding( str, size, &written, strlen(s), precision, is_negative, width );
                }
             }
             break;
@@ -253,7 +270,10 @@ int vsnprintf(
                if (precision != (unsigned long)-1 && precision < len) {
                   len = precision;
                }
-               write_padding( str, size, &written, len, width, precision, false, false );
+               if ( !left_pad )
+               {
+                  write_padding( str, size, &written, len, width, precision, false, false );
+               }
 
                while (count > 0 && *s != '\0')
                {
@@ -263,6 +283,12 @@ int vsnprintf(
                   if (precision != (unsigned long)-1) {
                      count--;
                   }
+               }
+               if ( left_pad )
+               {
+                  // A string precision truncates (handled by `len` above); it
+                  // never extends, so it plays no part in the padding length.
+                  write_right_padding( str, size, &written, len, (unsigned long)-1, false, width );
                }
             }
             break;
@@ -284,6 +310,26 @@ int vsnprintf(
                   fmt--;
                }
 
+               is_escape = true;
+            }
+            break;
+         case '-':
+            // Left-justify: content first, space padding to the right (and,
+            // per C, `-` overrides `0`).
+            left_pad = true;
+            is_escape = true;
+            break;
+         case '*':
+            // Field width from the argument list; negative means
+            // left-justify with the absolute value as the width.
+            {
+               int arg_width = va_arg( ap, int );
+               if ( arg_width < 0 )
+               {
+                  left_pad = true;
+                  arg_width = -arg_width;
+               }
+               width = (unsigned long) arg_width;
                is_escape = true;
             }
             break;
@@ -331,6 +377,7 @@ int vsnprintf(
             is_long = 0;
             is_size_t = false;
             zero_pad  = false;
+            left_pad = false;
             width = 0;
             precision = -1;
             break;
@@ -455,6 +502,39 @@ static void write_padding(char* restrict str, size_t size, size_t* written, size
    for (unsigned long i = 0; i < zero_pad_len; i++)
    {
       write_output( '0', str, size, written );
+   }
+}
+
+/**
+ * write_right_padding - Write the right-hand space padding of a
+ * left-justified (`%-`) conversion.
+ *
+ * @param str the buffer to write to
+ * @param size the total size of `str`
+ * @param written pass in the number of characters in the buffer; increased
+ *    for every padding character, written or dropped
+ * @param len the length of the rendered content, excluding any sign and any
+ *    zeros a numeric precision adds
+ * @param precision the numeric precision (pass -1 for strings: a string
+ *    precision truncates, it never extends)
+ * @param is_negative whether a minus sign preceded the content
+ * @param width the total field width to pad out to
+ */
+static void write_right_padding(
+   char* restrict str, size_t size, size_t* written, size_t len, unsigned long precision, bool is_negative, unsigned long width )
+{
+   size_t content = len;
+   if ( precision != (unsigned long)-1 && (size_t) precision > content )
+   {
+      content = precision;
+   }
+   if ( is_negative )
+   {
+      content++;
+   }
+   for ( size_t i = content; i < (size_t) width; i++ )
+   {
+      write_output( ' ', str, size, written );
    }
 }
 

@@ -1,0 +1,121 @@
+name: Integration Tests
+
+# Runs the upstream OpenThread e2e suites against the `openthread` crate's
+# simulation DUT (`tests/` - see `cargo xtask itest`):
+#
+# - `thread-cert` in virtual time: deterministic lockstep, seconds per run -
+#   the PR gate.
+# - `expect`: upstream CLI tests, short and real-time - also a PR gate.
+# - `thread-cert` in real time: every `simulator.go(N)` is a literal N-second
+#   sleep (~25 min for the allowlist) and some timings are known-marginal at
+#   1x pacing, so this leg runs nightly / on dispatch only.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    # Nightly at 3:10 AM UTC.
+    - cron: "10 3 * * *"
+  workflow_dispatch:
+
+# A new push to a pull request supersedes the run already in flight for it.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  RUST_TOOLCHAIN: stable
+  CARGO_TERM_COLOR: always
+
+jobs:
+  itest:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - suite: cert-vt
+            args: --virtual-time
+          - suite: expect
+            args: --suite expect
+
+    name: itest (${{ matrix.suite }})
+
+    steps:
+      - name: Checkout (incl. the OpenThread submodule - suites and C sources)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: x86_64-unknown-linux-gnu
+
+      # The DUT build compiles the OpenThread C sources on the fly (its
+      # feature set differs from the prebuilt profile), so a cold build is
+      # minutes of cmake - cache it. Keyed per matrix leg automatically.
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            tests
+            xtask
+
+      - name: Install system dependencies
+        run: sudo apt-get update && sudo apt-get install -y expect
+
+      - name: Run the suite
+        run: cargo xtask itest ${{ matrix.args }}
+
+      # The harness leaves each test's world in `.build/itest/run/<test>`:
+      # harness output, per-node DUT logs, pcaps.
+      - name: Upload run dirs of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: itest-${{ matrix.suite }}-runs
+          path: .build/itest/run/
+          if-no-files-found: ignore
+
+  itest-rt:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+
+    name: itest (cert-rt, nightly)
+
+    steps:
+      - name: Checkout (incl. the OpenThread submodule - suites and C sources)
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          target: x86_64-unknown-linux-gnu
+
+      - name: Cache Rust builds
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            tests
+            xtask
+
+      - name: Run the suite
+        run: cargo xtask itest
+
+      - name: Upload run dirs of failed tests
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: itest-cert-rt-runs
+          path: .build/itest/run/
+          if-no-files-found: ignore

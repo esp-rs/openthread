@@ -50,6 +50,9 @@ critical-section = { version = "1.2", features = ["std"] }
 # `ping` command many of its tests use; the rest widen the CLI surface toward
 # what the upstream simulation build offers. No `std`: that feature is the
 # RCP serial transport, and these nodes use a local (simulated) radio instead.
+# The suite's topology setup registers on-mesh prefixes (`prefix add`),
+# sets preferred partition ids and issues `networkdiagnostic get` - all
+# CLI surface the upstream reference-device simulation build carries.
 openthread = { path = "../openthread", default-features = false, features = [
     "ftd",
     "cli",
@@ -61,6 +64,11 @@ openthread = { path = "../openthread", default-features = false, features = [
     "ecdsa",
     "dns-client",
     "srp-client",
+    "commissioner",
+    "joiner",
+    "border-router",
+    "netdiag-client",
+    "reference-device",
 ] }
 embassy-sync = "0.8"
 

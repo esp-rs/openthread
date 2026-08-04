@@ -196,13 +196,13 @@ commissioner = ["_ot-dtls"]
 # the DTLS engine (client+server, cookies) plus J-PAKE, but NOT cert handling.
 # Cert-based DTLS (TCAT / ECDHE-ECDSA) is a separate, manual opt-in.
 _ot-dtls = [
-    "mbedtls-rs-sys/tls-engine",
-    "mbedtls-rs-sys/tls-client",
-    "mbedtls-rs-sys/tls-server",
-    "mbedtls-rs-sys/tls-proto-tls12",
-    "mbedtls-rs-sys/tls-proto-dtls",
-    "mbedtls-rs-sys/alg-ecjpake",
-    "mbedtls-rs-sys/kex-ecjpake",
+    "mbedtls-rs-sys?/tls-engine",
+    "mbedtls-rs-sys?/tls-client",
+    "mbedtls-rs-sys?/tls-server",
+    "mbedtls-rs-sys?/tls-proto-tls12",
+    "mbedtls-rs-sys?/tls-proto-dtls",
+    "mbedtls-rs-sys?/alg-ecjpake",
+    "mbedtls-rs-sys?/kex-ecjpake",
 ]
 # Border functionality
 border-router = []
@@ -213,6 +213,8 @@ link-metrics-initiator = []
 link-metrics-subject = []
 mac-filter = []
 jam-detection = []
+netdiag-client = []
+reference-device = []
 child-supervision = []
 mesh-diag = []
 history-tracker = []
