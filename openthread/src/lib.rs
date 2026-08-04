@@ -84,8 +84,8 @@ use sys::{
     otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioEnergyScanDone,
     otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame,
     otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId,
-    otThreadSetEnabled, otThreadSetLinkMode, OT_CHANGED_THREAD_ROLE, OT_RADIO_CAPS_ACK_TIMEOUT,
-    OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
+    otThreadSetEnabled, otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
+    OT_RADIO_RSSI_INVALID,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -1391,10 +1391,34 @@ impl<'a> OpenThread<'a> {
             let mut psdu_buf = [0_u8; OT_RADIO_FRAME_MAX_SIZE as usize];
             let mut ack_psdu_buf = [0_u8; OT_RADIO_FRAME_MAX_SIZE as usize];
 
+            // The runner mirrors the otPlat radio state machine (see
+            // `docs/radio-contract.md`): commands are state TRANSITIONS,
+            // `Rx` is a STATE the runner stays in - streaming
+            // `otPlatRadioReceiveDone` - until commanded otherwise, and the
+            // transmit sequence is an excursion that returns to `Rx` on its
+            // own (contract C4: the stack does not re-issue
+            // `otPlatRadioReceive` on every path - notably not during an
+            // active scan). The `Sleep` arm exits to the outer command
+            // await, which IS the parked state.
             loop {
-                unwrap!(radio.set_config(cmd.conf()).await);
+                if let Some(conf) = cmd.conf() {
+                    unwrap!(radio.set_config(conf).await);
+                }
 
                 match cmd {
+                    RadioCommand::Sleep => {
+                        trace!("Radio sleeping");
+
+                        // Let the driver stop reception / power down; frames
+                        // arriving while asleep must be missed, not queued
+                        // (contract point 5). A failure here is logged and
+                        // tolerated - the runner is parked either way.
+                        if let Err(err) = radio.sleep().await {
+                            warn!("Radio sleep failed: {:?}", err);
+                        }
+
+                        break;
+                    }
                     RadioCommand::Tx(_) => {
                         let (cca, psdu_len) = {
                             let mut ot = self.activate();
@@ -1435,24 +1459,13 @@ impl<'a> OpenThread<'a> {
 
                         match result {
                             Either::First(new_cmd) => {
-                                let mut ot = self.activate();
-
-                                // Reporting send failure because we got interrupted
-                                // by a new command
-                                {
-                                    let state = ot.state();
-                                    unsafe {
-                                        otPlatRadioTxDone(
-                                            state.ot.instance,
-                                            &mut state.ot.radio_resources.snd_frame,
-                                            core::ptr::null_mut(),
-                                            otError_OT_ERROR_ABORT,
-                                        );
-                                    }
-                                }
-
-                                ot.process_tasklets();
-
+                                // A command during a pending transmit is a
+                                // sanctioned, SILENT abort (contract C5): the
+                                // stack has already completed the transmission
+                                // on its side (e.g. its own ACK timeout
+                                // synthesized NO_ACK and commanded `Receive`),
+                                // so reporting a `TxDone` here would be a
+                                // spurious second completion.
                                 trace!("Tx interrupted by new command: {:?}", new_cmd);
 
                                 cmd = new_cmd;
@@ -1511,7 +1524,15 @@ impl<'a> OpenThread<'a> {
 
                                 ot.process_tasklets();
 
-                                break;
+                                // The transmit sequence returns to Receive on
+                                // its own (contract C4), on the TX channel:
+                                // the stack corrects the channel with an
+                                // explicit `Receive` on the normal path (the
+                                // command is typically already signaled by the
+                                // tasklets processed above), and on the paths
+                                // where it stays silent - active scan - the TX
+                                // channel is exactly where the responses come.
+                                cmd = RadioCommand::Rx(unwrap!(cmd.conf()).clone());
                             }
                         }
                     }
@@ -1534,7 +1555,7 @@ impl<'a> OpenThread<'a> {
                             Either::Second(result) => {
                                 let mut ot = self.activate();
 
-                                let rx_when_idle = {
+                                {
                                     let state = ot.state();
 
                                     match result {
@@ -1578,33 +1599,24 @@ impl<'a> OpenThread<'a> {
                                             }
                                         }
                                     }
-
-                                    state.ot.radio_conf.rx_when_idle
-                                };
+                                }
 
                                 ot.process_tasklets();
 
-                                // With rx-on-when-idle, OpenThread keeps the radio in
-                                // continuous receive and does NOT re-issue an explicit
-                                // `Rx` command for each frame — it expects a stream of
-                                // `otPlatRadioReceiveDone` callbacks. So keep draining by
-                                // looping straight back into `receive()` (still
-                                // preemptible by a pending Tx via the `new_cmd` arm of
-                                // the select above), rather than breaking out to wait for
-                                // the next radio command. Without this, after delivering
-                                // one frame we park on `radio_cmd().await` for an `Rx`
-                                // command that never comes; a radio with an internal RX
-                                // queue then fills it and goes deaf under sustained load.
-                                if rx_when_idle {
-                                    continue;
-                                }
-
-                                break;
+                                // Receive is a STATE, not a per-frame
+                                // operation (contract C1/C2): OpenThread
+                                // expects a stream of `otPlatRadioReceiveDone`
+                                // callbacks and does not re-issue `Receive`
+                                // per frame. Stay in the state - still
+                                // preemptible by any new command via the
+                                // `new_cmd` arm of the select above; leaving
+                                // it is the `Sleep`/`Tx`/`EnergyScan`
+                                // commands' job, never the frame delivery's.
                             }
                         }
                     }
                     RadioCommand::EnergyScan(_, duration_millis) => {
-                        let channel = cmd.conf().channel;
+                        let channel = unwrap!(cmd.conf()).channel;
 
                         trace!("Energy scan: channel {}, {} ms", channel, duration_millis);
 
@@ -1661,7 +1673,12 @@ impl<'a> OpenThread<'a> {
 
                                 ot.process_tasklets();
 
-                                break;
+                                // Like the transmit sequence, a scan is an
+                                // excursion that lands back in Receive (the
+                                // C simulation radio stays in receive state
+                                // throughout); the stack's scan postlude
+                                // re-commands the radio promptly either way.
+                                cmd = RadioCommand::Rx(unwrap!(cmd.conf()).clone());
                             }
                         }
                     }
@@ -1849,7 +1866,6 @@ impl OtResources {
             // anyway, as it needs a synchronous RSSI read (`otPlatRadioGetRssi`)
             // which is unimplementable on top of an async radio.
             radio_caps: (OT_RADIO_CAPS_ACK_TIMEOUT | sys::OT_RADIO_CAPS_ENERGY_SCAN) as otRadioCaps,
-            pending_rx_when_idle: None,
         }));
 
         info!("OpenThread resources initialized");
@@ -2547,22 +2563,6 @@ impl<'a> OtContext<'a> {
 
         let state = self.state();
 
-        // Apply deferred rx_when_idle only on role change events to avoid
-        // unnecessary otThreadGetDeviceRole calls on every state change.
-        if flags & OT_CHANGED_THREAD_ROLE != 0 {
-            if let Some(pending) = state.ot.pending_rx_when_idle {
-                let role: DeviceRole = unsafe { otThreadGetDeviceRole(state.ot.instance) }.into();
-                if role.is_connected() {
-                    info!(
-                        "Applying deferred rx_when_idle: {} -> {}",
-                        state.ot.radio_conf.rx_when_idle, pending
-                    );
-                    state.ot.radio_conf.rx_when_idle = pending;
-                    state.ot.pending_rx_when_idle = None;
-                }
-            }
-        }
-
         state.ot.changes.signal(());
     }
 
@@ -2793,7 +2793,11 @@ impl<'a> OtContext<'a> {
 
     fn plat_radio_sleep(&mut self) -> Result<(), OtError> {
         info!("Plat radio sleep callback");
-        Ok(()) // TODO
+
+        let state = self.state();
+        state.ot.radio.signal(RadioCommand::Sleep);
+
+        Ok(())
     }
 
     fn plat_radio_transmit_buffer(&mut self) -> *mut otRadioFrame {
@@ -2838,16 +2842,18 @@ impl<'a> OtContext<'a> {
         Ok(())
     }
 
+    /// The radio-capability side of rx-on-when-idle (see
+    /// `docs/radio-contract.md`, C7): a standing idle-behavior policy for
+    /// radios advertising `OT_RADIO_CAPS_RX_ON_WHEN_IDLE` (OpenThread never
+    /// calls this otherwise). Forwarded to the driver via the radio
+    /// configuration; the runner's own control flow is driven purely by the
+    /// commanded state machine.
     fn plat_radio_set_rx_on_when_idle(&mut self, on: bool) {
         info!("Plat radio set RX on when idle callback, on: {}", on);
 
         let state = self.state();
 
-        if state.ot.radio_conf.rx_when_idle != on {
-            // Defer applying the new rx_when_idle value until the next role change event, to avoid
-            // unnecessary otThreadGetDeviceRole calls on every state change.
-            state.ot.pending_rx_when_idle = Some(on);
-        }
+        state.ot.radio_conf.rx_when_idle = on;
     }
 
     fn plat_settings_init(&mut self, sensitive_keys: &[u16]) {
@@ -3034,9 +3040,6 @@ struct OtState<'a> {
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,
-    /// Deferred rx_when_idle value from set_link_mode called before device connects.
-    /// Applied automatically via plat_changed when the device role becomes connected.
-    pending_rx_when_idle: Option<bool>,
     /// Resources for the radio (PHY data frames and their descriptors)
     radio_resources: &'a mut RadioResources,
     /// Resources for dealing with the operational dataset
@@ -3063,12 +3066,20 @@ enum RadioCommand {
     /// Once the scan completes (or an error occurs) OpenThread C will be
     /// signalled by calling `otPlatRadioEnergyScanDone`
     EnergyScan(Config, u16),
+    /// Stop receiving and park the radio (`otPlatRadioSleep`).
+    ///
+    /// Sleep is a commanded state, not an optimization: the stack expects a
+    /// sleeping radio to MISS frames (a sleepy child's parent buffers for it
+    /// precisely because of that), so the runner stops pumping `receive`
+    /// until the next command. See `docs/radio-contract.md` (C6).
+    Sleep,
 }
 
 impl RadioCommand {
-    const fn conf(&self) -> &Config {
+    const fn conf(&self) -> Option<&Config> {
         match self {
-            Self::Tx(conf) | Self::Rx(conf) | Self::EnergyScan(conf, _) => conf,
+            Self::Tx(conf) | Self::Rx(conf) | Self::EnergyScan(conf, _) => Some(conf),
+            Self::Sleep => None,
         }
     }
 }

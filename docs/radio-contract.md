@@ -203,8 +203,8 @@ states. Concretely:
 | `nrf-802154` | driver IRQ layer | yes | yes (IRQ queue) | yes (`rx_when_idle`) | yes |
 | `EspRadio` | esp-radio HW/blob | yes | yes (driver queue) | yes | needs check |
 | `SpinelRadio` | RCP firmware | yes | yes (`rx_queue`) | yes (RCP) | needs check |
-| `embassy-nrf` + `MacRadio` | software | via wrapper | via parking queue (G5) | runner concern | no (G3) |
-| `SimRadio`/`VtRadio` + `MacRadio` | software | via wrapper | via parking queue | runner concern | no (G3) |
+| `embassy-nrf` + `MacRadio` | software | via wrapper | via parking queue (G5) | runner (done) | runner parks; PHY power-down needs `ProxyRadio` plumbing |
+| `SimRadio`/`VtRadio` + `MacRadio` | software | via wrapper | via parking queue | runner (done) | yes (flush-on-wake) |
 
 ## Plan
 
@@ -217,12 +217,29 @@ exposed all of this are the safety net for fixing it.
    returns to Receive instead of the command await (G1); silent abort on
    command interruption (G2); `RadioCommand::Sleep` plumbed from
    `otPlatRadioSleep` (G3); drop the `rx_when_idle` continuation check and
-   the deferred-application hack (G4).
+   the deferred-application hack (G4). **DONE** - validated with the full
+   real-time sweep (7/7), five consecutive virtual-time batches (8/8 each)
+   and the crate integration tests.
 2. **Trait contract**: the obligations above as `Radio` documentation, plus
-   `async fn sleep(&mut self)` with a default no-op implementation.
+   `async fn sleep(&mut self)` with a default no-op implementation. **DONE**
+   - forwarded through the `&mut` blanket impl and `MacRadio` (parked
+   frames stay parked: they were screened and ACKed while awake); the
+   runner's Sleep arm calls it (failure logged, tolerated). `ProxyRadio`
+   keeps the default no-op for now - forwarding sleep through its channel
+   protocol is follow-up work.
 3. **Sim fidelity**: `SimRadio`/`VtRadio` honor sleep by discarding (match
    the C simulation radio); verify SED cert tests still pass - and now
-   prove the right thing.
+   prove the right thing. **DONE** - flush-on-wake in both radios (the
+   resolution of the open question below: gate-at-arrival and
+   flush-on-wake are indistinguishable to the stack, and flushing suits
+   queue-below drivers); the `VtRadio` flush still settles the echo
+   bookkeeping for pre-sleep transmissions, which is mandatory or the
+   FIFO echo matching desyncs. The flush point is `set_config` - the
+   first call of any post-sleep operation and therefore the precise wake
+   boundary: flushing on the first `receive` instead would race the
+   parent's ACK to a just-transmitted data poll (that `receive` happens
+   inside the ACK wait), a real-time-only race that virtual time never
+   exhibits.
 4. **`MacRadio` disposition**: keep as the bare-PHY helper with its
    obligations documented (parking queue stays for as long as an ACK wait
    above the trait exists); new drivers are pointed at the below-trait

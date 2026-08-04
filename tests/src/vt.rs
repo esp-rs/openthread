@@ -114,6 +114,10 @@ impl VtRxQueue {
         })
         .await
     }
+
+    fn try_receive(&self) -> Option<VtFrame> {
+        self.state.lock().unwrap().frames.pop_front()
+    }
 }
 
 /// Hand a received frame to the radio (called by the executor's run loop).
@@ -244,6 +248,9 @@ pub struct VtRadio {
     /// and those echoes must not surface as received frames. A queue,
     /// because back-to-back unacked transmissions can outpace the echoes.
     echoes: VecDeque<(usize, [u8; PSDU_MAX])>,
+    /// Set by [`Radio::sleep`]; the next `receive` flushes what accumulated
+    /// while asleep (contract point 5), still settling echo bookkeeping.
+    slept: bool,
 }
 
 impl VtRadio {
@@ -252,7 +259,28 @@ impl VtRadio {
             link,
             config: Config::new(),
             echoes: VecDeque::new(),
+            slept: false,
         }
+    }
+
+    /// Drop the echo of an own transmission - matched against the OLDEST
+    /// outstanding entry only. Echoes return in transmit order (the
+    /// simulator stamps events monotonically), and an echo always precedes
+    /// any *foreign* frame with identical bytes: that matters for ACKs,
+    /// which are content-degenerate (FCF+seq+FCS) - when two neighbors' MAC
+    /// sequence numbers coincide, the peer's ACK **to us** is byte-identical
+    /// to the echo of an ACK **we** sent, and a match-anywhere filter would
+    /// eat the real ACK, blinding `MacRadio`'s ACK wait into retransmission
+    /// storms.
+    fn consume_echo(&mut self, frame: &VtFrame) -> bool {
+        if let Some((len, echo)) = self.echoes.front() {
+            if *len == frame.len && echo[..*len] == frame.psdu[..frame.len] {
+                self.echoes.pop_front();
+                return true;
+            }
+        }
+
+        false
     }
 }
 
@@ -266,6 +294,20 @@ impl Radio for VtRadio {
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.config = config.clone();
+
+        // The wake boundary (see `SimRadio::set_config` for the rationale;
+        // here the ordering is deterministic, but symmetry keeps the two
+        // radios honest): frames queued while asleep are missed - though
+        // the echoes of own pre-sleep transmissions among them must still
+        // settle the echo bookkeeping, or the FIFO matching desyncs.
+        if self.slept {
+            self.slept = false;
+
+            while let Some(frame) = VT_RX.try_receive() {
+                let _ = self.consume_echo(&frame);
+            }
+        }
+
         Ok(())
     }
 
@@ -306,23 +348,12 @@ impl Radio for VtRadio {
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         loop {
             let frame = VT_RX.receive().await;
-            let psdu = &frame.psdu[..frame.len];
 
-            // Drop the echo of an own transmission - matched against the
-            // OLDEST outstanding entry only. Echoes return in transmit order
-            // (the simulator stamps events monotonically), and an echo
-            // always precedes any *foreign* frame with identical bytes: that
-            // matters for ACKs, which are content-degenerate (FCF+seq+FCS) -
-            // when two neighbors' MAC sequence numbers coincide, the peer's
-            // ACK **to us** is byte-identical to the echo of an ACK **we**
-            // sent, and a match-anywhere filter would eat the real ACK,
-            // blinding `MacRadio`'s ACK wait into retransmission storms.
-            if let Some((len, echo)) = self.echoes.front() {
-                if *len == frame.len && echo[..*len] == *psdu {
-                    self.echoes.pop_front();
-                    continue;
-                }
+            if self.consume_echo(&frame) {
+                continue;
             }
+
+            let psdu = &frame.psdu[..frame.len];
 
             // Diagnostics: an incoming frame matching a NON-front echo entry
             // means echoes do come back out of order - the FIFO premise fails.
@@ -355,5 +386,10 @@ impl Radio for VtRadio {
                 rssi: Some(SIM_RSSI),
             });
         }
+    }
+
+    async fn sleep(&mut self) -> Result<(), Self::Error> {
+        self.slept = true;
+        Ok(())
     }
 }

@@ -270,13 +270,34 @@ pub struct PsduMeta {
 ///
 /// If some of these capabilities are not available, `OpenThread` will emulate those in software.
 ///
-/// The trait is used to abstract the radio hardware and provide a common interface for the radio
-/// operations. It needs to support the following operations:
-/// - Get the radio capabilities (phy and mac ones)
-/// - Set the radio configuration
-/// - Transmit a radio frame and (optionally) wait for an ACK frame (if the transmitted frame requires an ACK)
-/// - Receive a radio frame and (optionally) send an ACK frame (if the received frame requires an ACK)
-/// - Optionally, drop received radio frames if they do not match the filter criteria (PAN ID, short address, extended address)
+/// # Contract
+///
+/// OpenThread drives the radio as a small state machine - Sleep, Receive,
+/// Energy Scan, and the transmit sequence as an excursion out of Receive -
+/// and holds the platform to semantics that are easy to violate from the
+/// signatures alone (see `docs/radio-contract.md` for the full derivation
+/// from the OpenThread sources). An implementation MUST uphold:
+///
+/// 1. **`transmit` is the complete transmit sequence** per the declared
+///    capabilities - CSMA/CCA, the transmission, and, for frames requesting
+///    one, the ACK wait - resolved without the caller concurrently polling
+///    `receive`. The matching ACK is consumed by `transmit` and reported in
+///    its result; it must never surface via `receive`.
+/// 2. **Reception outlives the calls**: frames arriving while no `receive`
+///    is pending - including during `transmit`'s listening phases - are
+///    neither lost nor silently consumed; they are delivered by subsequent
+///    `receive` calls (typically from a driver-internal queue). A bounded
+///    queue that drops on overflow is acceptable saturation behavior.
+/// 3. **Cancellation is a sanctioned abort**: the `transmit` future may be
+///    dropped mid-sequence (OpenThread aborts an ACK wait this way). The
+///    frame may already be on the air; the radio must simply return to
+///    receiving.
+/// 4. **After the transmit sequence the radio returns to Receive on its
+///    own** - OpenThread does not re-issue a receive command on every path
+///    (notably not during an active scan).
+/// 5. **A sleeping radio misses frames** ([`Radio::sleep`]): frames arriving
+///    while asleep are dropped, not buffered for later - a sleepy child
+///    provably missing traffic is protocol behavior, not lost data.
 ///
 /// The trait is NOT required to support the following operations:
 /// - Re-sending a TX frame if the ACK frame was not received; this is done by OpenThread
@@ -308,16 +329,10 @@ pub trait Radio {
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error>;
 
     // TODO
-    //fn sleep(&mut self);
-
-    // TODO
     //fn rssi(&mut self) -> i8;
 
     // TODO
     //fn receive_sensitivity(&mut self) -> i8;
-
-    // TODO
-    //fn set_enabled(&mut self, enabled: bool) -> Result<(), Self::Error>;
 
     /// Perform an energy scan on `channel`: measure the energy observed over
     /// `duration_millis` and return the maximum RSSI, in dBm.
@@ -365,6 +380,23 @@ pub trait Radio {
     /// Returns:
     /// - The meta-data associated with the received frame.
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error>;
+
+    /// Put the radio to sleep (`otPlatRadioSleep`): stop receiving until the
+    /// next operation.
+    ///
+    /// Frames arriving while asleep MUST be dropped, not buffered - the
+    /// stack relies on a sleeping radio missing traffic (contract point 5;
+    /// a sleepy child's parent buffers for it on exactly that assumption).
+    /// A driver with an internal RX queue that keeps filling autonomously
+    /// (hardware, IRQ handlers, simulation event pumps) should flush
+    /// sleep-period arrivals on its next `receive`.
+    ///
+    /// The default implementation is a no-op: sufficient for radios whose
+    /// reception stops when `receive` is not being polled and that have no
+    /// power model worth managing.
+    async fn sleep(&mut self) -> Result<(), Self::Error> {
+        Ok(())
+    }
 }
 
 impl<T> Radio for &mut T
@@ -396,6 +428,10 @@ where
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         T::receive(self, psdu_buf).await
+    }
+
+    async fn sleep(&mut self) -> Result<(), Self::Error> {
+        T::sleep(self).await
     }
 }
 
@@ -825,6 +861,12 @@ where
                 break Ok(psdu_meta);
             }
         }
+    }
+
+    async fn sleep(&mut self) -> Result<(), Self::Error> {
+        // No MAC-layer processing; the parked frames (screened and ACKed
+        // while awake) stay parked - they were legitimately received.
+        self.radio.sleep().await.map_err(Self::Error::Io)
     }
 }
 
