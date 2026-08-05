@@ -53,6 +53,7 @@ use embassy_time::{Duration, Timer};
 
 use crate::radio::{
     Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
+    SrcMatchEntries, SRC_MATCH_CAPACITY,
 };
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 
@@ -173,6 +174,14 @@ const PROP_MAC_PROMISCUOUS_MODE: u32 = 0x38;
 /// so the RCP hears asynchronous traffic (MLE, parent responses). The wire
 /// value is the negation of [`Config::auto_sleep`].
 const PROP_MAC_RX_ON_WHEN_IDLE_MODE: u32 = 0x3b;
+/// The RCP's source-match table (`SPINEL_PROP_MAC_SRC_MATCH_*`): whether the
+/// ACKs answering data polls take their Frame Pending bit from the table, and
+/// the table's short/extended entries. Each address family is set as one
+/// whole-array `VALUE_SET` — the same shape upstream `RadioSpinel` uses when
+/// restoring properties after an RCP reset.
+const PROP_MAC_SRC_MATCH_ENABLED: u32 = 0x1303;
+const PROP_MAC_SRC_MATCH_SHORT_ADDRESSES: u32 = 0x1304;
+const PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES: u32 = 0x1305;
 const PROP_STREAM_RAW: u32 = 0x71;
 
 /// The RCP capability ids we require (a real RCP in raw-MAC mode).
@@ -413,7 +422,11 @@ const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
     .union(MacCapabilities::FILTER_SHORT_ADDR)
     .union(MacCapabilities::FILTER_EXT_ADDR)
     .union(MacCapabilities::TX_ACK)
-    .union(MacCapabilities::RX_ACK);
+    .union(MacCapabilities::RX_ACK)
+    // The RCP firmware's MAC keeps a source-match table (fed via the
+    // `MAC_SRC_MATCH_*` properties, see `flush_src_match`) and answers data
+    // polls' ACKs from it.
+    .union(MacCapabilities::SRC_MATCH);
 
 /// The resources (buffers) needed by a [`SpinelRadio`].
 ///
@@ -503,6 +516,12 @@ pub struct SpinelRadio<'a, T> {
     /// during the handshake; the crate-wide default until then (and for RCP
     /// firmwares that do not implement the property).
     sensitivity: i8,
+    /// The latest source-match table from the stack. `src_match_dirty` marks
+    /// it not yet pushed to the RCP: the trait's delivery is synchronous, the
+    /// spinel writes are not, so the push happens on the next async operation
+    /// (see `flush_src_match`).
+    src_match: SrcMatchEntries,
+    src_match_dirty: bool,
     /// Last-applied config; used to only re-send changed properties.
     config: Option<Config>,
     /// Whether raw-stream (RX) is currently enabled on the RCP.
@@ -549,6 +568,8 @@ where
             eui64: None,
             caps: SPINEL_RADIO_CAPS,
             sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
+            src_match: SrcMatchEntries::default(),
+            src_match_dirty: false,
             config: None,
             rx_enabled: false,
             next_tid: 1,
@@ -640,6 +661,46 @@ where
         self.send_prop_await(prop, payload, RESPONSE_TIMEOUT)
             .await
             .map(|_| ())
+    }
+
+    /// Push a pending source-match table to the RCP, if any.
+    ///
+    /// Each address family goes as one whole-array `VALUE_SET` (the shape
+    /// upstream `RadioSpinel::RestoreProperties` uses after an RCP reset),
+    /// which matches the snapshot semantics of [`Radio::update_src_match`].
+    async fn flush_src_match(&mut self) -> Result<(), RadioErrorKind> {
+        if !self.src_match_dirty {
+            return Ok(());
+        }
+
+        // Short entries: a packed array of `u16` LE.
+        let mut short = [0; SRC_MATCH_CAPACITY * 2];
+        let mut short_len = 0;
+        for addr in &self.src_match.short_addrs {
+            short[short_len..short_len + 2].copy_from_slice(&addr.to_le_bytes());
+            short_len += 2;
+        }
+
+        // Extended entries: packed EUI-64s, in the byte order of
+        // `otPlatRadioSetExtendedAddress` (see `platform.rs`).
+        let mut ext = [0; SRC_MATCH_CAPACITY * 8];
+        let mut ext_len = 0;
+        for addr in &self.src_match.ext_addrs {
+            ext[ext_len..ext_len + 8].copy_from_slice(&addr.to_le_bytes());
+            ext_len += 8;
+        }
+
+        let enabled = [self.src_match.enabled as u8];
+
+        self.set_prop(PROP_MAC_SRC_MATCH_SHORT_ADDRESSES, &short[..short_len])
+            .await?;
+        self.set_prop(PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES, &ext[..ext_len])
+            .await?;
+        self.set_prop(PROP_MAC_SRC_MATCH_ENABLED, &enabled).await?;
+
+        self.src_match_dirty = false;
+
+        Ok(())
     }
 
     /// Send a `PROP_VALUE_SET` with a raw payload and await its matched
@@ -1155,7 +1216,13 @@ where
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.ensure_init().await?;
+        self.flush_src_match().await?;
         self.flush_config(config).await
+    }
+
+    fn update_src_match(&mut self, entries: &SrcMatchEntries) {
+        self.src_match = entries.clone();
+        self.src_match_dirty = true;
     }
 
     async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
@@ -1227,6 +1294,7 @@ where
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         self.ensure_init().await?;
+        self.flush_src_match().await?;
 
         let channel = self.config.as_ref().map(|c| c.channel).unwrap_or(11);
         let tx_power = self.config.as_ref().map(|c| c.power).unwrap_or(0);
@@ -1337,6 +1405,7 @@ where
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         self.ensure_init().await?;
+        self.flush_src_match().await?;
         self.ensure_rx_enabled(true).await?;
 
         // Fallback for frames whose metadata lacks the PHY-data struct; the

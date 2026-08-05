@@ -144,7 +144,13 @@ impl Radio for EspRadio<'_> {
         Ok(RadioCaps {
             phy: Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF),
             // .union(Capabilities::AUTO_SLEEP) TODO: Depends on coex being off in ESP-IDF
-            mac: MacCapabilities::all(),
+            //
+            // No `SRC_MATCH`: the ESP 802.15.4 hardware HAS a pending-address
+            // table (the ESP-IDF port feeds it via
+            // `esp_ieee802154_add_pending_addr`), but `esp-radio`'s driver
+            // only exposes the pending *mode*, not the table - so the ACKs
+            // answer every data poll FP = 1 until that API gap closes.
+            mac: MacCapabilities::all().difference(MacCapabilities::SRC_MATCH),
             // TODO: Report the ESP 802.15.4 hardware's real figure.
             receive_sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
         })

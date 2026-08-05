@@ -76,16 +76,16 @@ use sys::{
     otDeviceRole_OT_DEVICE_ROLE_LEADER, otDeviceRole_OT_DEVICE_ROLE_ROUTER, otError,
     otError_OT_ERROR_ABORT, otError_OT_ERROR_CHANNEL_ACCESS_FAILURE, otError_OT_ERROR_DROP,
     otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND, otError_OT_ERROR_NO_ACK,
-    otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize, otInstanceInitSingle, otIp6Address,
-    otIp6GetUnicastAddresses, otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send,
-    otIp6SetEnabled, otIp6SetReceiveCallback, otIpCounters, otLinkModeConfig, otMacCounters,
-    otMessage, otMessageFree, otMessageGetBufferInfo, otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL,
-    otMessageRead, otMessageSettings, otMleCounters, otOperationalDataset,
-    otOperationalDatasetTlvs, otPlatAlarmMilliFired, otPlatRadioEnergyScanDone,
-    otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted, otRadioCaps, otRadioFrame,
-    otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole, otThreadGetExtendedPanId,
-    otThreadSetEnabled, otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE,
-    OT_RADIO_RSSI_INVALID,
+    otError_OT_ERROR_NO_ADDRESS, otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize,
+    otInstanceInitSingle, otIp6Address, otIp6GetUnicastAddresses, otIp6IsEnabled,
+    otIp6NewMessageFromBuffer, otIp6Send, otIp6SetEnabled, otIp6SetReceiveCallback, otIpCounters,
+    otLinkModeConfig, otMacCounters, otMessage, otMessageFree, otMessageGetBufferInfo,
+    otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings, otMleCounters,
+    otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired,
+    otPlatRadioEnergyScanDone, otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted,
+    otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole,
+    otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT,
+    OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -1303,12 +1303,29 @@ impl<'a> OpenThread<'a> {
         R: Radio,
         T: MacRadioTimer,
     {
+        /// Whether the ACK sent back for `psdu` carried Frame Pending: set for
+        /// an ack-requesting MAC command frame (data polls are command
+        /// frames) whose source the source-match table answers "pending"
+        /// for - mirroring the acking layer's decision from the same table,
+        /// since `PsduMeta` does not carry the radio's actual outcome.
+        /// TODO: Radios with RX-ACK offload may decide differently; plumb
+        /// the real outcome through `PsduMeta`.
+        fn acked_with_frame_pending(psdu: &[u8], src_match: &radio::SrcMatchEntries) -> bool {
+            let mut hdr = radio::mac::MacHeader::new();
+
+            hdr.load(psdu).is_some()
+                && hdr.is_command()
+                && hdr.needs_ack()
+                && src_match.ack_frame_pending(hdr.src_short_addr, hdr.src_ext_addr)
+        }
+
         /// Fill the OpenThread frame structure based on the PSDU data returned by the radio
         fn fill_frame(
             frame: &mut otRadioFrame,
             frame_psdu: &mut [u8; OT_RADIO_FRAME_MAX_SIZE as _],
             psdu_meta: PsduMeta,
             psdu: &[u8],
+            acked_with_fp: bool,
         ) {
             /// Convert from RSSI (Received Signal Strength Indicator) to LQI (Link Quality
             /// Indication)
@@ -1336,18 +1353,9 @@ impl<'a> OpenThread<'a> {
             frame.mInfo.mRxInfo.mLqi = rssi_to_lqi(rssi);
             frame.mInfo.mRxInfo.mTimestamp = Instant::now().as_micros(); // TODO: Not precise
 
-            // Whether the ACK sent back for this frame carried Frame Pending.
             // The flag is what makes the stack serve a sleepy child's data
             // poll from its indirect queue - without it the child is presumed
-            // asleep and nothing is sent. `MacRadio`'s software ACK sets FP
-            // for every ack-requesting MAC command frame (data polls are
-            // command frames); this mirrors that rule, since `PsduMeta` does
-            // not carry the radio's actual decision.
-            // TODO: Radios with RX-ACK offload may decide differently
-            // (typically via their source-match table); plumb the real
-            // outcome through `PsduMeta`.
-            let fcf0 = psdu.first().copied().unwrap_or(0);
-            let acked_with_fp = (fcf0 & 0x07) == 0x03 && (fcf0 & 0x20) != 0;
+            // asleep and nothing is sent (see `acked_with_frame_pending`).
             unsafe {
                 frame
                     .mInfo
@@ -1390,6 +1398,8 @@ impl<'a> OpenThread<'a> {
         }
 
         let radio_cmd = || poll_fn(move |cx| self.activate().state().ot.radio.poll_wait(cx));
+        let src_match_changed =
+            || poll_fn(move |cx| self.activate().state().ot.src_match_changed.poll_wait(cx));
 
         loop {
             trace!("Waiting for radio command");
@@ -1501,6 +1511,9 @@ impl<'a> OpenThread<'a> {
                                                     &mut radio_resources.ack_psdu,
                                                     ack_psdu_meta,
                                                     ack_psdu,
+                                                    // A received ACK is never
+                                                    // itself acked.
+                                                    false,
                                                 );
 
                                                 &mut radio_resources.ack_frame
@@ -1551,18 +1564,42 @@ impl<'a> OpenThread<'a> {
 
                         let result = {
                             let mut new_cmd = pin!(radio_cmd());
+                            let mut src_match = pin!(src_match_changed());
                             let mut rx = pin!(radio.receive(&mut psdu_buf));
 
-                            embassy_futures::select::select(&mut new_cmd, &mut rx).await
+                            embassy_futures::select::select3(&mut new_cmd, &mut src_match, &mut rx)
+                                .await
                         };
 
                         match result {
-                            Either::First(new_cmd) => {
+                            Either3::First(new_cmd) => {
                                 trace!("Rx interrupted by new command: {:?}", new_cmd);
 
                                 cmd = new_cmd;
                             }
-                            Either::Second(result) => {
+                            Either3::Second(()) => {
+                                // The stack mutated the source-address-match
+                                // table: deliver a fresh snapshot to the
+                                // acking layer and keep receiving - this is
+                                // not a state change. (A mutation landing
+                                // while the runner is mid-transmit or asleep
+                                // stays signaled and is delivered here on the
+                                // next Receive - a bounded, milliseconds-scale
+                                // staleness the protocol absorbs, the same as
+                                // an RCP applying its table a property-write
+                                // later.)
+                                let entries = self.activate().state().ot.src_match.clone();
+
+                                trace!(
+                                    "Updating radio src match: enabled={}, {} short, {} ext",
+                                    entries.enabled,
+                                    entries.short_addrs.len(),
+                                    entries.ext_addrs.len()
+                                );
+
+                                radio.update_src_match(&entries);
+                            }
+                            Either3::Third(result) => {
                                 let mut ot = self.activate();
 
                                 {
@@ -1579,6 +1616,12 @@ impl<'a> OpenThread<'a> {
                                             );
 
                                             let instance = state.ot.instance;
+                                            // Computed before `radio_resources`
+                                            // takes its mutable borrow.
+                                            let acked_with_fp = acked_with_frame_pending(
+                                                rcv_psdu,
+                                                &state.ot.src_match,
+                                            );
                                             let radio_resources = &mut state.ot.radio_resources;
 
                                             fill_frame(
@@ -1586,6 +1629,7 @@ impl<'a> OpenThread<'a> {
                                                 &mut radio_resources.rcv_psdu,
                                                 rcv_psdu_meta,
                                                 rcv_psdu,
+                                                acked_with_fp,
                                             );
 
                                             unsafe {
@@ -1858,6 +1902,8 @@ impl OtResources {
             changes: Signal::new(),
             radio: Signal::new(),
             radio_conf: Config::new(),
+            src_match: radio::SrcMatchEntries::default(),
+            src_match_changed: Signal::new(),
             // The *initial* radio capabilities, before the actual radio is
             // brought up by `run_radio` and reports its real set.
             //
@@ -2868,6 +2914,117 @@ impl<'a> OtContext<'a> {
         state.ot.radio_conf.auto_sleep = !on;
     }
 
+    /// The `otPlatRadio*SrcMatch*` surface: mutate the mirrored table and
+    /// wake the radio runner to snapshot it down to the acking layer.
+    fn plat_radio_enable_src_match(&mut self, enable: bool) {
+        trace!("Plat radio enable src match callback, enable: {}", enable);
+
+        let state = self.state();
+
+        state.ot.src_match.enabled = enable;
+        state.ot.src_match_changed.signal(());
+    }
+
+    fn plat_radio_add_src_match_short(&mut self, address: u16) -> Result<(), OtError> {
+        trace!(
+            "Plat radio add src match short callback, addr: {:02x}",
+            address
+        );
+
+        let state = self.state();
+
+        if !state.ot.src_match.short_addrs.contains(&address) {
+            state
+                .ot
+                .src_match
+                .short_addrs
+                .push(address)
+                .map_err(|_| OtError::new(otError_OT_ERROR_NO_BUFS))?;
+            state.ot.src_match_changed.signal(());
+        }
+
+        Ok(())
+    }
+
+    fn plat_radio_add_src_match_ext(&mut self, address: u64) -> Result<(), OtError> {
+        trace!(
+            "Plat radio add src match ext callback, addr: {:08x}",
+            address
+        );
+
+        let state = self.state();
+
+        if !state.ot.src_match.ext_addrs.contains(&address) {
+            state
+                .ot
+                .src_match
+                .ext_addrs
+                .push(address)
+                .map_err(|_| OtError::new(otError_OT_ERROR_NO_BUFS))?;
+            state.ot.src_match_changed.signal(());
+        }
+
+        Ok(())
+    }
+
+    fn plat_radio_clear_src_match_short(&mut self, address: u16) -> Result<(), OtError> {
+        trace!(
+            "Plat radio clear src match short callback, addr: {:02x}",
+            address
+        );
+
+        let state = self.state();
+
+        let addrs = &mut state.ot.src_match.short_addrs;
+        let pos = addrs
+            .iter()
+            .position(|a| *a == address)
+            .ok_or(OtError::new(otError_OT_ERROR_NO_ADDRESS))?;
+
+        addrs.swap_remove(pos);
+        state.ot.src_match_changed.signal(());
+
+        Ok(())
+    }
+
+    fn plat_radio_clear_src_match_ext(&mut self, address: u64) -> Result<(), OtError> {
+        trace!(
+            "Plat radio clear src match ext callback, addr: {:08x}",
+            address
+        );
+
+        let state = self.state();
+
+        let addrs = &mut state.ot.src_match.ext_addrs;
+        let pos = addrs
+            .iter()
+            .position(|a| *a == address)
+            .ok_or(OtError::new(otError_OT_ERROR_NO_ADDRESS))?;
+
+        addrs.swap_remove(pos);
+        state.ot.src_match_changed.signal(());
+
+        Ok(())
+    }
+
+    fn plat_radio_clear_src_match_short_entries(&mut self) {
+        trace!("Plat radio clear src match short entries callback");
+
+        let state = self.state();
+
+        state.ot.src_match.short_addrs.clear();
+        state.ot.src_match_changed.signal(());
+    }
+
+    fn plat_radio_clear_src_match_ext_entries(&mut self) {
+        trace!("Plat radio clear src match ext entries callback");
+
+        let state = self.state();
+
+        state.ot.src_match.ext_addrs.clear();
+        state.ot.src_match_changed.signal(());
+    }
+
     fn plat_settings_init(&mut self, sensitive_keys: &[u16]) {
         info!(
             "Plat settings init callback, sensitive keys: {:?}",
@@ -3051,6 +3208,14 @@ struct OtState<'a> {
     radio: Signal<RadioCommand>,
     /// The latest radio configuration from the POV of OpenThread
     radio_conf: radio::Config,
+    /// The source-address-match table (`otPlatRadio*SrcMatch*`), mirrored
+    /// here as the C stack mutates it. The authoritative copy: the runner
+    /// snapshots it to the radio (`Radio::update_src_match`) whenever
+    /// [`OtState::src_match_changed`] fires, and `fill_frame` consults it to
+    /// report each received poll's ACK Frame Pending outcome.
+    src_match: radio::SrcMatchEntries,
+    /// Raised on every `src_match` mutation; consumed by the radio runner.
+    src_match_changed: Signal<()>,
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,

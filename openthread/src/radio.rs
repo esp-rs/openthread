@@ -168,6 +168,16 @@ bitflags! {
         const FILTER_SHORT_ADDR = 0x10;
         /// Radio supports filtering of PHY frames by their extended address in the MAC payload.
         const FILTER_EXT_ADDR = 0x20;
+        /// The radio's own ACK engine honors the source-address-match table
+        /// ([`Radio::update_src_match`] reaches whatever decides the ACKs'
+        /// Frame Pending bit - a hardware pending table, RCP firmware, etc).
+        ///
+        /// Only meaningful together with [`RX_ACK`](Self::RX_ACK): the table
+        /// matters solely to whoever sends the ACKs. A radio doing its own
+        /// RX ACKs *without* this capability answers every data poll FP = 1
+        /// (protocol-safe over-promising) - and nothing above it can do
+        /// better, since the ACKs are out of software's hands.
+        const SRC_MATCH = 0x40;
     }
 }
 
@@ -209,6 +219,46 @@ impl Default for RadioCaps {
             mac: MacCapabilities::default(),
             receive_sensitivity: Self::DEFAULT_RECEIVE_SENSITIVITY,
         }
+    }
+}
+
+/// Capacity of each address family's table in [`SrcMatchEntries`]: sized
+/// after OpenThread's default max-children count (10) with headroom. On
+/// overflow the glue answers `OT_ERROR_NO_BUFS`, which OpenThread handles by
+/// falling back to frame-pending-on-every-ack for the un-tracked children.
+pub const SRC_MATCH_CAPACITY: usize = 16;
+
+/// The source-address-match table (the `otPlatRadio*SrcMatch*` platform
+/// surface): the set of sleepy children the stack currently has pending
+/// indirect frames for.
+///
+/// The MAC-level contract it serves: the ACK answering a child's data poll
+/// carries the Frame Pending bit iff data is queued for that child - that bit
+/// is what tells the child to keep its receiver on for the delivery. With
+/// matching `enabled` and the poll's source absent from the table, the ACK
+/// answers FP = 0 and the child returns to sleep immediately; with matching
+/// disabled, every poll is answered FP = 1 (the conservative default the C
+/// contract prescribes).
+///
+/// Whoever sends the ACKs consults this table: [`MacRadio`] for the software
+/// MAC, the hardware/co-processor tables for radios with native RX-ACK
+/// offload (see [`Radio::update_src_match`]).
+#[derive(Debug, Clone, Eq, PartialEq, Default)]
+pub struct SrcMatchEntries {
+    /// Whether source matching is active. When `false`, polls are answered
+    /// FP = 1 regardless of the tables.
+    pub enabled: bool,
+    /// The short (RLOC16) entries.
+    pub short_addrs: heapless::Vec<u16, SRC_MATCH_CAPACITY>,
+    /// The extended (EUI-64) entries.
+    pub ext_addrs: heapless::Vec<u64, SRC_MATCH_CAPACITY>,
+}
+
+impl SrcMatchEntries {
+    /// The Frame Pending answer for an ack-requesting MAC command frame
+    /// arriving from `src_short` / `src_ext`.
+    pub fn ack_frame_pending(&self, src_short: u16, src_ext: u64) -> bool {
+        !self.enabled || self.short_addrs.contains(&src_short) || self.ext_addrs.contains(&src_ext)
     }
 }
 
@@ -466,6 +516,25 @@ pub trait Radio {
     async fn sleep(&mut self) -> Result<(), Self::Error> {
         Ok(())
     }
+
+    /// Update the radio's source-address-match table (see
+    /// [`SrcMatchEntries`] for the contract it serves).
+    ///
+    /// Called by the crate whenever the stack mutates the table, with the
+    /// complete new table each time (never incrementally). Synchronous by
+    /// design - it is pure bookkeeping; a radio that must push the table to
+    /// distant hardware (e.g. an RCP's source-match properties) should stash
+    /// the snapshot and flush it on its next async operation.
+    ///
+    /// The default does nothing, which is correct for a bare radio whose
+    /// ACKs are emulated above it (`MacRadio` keeps and consults its own
+    /// copy). A radio doing its own RX ACKs should apply the table to
+    /// whatever decides its ACKs' Frame Pending bit; ignoring it means every
+    /// data poll is answered FP = 1, which is protocol-safe but keeps sleepy
+    /// children listening needlessly after each poll.
+    fn update_src_match(&mut self, entries: &SrcMatchEntries) {
+        let _ = entries;
+    }
 }
 
 impl<T> Radio for &mut T
@@ -501,6 +570,10 @@ where
 
     async fn sleep(&mut self) -> Result<(), Self::Error> {
         T::sleep(self).await
+    }
+
+    fn update_src_match(&mut self, entries: &SrcMatchEntries) {
+        T::update_src_match(self, entries)
     }
 }
 
@@ -592,6 +665,9 @@ pub struct MacRadio<R, T> {
     /// beyond is dropped like on a saturated real radio.
     // TODO: Inject from outside
     pending_rx: heapless::Deque<(PsduMeta, [u8; OT_RADIO_FRAME_MAX_SIZE as _]), 12>,
+    /// The source-address-match table, consulted for the Frame Pending bit
+    /// of the software ACKs answering data polls (see [`SrcMatchEntries`]).
+    src_match: SrcMatchEntries,
     /// The PAN ID to filter by, if the filter policy allows it.
     pan_id: u16,
     /// The short address to filter by, if the filter policy allows it.
@@ -642,6 +718,7 @@ where
             mac_header: MacHeader::new(),
             ack_psdu_buf: [0; OT_RADIO_FRAME_MAX_SIZE as _],
             pending_rx: heapless::Deque::new(),
+            src_match: SrcMatchEntries::default(),
             promiscuous: false,
             pan_id: MacHeader::BROADCAST_PAN_ID,
             short_addr: MacHeader::BROADCAST_SHORT_ADDR,
@@ -718,7 +795,11 @@ where
                 // radio with source matching disabled: a spurious FP
                 // only keeps a child listening briefly when nothing
                 // is queued.
-                let frame_pending = self.mac_header.is_command();
+                let frame_pending = self.mac_header.is_command()
+                    && self.src_match.ack_frame_pending(
+                        self.mac_header.src_short_addr,
+                        self.mac_header.src_ext_addr,
+                    );
 
                 let ack_len = self
                     .mac_header
@@ -759,11 +840,34 @@ where
         // the full MAC-offload set — whatever the hardware doesn't do, this
         // wrapper does in software — while the PHY caps pass through unchanged.
         self.mac_caps = caps.mac;
+
+        // Outwards: the full MAC-offload set - whatever the hardware doesn't
+        // do, this wrapper does in software - with ONE exception: for an
+        // inner radio that sends its own RX ACKs but has no source-match
+        // table, `SRC_MATCH` cannot be claimed by anyone (the ACKs' Frame
+        // Pending bits are decided below, out of software's reach).
+        let mut mac = MacCapabilities::all();
+        if caps.mac.contains(MacCapabilities::RX_ACK)
+            && !caps.mac.contains(MacCapabilities::SRC_MATCH)
+        {
+            mac.remove(MacCapabilities::SRC_MATCH);
+        }
+
         Ok(RadioCaps {
             phy: caps.phy,
-            mac: MacCapabilities::all(),
+            mac,
             receive_sensitivity: caps.receive_sensitivity,
         })
+    }
+
+    fn update_src_match(&mut self, entries: &SrcMatchEntries) {
+        if self.mac_caps.contains(MacCapabilities::SRC_MATCH) {
+            // The inner radio's own acking honors the table - hand it down.
+            self.radio.update_src_match(entries);
+        } else {
+            // This wrapper's software ACKs consult the copy.
+            self.src_match = entries.clone();
+        }
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
@@ -1529,7 +1633,7 @@ impl ProxyRadioResponse {
 
 /// A minimal set of utilities for parsing the IEEE 802.15.4 MAC header
 /// for the purposes of MAC filtering and RX/TX ACK processing.
-mod mac {
+pub(crate) mod mac {
     /// A parsed IEEE 802.15.4 MAC header.
     pub struct MacHeader {
         /// Frame Control Field (FCF)
@@ -1547,6 +1651,13 @@ mod mac {
         /// 0xffffffffffffffff if the Frame does not contain an extended address
         /// or if the extended address is the broadcast extended address
         pub dst_ext_addr: u64,
+        /// Source short address
+        /// 0xffff if the Frame does not carry a short source address
+        pub src_short_addr: u16,
+        /// Source extended address
+        /// 0xffffffffffffffff if the Frame does not carry an extended source
+        /// address
+        pub src_ext_addr: u64,
     }
 
     impl MacHeader {
@@ -1581,10 +1692,8 @@ mod mac {
         const FCF_FRAME_DST_ADDR_MODE_MASK: u16 = 0x03 << Self::FCF_FRAME_DST_ADDR_MODE_SHIFT;
         const FCF_FRAME_VERSION_SHIFT: u16 = 12;
         const FCF_FRAME_VERSION_MASK: u16 = 0x03 << Self::FCF_FRAME_VERSION_SHIFT;
-        #[allow(unused)]
         const FCF_FRAME_SRC_ADDR_MODE_SHIFT: u16 = 14;
-        #[allow(unused)]
-        const FCF_FRAME_SRC_ADDR_MODE_MASK: u16 = 0x03 << Self::FCF_FRAME_DST_ADDR_MODE_SHIFT;
+        const FCF_FRAME_SRC_ADDR_MODE_MASK: u16 = 0x03 << Self::FCF_FRAME_SRC_ADDR_MODE_SHIFT;
 
         /// Create a new empty MAC header.
         pub const fn new() -> Self {
@@ -1594,6 +1703,8 @@ mod mac {
                 pan_id: 0,
                 dst_short_addr: 0,
                 dst_ext_addr: 0,
+                src_short_addr: 0,
+                src_ext_addr: 0,
             }
         }
 
@@ -1634,6 +1745,49 @@ mod mac {
                     // See platform.rs, `otPlatRadioSetExtendedAddress` impl
                     self.dst_ext_addr = u64::from_le_bytes(unwrap!(psdu[5..13].try_into()));
                     self.dst_short_addr = Self::BROADCAST_SHORT_ADDR;
+                }
+            }
+
+            let src_addr_mode = FrameAddrMode::get_src(self.fcf)?;
+
+            // Offset just past the destination addressing fields.
+            let mut offs = Self::ADDRS_OFFSET
+                + match dst_addr_mode {
+                    FrameAddrMode::NotPresent => 0,
+                    FrameAddrMode::Short => 2 + 2,
+                    FrameAddrMode::Extended => 2 + 8,
+                };
+
+            // The source PAN ID is elided when the PAN ID Compression bit is
+            // set - the common case for intra-PAN traffic, data polls
+            // included. (The elision rule modeled here is the 2003/2006 one;
+            // the 2015 frame version's table-based rules are not - the
+            // consumers of the source fields only look at 2006-era command
+            // frames.)
+            if !matches!(src_addr_mode, FrameAddrMode::NotPresent)
+                && (self.fcf & Self::FCF_PAN_ID_COMPRESSION_MASK) == 0
+            {
+                offs += 2;
+            }
+
+            match src_addr_mode {
+                FrameAddrMode::NotPresent => {
+                    self.src_short_addr = Self::BROADCAST_SHORT_ADDR;
+                    self.src_ext_addr = Self::BROADCAST_EXT_ADDR;
+                }
+                FrameAddrMode::Short => {
+                    Self::ensure_len(psdu, offs + 2 + Self::CRC_LEN)?;
+
+                    self.src_short_addr =
+                        u16::from_le_bytes(unwrap!(psdu[offs..offs + 2].try_into()));
+                    self.src_ext_addr = Self::BROADCAST_EXT_ADDR;
+                }
+                FrameAddrMode::Extended => {
+                    Self::ensure_len(psdu, offs + 8 + Self::CRC_LEN)?;
+
+                    self.src_ext_addr =
+                        u64::from_le_bytes(unwrap!(psdu[offs..offs + 8].try_into()));
+                    self.src_short_addr = Self::BROADCAST_SHORT_ADDR;
                 }
             }
 
@@ -1759,6 +1913,17 @@ mod mac {
         fn get_dst(fcf: u16) -> Option<Self> {
             match (fcf & MacHeader::FCF_FRAME_DST_ADDR_MODE_MASK)
                 >> MacHeader::FCF_FRAME_DST_ADDR_MODE_SHIFT
+            {
+                0 => Some(Self::NotPresent),
+                2 => Some(Self::Short),
+                3 => Some(Self::Extended),
+                _ => None,
+            }
+        }
+
+        fn get_src(fcf: u16) -> Option<Self> {
+            match (fcf & MacHeader::FCF_FRAME_SRC_ADDR_MODE_MASK)
+                >> MacHeader::FCF_FRAME_SRC_ADDR_MODE_SHIFT
             {
                 0 => Some(Self::NotPresent),
                 2 => Some(Self::Short),

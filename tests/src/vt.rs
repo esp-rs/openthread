@@ -303,8 +303,7 @@ impl Radio for VtRadio {
         // As in `SimRadio::energy_scan`: sit out the scan window (in virtual
         // time, driven by the simulator's clock) and report the upstream
         // radio's idle-channel sample.
-        embassy_time::Timer::after(embassy_time::Duration::from_millis(duration_millis as _))
-            .await;
+        embassy_time::Timer::after(embassy_time::Duration::from_millis(duration_millis as _)).await;
 
         Ok(crate::sim_radio::SIM_LOW_RSSI)
     }

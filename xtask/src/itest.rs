@@ -209,11 +209,6 @@ const EXPECT_TESTS: &[&str] = &[
 ///   `srp client service add` commands land while registration traffic is
 ///   in flight - a wedge needing dedicated debugging (not heap: reproduced
 ///   at the 65528 maximum).
-/// - `test_child_supervision`: the DUT acks every data poll with Frame
-///   Pending = 1 (the `otPlatRadio*SrcMatch*` callbacks are no-ops), so the
-///   parent answers each poll with an empty data frame and the child's
-///   supervision check never trips. Needs the source-match offload plumbed
-///   down to the ACKing layer (`MacRadio` / capable radios).
 /// - `test_pbbr_aloc`: needs the Backbone Router node flavor (node.py spawns
 ///   a literal `./ot-cli-ftd` from the cwd for it, and the DUT would need
 ///   `OT_BACKBONE_ROUTER`).
@@ -223,6 +218,7 @@ const FUNC_TESTS_VT: &[&str] = &[
     "test_diag",
     "test_ipv6_fragmentation",
     "test_br_upgrade_router_role",
+    "test_child_supervision",
     "test_coap",
     "test_coap_block",
     "test_coap_observe",

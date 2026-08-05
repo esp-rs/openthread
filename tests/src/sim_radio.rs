@@ -199,8 +199,7 @@ impl Radio for SimRadio {
         // Match the upstream simulation radio: listen out the requested
         // duration, and since nothing transmits during the suites' energy
         // scans, report its idle-channel sample (`SIM_LOW_RSSI_SAMPLE`).
-        embassy_time::Timer::after(embassy_time::Duration::from_millis(duration_millis as _))
-            .await;
+        embassy_time::Timer::after(embassy_time::Duration::from_millis(duration_millis as _)).await;
 
         Ok(SIM_LOW_RSSI)
     }

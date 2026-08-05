@@ -226,56 +226,79 @@ extern "C" fn otPlatRadioReceive(instance: *mut otInstance, channel: u8) -> otEr
 
 // --- Source-address match (FTD only) ---
 //
-// OpenThread routers/leaders (FTD) ask the radio to filter frames by the
-// short/extended source addresses of their attached children. These callbacks
-// are only referenced when an FTD `libopenthread-ftd.a` is linked; on MTD they
-// are never called and are dropped by `--gc-sections`.
-//
-// TODO: surface these on the high-level radio trait so a driver can implement
-// real hardware source matching. The defaults below accept-and-ignore (i.e. the
-// radio behaves as if source matching is unavailable), which is functionally
-// safe — OpenThread falls back to indirect transmission without HW assist.
+// An FTD parent tells the radio which sleepy children it has pending indirect
+// frames for; whoever sends the ACKs answers each child's data poll with the
+// Frame Pending bit from this table (see `radio::SrcMatchEntries`). The
+// callbacks mirror the table into the crate state; the radio runner ships
+// snapshots to the acking layer (`Radio::update_src_match`). Only referenced
+// when an FTD `libopenthread-ftd.a` is linked; on MTD they are never called
+// and are dropped by `--gc-sections`.
 
 #[no_mangle]
-extern "C" fn otPlatRadioEnableSrcMatch(_instance: *const otInstance, _enable: bool) {}
+extern "C" fn otPlatRadioEnableSrcMatch(instance: *const otInstance, enable: bool) {
+    OtContext::callback(instance).plat_radio_enable_src_match(enable);
+}
 
 #[no_mangle]
 extern "C" fn otPlatRadioAddSrcMatchShortEntry(
-    _instance: *const otInstance,
-    _short_address: u16,
+    instance: *const otInstance,
+    short_address: u16,
 ) -> otError {
-    otError_OT_ERROR_NONE
+    OtContext::callback(instance)
+        .plat_radio_add_src_match_short(short_address)
+        .into_ot_code()
 }
 
 #[no_mangle]
 extern "C" fn otPlatRadioAddSrcMatchExtEntry(
-    _instance: *const otInstance,
-    _ext_address: *const u8,
+    instance: *const otInstance,
+    ext_address: *const u8,
 ) -> otError {
-    otError_OT_ERROR_NONE
+    // Byte order as for `otPlatRadioSetExtendedAddress` above.
+    let ext_address = u64::from_le_bytes(unwrap!(unsafe {
+        core::slice::from_raw_parts(ext_address, 8)
+    }
+    .try_into()));
+
+    OtContext::callback(instance)
+        .plat_radio_add_src_match_ext(ext_address)
+        .into_ot_code()
 }
 
 #[no_mangle]
 extern "C" fn otPlatRadioClearSrcMatchShortEntry(
-    _instance: *const otInstance,
-    _short_address: u16,
+    instance: *const otInstance,
+    short_address: u16,
 ) -> otError {
-    otError_OT_ERROR_NONE
+    OtContext::callback(instance)
+        .plat_radio_clear_src_match_short(short_address)
+        .into_ot_code()
 }
 
 #[no_mangle]
 extern "C" fn otPlatRadioClearSrcMatchExtEntry(
-    _instance: *const otInstance,
-    _ext_address: *const u8,
+    instance: *const otInstance,
+    ext_address: *const u8,
 ) -> otError {
-    otError_OT_ERROR_NONE
+    let ext_address = u64::from_le_bytes(unwrap!(unsafe {
+        core::slice::from_raw_parts(ext_address, 8)
+    }
+    .try_into()));
+
+    OtContext::callback(instance)
+        .plat_radio_clear_src_match_ext(ext_address)
+        .into_ot_code()
 }
 
 #[no_mangle]
-extern "C" fn otPlatRadioClearSrcMatchShortEntries(_instance: *const otInstance) {}
+extern "C" fn otPlatRadioClearSrcMatchShortEntries(instance: *const otInstance) {
+    OtContext::callback(instance).plat_radio_clear_src_match_short_entries();
+}
 
 #[no_mangle]
-extern "C" fn otPlatRadioClearSrcMatchExtEntries(_instance: *const otInstance) {}
+extern "C" fn otPlatRadioClearSrcMatchExtEntries(instance: *const otInstance) {
+    OtContext::callback(instance).plat_radio_clear_src_match_ext_entries();
+}
 
 // Factory diagnostics (`OT_DIAGNOSTIC` builds)
 //
