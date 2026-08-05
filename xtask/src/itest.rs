@@ -199,13 +199,16 @@ const EXPECT_TESTS: &[&str] = &[
 /// `Cert_*` scenarios) run in virtual time: verified green against the DUT.
 ///
 /// The excluded remainder of that pool:
-/// - `test_anycast` (its `ns` round; `ds`/`cs` pass), `test_anycast_locator`
-///   (`locate`), `test_diag` (factory diag), `test_ipv6_fragmentation`,
-///   `test_radio_filter` (`radiofilter`): need OpenThread knobs not yet
-///   plumbed as crate features (`OT_NEIGHBOR_DISCOVERY_AGENT`, the anycast
-///   locator, `OT_DIAGNOSTIC`, IPv6 fragmentation, the radio test-filter).
-/// - `test_srp_register_500_services`: registration stalls mid-burst -
-///   likely OpenThread's internal heap; try a `heap-int-*` bump.
+/// - `test_radio_filter`: its bare `scan energy` (duration 0) takes
+///   OpenThread's SYNCHRONOUS sampling path (`Mac::PerformEnergyScan` loops
+///   `Receive(ch)` + `otPlatRadioGetRssi`), and the async `Radio` trait has
+///   no synchronous RSSI read - the glue honestly answers "invalid", so
+///   every channel is omitted. Needs the trait's dormant `fn rssi()` TODO
+///   (sims would report their idle sample, hardware its last-RX latch).
+/// - `test_srp_register_500_services`: the DUT stops answering after eight
+///   `srp client service add` commands land while registration traffic is
+///   in flight - a wedge needing dedicated debugging (not heap: reproduced
+///   at the 65528 maximum).
 /// - `test_child_supervision`: the DUT acks every data poll with Frame
 ///   Pending = 1 (the `otPlatRadio*SrcMatch*` callbacks are no-ops), so the
 ///   parent answers each poll with an empty data frame and the child's
@@ -215,6 +218,10 @@ const EXPECT_TESTS: &[&str] = &[
 ///   a literal `./ot-cli-ftd` from the cwd for it, and the DUT would need
 ///   `OT_BACKBONE_ROUTER`).
 const FUNC_TESTS_VT: &[&str] = &[
+    "test_anycast",
+    "test_anycast_locator",
+    "test_diag",
+    "test_ipv6_fragmentation",
     "test_br_upgrade_router_role",
     "test_coap",
     "test_coap_block",

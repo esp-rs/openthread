@@ -86,6 +86,20 @@ openthread = { path = "../openthread", default-features = false, features = [
     "dataset-updater",
     "child-supervision",
     "history-tracker",
+    # The functional pool's remaining feature-shaped tests: the anycast
+    # locator (`locate`), the ND-agent ALOC round of `test_anycast`, IPv6
+    # fragmentation, and the factory `diag` commands.
+    "anycast-locator",
+    "neighbor-discovery-agent",
+    "ip6-fragmentation",
+    "diagnostic",
+    # `test_srp_register_500_services`: 500 host/service registrations live
+    # in OpenThread's internal heap on both the client and server side.
+    # (65528 = the largest valid size: the heap requires 8-byte alignment
+    # (static-asserted), and its block arithmetic is `uint16_t`-based - a
+    # size of exactly 65536 passes the alignment assert but wraps to 0 in
+    # `ot::Utils::Heap::Heap()` and SIGSEGVs at instance init.)
+    "heap-int-65528",
 ] }
 embassy-sync = "0.8"
 

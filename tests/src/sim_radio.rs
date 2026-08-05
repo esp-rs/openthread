@@ -60,6 +60,10 @@ const MAX_NETWORK_SIZE: u16 = 33;
 /// The RSSI the C simulation platform stamps on every received frame.
 pub(crate) const SIM_RSSI: i8 = -20;
 
+/// The upstream simulation radio's idle-channel energy sample
+/// (`SIM_LOW_RSSI_SAMPLE`), reported by energy scans on a quiet medium.
+pub(crate) const SIM_LOW_RSSI: i8 = -98;
+
 /// Maximum PSDU size of an 802.15.4 frame (FCS included).
 pub(crate) const PSDU_MAX: usize = openthread::sys::OT_RADIO_FRAME_MAX_SIZE as usize;
 
@@ -187,6 +191,18 @@ impl Radio for SimRadio {
             receive_sensitivity: -100,
             ..RadioCaps::default()
         })
+    }
+
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        let _ = channel;
+
+        // Match the upstream simulation radio: listen out the requested
+        // duration, and since nothing transmits during the suites' energy
+        // scans, report its idle-channel sample (`SIM_LOW_RSSI_SAMPLE`).
+        embassy_time::Timer::after(embassy_time::Duration::from_millis(duration_millis as _))
+            .await;
+
+        Ok(SIM_LOW_RSSI)
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {

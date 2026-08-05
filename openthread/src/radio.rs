@@ -586,11 +586,12 @@ pub struct MacRadio<R, T> {
     /// ACK, parked here until subsequent `receive` calls deliver them. Sized
     /// for a line-rate request burst: while this node serializes its replies
     /// (each a full transmit sequence), further requests keep arriving and
-    /// park here - a depth of 8 absorbs the bursts the upstream CLI suites
-    /// fire (ten back-to-back pings), where 4 measurably dropped the tail.
-    /// Anything beyond is dropped like on a saturated real radio.
+    /// park here - a depth of 12 absorbs the bursts the upstream CLI suites
+    /// fire (ten back-to-back pings) with headroom at real-time pacing,
+    /// where 4 measurably dropped the tail and 8 was marginal. Anything
+    /// beyond is dropped like on a saturated real radio.
     // TODO: Inject from outside
-    pending_rx: heapless::Deque<(PsduMeta, [u8; OT_RADIO_FRAME_MAX_SIZE as _]), 8>,
+    pending_rx: heapless::Deque<(PsduMeta, [u8; OT_RADIO_FRAME_MAX_SIZE as _]), 12>,
     /// The PAN ID to filter by, if the filter policy allows it.
     pan_id: u16,
     /// The short address to filter by, if the filter policy allows it.

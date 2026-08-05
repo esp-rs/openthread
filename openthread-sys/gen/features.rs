@@ -53,6 +53,10 @@ pub const KNOB_UNIVERSE: &[&str] = &[
     "OT_COMMISSIONER",
     "OT_BORDER_ROUTER",
     "OT_BORDER_ROUTING",
+    "OT_ANYCAST_LOCATOR",
+    "OT_NEIGHBOR_DISCOVERY_AGENT",
+    "OT_IP6_FRAGM",
+    "OT_DIAGNOSTIC",
     "OT_PING_SENDER",
     "OT_LINK_METRICS_INITIATOR",
     "OT_LINK_METRICS_SUBJECT",
@@ -102,6 +106,12 @@ pub const FEATURE_DEFINES: &[(&str, &[&str])] = &[
     // Border functionality
     ("BORDER_ROUTER", &["OT_BORDER_ROUTER"]),
     ("BORDER_ROUTING", &["OT_BORDER_ROUTING"]),
+    // Addressing / IPv6 services
+    ("ANYCAST_LOCATOR", &["OT_ANYCAST_LOCATOR"]),
+    ("NEIGHBOR_DISCOVERY_AGENT", &["OT_NEIGHBOR_DISCOVERY_AGENT"]),
+    ("IP6_FRAGMENTATION", &["OT_IP6_FRAGM"]),
+    // Factory diagnostics (the CLI `diag` commands)
+    ("DIAGNOSTIC", &["OT_DIAGNOSTIC"]),
     // Diagnostics / management
     ("PING_SENDER", &["OT_PING_SENDER"]),
     ("LINK_METRICS_INITIATOR", &["OT_LINK_METRICS_INITIATOR"]),
@@ -242,7 +252,7 @@ pub struct HeapConfig {
 
 /// The internal-buffer sizes (in bytes) exposed as `heap-int-<N>` cargo
 /// features. Keep in sync with the `heap-int-*` features in `Cargo.toml`.
-pub const HEAP_INT_SIZES: &[u32] = &[4096, 6144, 8192, 12288, 16384, 32768, 49152, 65536];
+pub const HEAP_INT_SIZES: &[u32] = &[4096, 6144, 8192, 12288, 16384, 32768, 49152, 65528];
 
 /// Resolve the active heap configuration from the `CARGO_FEATURE_*` environment.
 /// The three axes are independent (see [`HeapConfig`]); the only "additive"

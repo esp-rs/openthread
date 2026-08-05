@@ -297,6 +297,18 @@ impl Radio for VtRadio {
         })
     }
 
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        let _ = channel;
+
+        // As in `SimRadio::energy_scan`: sit out the scan window (in virtual
+        // time, driven by the simulator's clock) and report the upstream
+        // radio's idle-channel sample.
+        embassy_time::Timer::after(embassy_time::Duration::from_millis(duration_millis as _))
+            .await;
+
+        Ok(crate::sim_radio::SIM_LOW_RSSI)
+    }
+
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.config = config.clone();
 

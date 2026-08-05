@@ -277,6 +277,51 @@ extern "C" fn otPlatRadioClearSrcMatchShortEntries(_instance: *const otInstance)
 #[no_mangle]
 extern "C" fn otPlatRadioClearSrcMatchExtEntries(_instance: *const otInstance) {}
 
+// Factory diagnostics (`OT_DIAGNOSTIC` builds)
+//
+// The exact minimal surface the upstream simulation platform provides
+// (`examples/platforms/simulation/diag.c`): a mode flag, plus no-op
+// acknowledgments of the channel/power hints and of the received-frame
+// extension hook.
+
+static DIAG_MODE: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+
+#[no_mangle]
+extern "C" fn otPlatDiagModeSet(mode: bool) {
+    DIAG_MODE.store(mode, core::sync::atomic::Ordering::Relaxed);
+}
+
+#[no_mangle]
+extern "C" fn otPlatDiagModeGet() -> bool {
+    DIAG_MODE.load(core::sync::atomic::Ordering::Relaxed)
+}
+
+#[no_mangle]
+extern "C" fn otPlatDiagSetOutputCallback(
+    _instance: *mut otInstance,
+    // `otPlatDiagOutputCallback` - a function pointer, passed and ignored as
+    // an opaque pointer here: this platform generates no diag output of its
+    // own (the diag module prints its command responses through the CLI),
+    // exactly like the upstream simulation platform's no-op.
+    _callback: *mut core::ffi::c_void,
+    _context: *mut core::ffi::c_void,
+) {
+}
+
+#[no_mangle]
+extern "C" fn otPlatDiagChannelSet(_channel: u8) {}
+
+#[no_mangle]
+extern "C" fn otPlatDiagTxPowerSet(_power: i8) {}
+
+#[no_mangle]
+extern "C" fn otPlatDiagRadioReceived(
+    _instance: *mut otInstance,
+    _frame: *mut otRadioFrame,
+    _error: otError,
+) {
+}
+
 // NOTE: `otPlatCryptoPbkdf2GenerateKey` (PSKc derivation, FTD commissioning)
 // is deliberately NOT defined here: OpenThread's `crypto_platform.cpp` ships
 // a working `OT_TOOL_WEAK` implementation for every FTD build under both of
