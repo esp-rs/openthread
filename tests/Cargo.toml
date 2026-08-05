@@ -69,6 +69,23 @@ openthread = { path = "../openthread", default-features = false, features = [
     "border-router",
     "netdiag-client",
     "reference-device",
+    "dhcp6-client",
+    "dhcp6-server",
+    # The `test_*.py` functional pool additionally exercises the SRP
+    # client/server pair, DNS-SD, the service registry / netdata publisher,
+    # secure CoAP, and the dataset-updater / child-supervision /
+    # history-tracker utilities.
+    "srp-server",
+    "dnssd-server",
+    "service",
+    "netdata-publisher",
+    # (`coap` also: the CLI's secure-CoAP command references the plain CoAP
+    # API, so a `cli`+`coaps` build without `coap` fails to link.)
+    "coap",
+    "coaps",
+    "dataset-updater",
+    "child-supervision",
+    "history-tracker",
 ] }
 embassy-sync = "0.8"
 

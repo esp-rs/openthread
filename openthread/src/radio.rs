@@ -182,13 +182,34 @@ bitflags! {
 /// - [`mac`](RadioCaps::mac): the MAC-offloading capabilities. Any of these the
 ///   radio lacks are emulated in software by the `MacRadio` wrapper (which reads
 ///   this set at runtime).
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash, Default)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct RadioCaps {
     /// The PHY capabilities.
     pub phy: Capabilities,
     /// The MAC-offloading capabilities.
     pub mac: MacCapabilities,
+    /// The radio's receive sensitivity, in dBm.
+    ///
+    /// Reported to OpenThread via `otPlatRadioGetReceiveSensitivity`, which
+    /// uses it as the noise floor for grading neighbor links.
+    pub receive_sensitivity: i8,
+}
+
+impl RadioCaps {
+    /// The OpenThread core's own default receive sensitivity (dBm), for
+    /// drivers that do not (yet) report a hardware-specific figure.
+    pub const DEFAULT_RECEIVE_SENSITIVITY: i8 = -110;
+}
+
+impl Default for RadioCaps {
+    fn default() -> Self {
+        Self {
+            phy: Capabilities::default(),
+            mac: MacCapabilities::default(),
+            receive_sensitivity: Self::DEFAULT_RECEIVE_SENSITIVITY,
+        }
+    }
 }
 
 /// Radio configuration.
@@ -563,10 +584,13 @@ pub struct MacRadio<R, T> {
     ack_psdu_buf: [u8; OT_RADIO_FRAME_MAX_SIZE as _],
     /// Frames accepted (and ACKed) while `transmit` was waiting for its own
     /// ACK, parked here until subsequent `receive` calls deliver them. Sized
-    /// for the realistic burst - a fragmented datagram's few back-to-back
-    /// frames crossing the wait window; anything beyond is dropped like on a
-    /// saturated real radio.
-    pending_rx: heapless::Deque<(PsduMeta, [u8; OT_RADIO_FRAME_MAX_SIZE as _]), 4>,
+    /// for a line-rate request burst: while this node serializes its replies
+    /// (each a full transmit sequence), further requests keep arriving and
+    /// park here - a depth of 8 absorbs the bursts the upstream CLI suites
+    /// fire (ten back-to-back pings), where 4 measurably dropped the tail.
+    /// Anything beyond is dropped like on a saturated real radio.
+    // TODO: Inject from outside
+    pending_rx: heapless::Deque<(PsduMeta, [u8; OT_RADIO_FRAME_MAX_SIZE as _]), 8>,
     /// The PAN ID to filter by, if the filter policy allows it.
     pan_id: u16,
     /// The short address to filter by, if the filter policy allows it.
@@ -737,6 +761,7 @@ where
         Ok(RadioCaps {
             phy: caps.phy,
             mac: MacCapabilities::all(),
+            receive_sensitivity: caps.receive_sensitivity,
         })
     }
 

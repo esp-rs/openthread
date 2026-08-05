@@ -289,7 +289,12 @@ impl Radio for VtRadio {
 
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
         // A bare PHY, like `SimRadio`: `MacRadio` emulates the MAC offloads.
-        Ok(RadioCaps::default())
+        Ok(RadioCaps {
+            // The upstream simulation radio's `SIM_RECEIVE_SENSITIVITY` (see
+            // `SimRadio::init` for why the exact figure matters).
+            receive_sensitivity: -100,
+            ..RadioCaps::default()
+        })
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {

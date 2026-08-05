@@ -179,7 +179,14 @@ impl Radio for SimRadio {
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
         // A bare PHY, like the nRF driver: `MacRadio` / OpenThread handle
         // ACKs, filtering, retries and frame security in software.
-        Ok(RadioCaps::default())
+        Ok(RadioCaps {
+            // The upstream simulation radio's `SIM_RECEIVE_SENSITIVITY`: the
+            // cert suites' link-quality scenarios shape RSS values against
+            // exactly this noise floor (e.g. a `macfilter rss` of -85 dBm is
+            // meant to land in the 10-20 dB margin bucket, link quality 2).
+            receive_sensitivity: -100,
+            ..RadioCaps::default()
+        })
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {

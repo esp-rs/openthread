@@ -18,8 +18,10 @@
 //! process: the platform cannot reset the C stack in place (see the crate's
 //! `otPlatReset`), while a re-exec keeps the pty/stdio fds - so the
 //! harness's session survives - and starts a genuinely fresh stack. Settings
-//! live in RAM, so until a file-backed `Settings` exists, `reset` behaves
-//! like `factoryreset` (no dataset survives).
+//! persist in a per-node file (see [`openthread_tests::settings`]) under
+//! `$CLI_FTD_SETTINGS_DIR` (default: `tmp/` beneath the cwd, mirroring the
+//! upstream simulation platform's flash files) - so `reset` keeps the
+//! dataset, while `factoryreset` deletes the file before re-executing.
 
 use std::io::{BufRead, IsTerminal, Write};
 use std::net::Ipv4Addr;
@@ -32,9 +34,10 @@ use embassy_sync::channel::Channel;
 
 use log::info;
 
-use openthread::{EmbassyTimeTimer, MacRadio, OpenThread, OtResources, SimpleRamSettings};
+use openthread::{OpenThread, OtResources};
 
 use openthread_tests::executor::{self, Mode};
+use openthread_tests::settings::FileSettings;
 use openthread_tests::sim_radio::SimRadio;
 use openthread_tests::vt::{VtLink, VtRadio};
 
@@ -74,7 +77,39 @@ fn main() {
         builder.target(env_logger::Target::Pipe(Box::new(std::io::sink())));
     }
 
-    builder.init();
+    // One exception to "logs never touch the CLI conversation": OpenThread's certification dumps
+    // (the `[THCI]` MeshCoP blocks of reference-device builds, marked by the crate with the `[OpenThread-OUT]` prefix).
+    // The cert harness reads exactly these from the node's console - upstream reference builds print them there too -
+    // so tee them onto stdout, stripped back to their native form, while everything else follows the logger configuration above.
+    struct TeeOtLogger {
+        inner: env_logger::Logger,
+    }
+
+    impl log::Log for TeeOtLogger {
+        fn enabled(&self, metadata: &log::Metadata) -> bool {
+            metadata.level() <= log::Level::Info || self.inner.enabled(metadata)
+        }
+
+        fn log(&self, record: &log::Record) {
+            let msg = record.args().to_string();
+
+            if let Some(cert) = msg.strip_prefix("[OpenThread-cert] ") {
+                cli_output(format!("{cert}\r\n").as_bytes());
+            }
+
+            self.inner.log(record);
+        }
+
+        fn flush(&self) {
+            self.inner.flush();
+        }
+    }
+
+    let inner = builder.build();
+    let max_level = inner.filter().max(log::LevelFilter::Info);
+
+    log::set_boxed_logger(Box::new(TeeOtLogger { inner })).expect("install logger");
+    log::set_max_level(max_level);
 
     std::thread::spawn(read_stdin);
 
@@ -134,11 +169,20 @@ impl NodeArgs {
 
 /// Re-execute this process with its original command line: the `reset` /
 /// `factoryreset` implementation (fresh stack, same pty/stdio fds).
+///
+/// The marker env var is how the next incarnation knows it is a reset
+/// rather than a fresh spawn - the same role as the upstream simulation
+/// platform's pseudo-reset flag: persisted settings survive only a reset
+/// (a plain spawn starts factory-new, see `main`).
 fn reexec() -> ! {
     let mut args = std::env::args_os();
     let argv0 = args.next().unwrap();
 
-    let err = std::process::Command::new(argv0).args(args).exec();
+    let err = std::process::Command::new(argv0)
+        .args(args)
+        .env("CLI_FTD_PSEUDO_RESET", "1")
+        .exec();
+
     panic!("re-exec for reset failed: {err}");
 }
 
@@ -187,30 +231,46 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
     ieee_eui64[6..].copy_from_slice(&node_id.to_be_bytes());
 
     static OT_RESOURCES: StaticCell<OtResources> = StaticCell::new();
-    static OT_SETTINGS_BUF: StaticCell<[u8; 1024]> = StaticCell::new();
-    static OT_SETTINGS: StaticCell<SimpleRamSettings> = StaticCell::new();
+    static OT_SETTINGS: StaticCell<FileSettings> = StaticCell::new();
+
+    // Per-node settings file: `reset` re-execs and the fresh process loads it
+    // back; `factoryreset` deletes it below before re-executing.
+    let settings_dir = std::path::PathBuf::from(
+        std::env::var("CLI_FTD_SETTINGS_DIR").unwrap_or_else(|_| "tmp".into()),
+    );
+    std::fs::create_dir_all(&settings_dir).expect("create settings dir");
+    let settings_path = settings_dir.join(format!("ot-settings-{node_id}.bin"));
+
+    // A fresh spawn starts factory-new: a settings file of an earlier node
+    // with the same id (e.g. a previous parametrized sub-test of the same
+    // harness script) must not leak into this one. Settings survive only a
+    // `reset` re-exec, which marks itself via the env var (the same
+    // semantics as the upstream simulation platform's pseudo-reset).
+    if std::env::var_os("CLI_FTD_PSEUDO_RESET").is_none() {
+        let _ = std::fs::remove_file(&settings_path);
+    }
 
     let ot_resources = OT_RESOURCES.init(OtResources::new());
-    let ot_settings_buf = OT_SETTINGS_BUF.init([0; 1024]);
-    let ot_settings = OT_SETTINGS.init(SimpleRamSettings::new(ot_settings_buf));
+    let ot_settings = OT_SETTINGS.init(FileSettings::new(settings_path.clone()));
 
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
+    // The bare radios go in as-is: `OpenThread::run` wraps whatever it is
+    // given in a `MacRadio`, which emulates exactly the MAC duties the
+    // radio's reported capabilities lack - for these PHY-only simulation
+    // radios, all of them.
     match radio_link {
         Some(link) => {
-            let radio = MacRadio::new(VtRadio::new(link), EmbassyTimeTimer);
+            let radio = VtRadio::new(link);
             spawner.spawn(run_ot_vt(ot.clone(), radio).unwrap());
         }
         None => {
-            let radio = MacRadio::new(
-                SimRadio::new_with(
-                    node_id,
-                    openthread_tests::sim_radio::port_base_from_env(),
-                    args.local,
-                )
-                .expect("create simulation radio"),
-                EmbassyTimeTimer,
-            );
+            let radio = SimRadio::new_with(
+                node_id,
+                openthread_tests::sim_radio::port_base_from_env(),
+                args.local,
+            )
+            .expect("create simulation radio");
             spawner.spawn(run_ot_rt(ot.clone(), radio).unwrap());
         }
     }
@@ -232,8 +292,14 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
 
         // A reset is a process re-exec (see the module docs); earlier
         // commands have all been processed at this point, matching the
-        // sequential semantics of the real CLI.
+        // sequential semantics of the real CLI. `factoryreset` additionally
+        // wipes the persisted settings (the C stack never sees either
+        // command, so its own settings-wipe path is not in play here).
         if matches!(line.trim(), "reset" | "factoryreset") {
+            if line.trim() == "factoryreset" {
+                let _ = std::fs::remove_file(&settings_path);
+            }
+
             reexec();
         }
 
@@ -252,11 +318,11 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
 }
 
 #[embassy_executor::task]
-async fn run_ot_rt(ot: OpenThread<'static>, radio: MacRadio<SimRadio, EmbassyTimeTimer>) -> ! {
+async fn run_ot_rt(ot: OpenThread<'static>, radio: SimRadio) -> ! {
     ot.run(radio).await
 }
 
 #[embassy_executor::task]
-async fn run_ot_vt(ot: OpenThread<'static>, radio: MacRadio<VtRadio, EmbassyTimeTimer>) -> ! {
+async fn run_ot_vt(ot: OpenThread<'static>, radio: VtRadio) -> ! {
     ot.run(radio).await
 }

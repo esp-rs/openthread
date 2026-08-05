@@ -1117,6 +1117,8 @@ where
         Ok(RadioCaps {
             phy: self.caps,
             mac: SPINEL_RADIO_MAC_CAPS,
+            // TODO: Query the RCP's real figure (`SPINEL_PROP_PHY_RX_SENSITIVITY`).
+            receive_sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
         })
     }
 

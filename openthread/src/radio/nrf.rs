@@ -87,7 +87,7 @@ impl Radio for NrfRadio<'_> {
     type Error = Error;
 
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
-        // The nRF radio has no PHY or MAC offloading capabilities of its own;
+        // The nRF radio has no MAC offloading capabilities of its own;
         // OpenThread / `MacRadio` handle everything in software. (This includes
         // address filtering, so `Config::alt_short_addr` — the alternate short
         // address an FTD accepts during a child-to-router transition — is honored
@@ -102,6 +102,7 @@ impl Radio for NrfRadio<'_> {
         // energy detection is only used internally as a CCA mode). Until it
         // does, energy scans on this radio yield no measurements (see
         // `Radio::energy_scan`).
+        // TODO: Report the hardware's real receive sensitivity.
         Ok(RadioCaps::default())
     }
 

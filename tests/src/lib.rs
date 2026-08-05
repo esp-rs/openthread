@@ -11,5 +11,6 @@
 //!   simulator's lockstep protocol ([`vt`], [`executor`]).
 
 pub mod executor;
+pub mod settings;
 pub mod sim_radio;
 pub mod vt;

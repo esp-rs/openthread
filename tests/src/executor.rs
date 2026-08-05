@@ -251,7 +251,10 @@ impl embassy_time_driver::Driver for SimDriver {
         if self.virt.load(Ordering::Relaxed) {
             self.vt_now.load(Ordering::Relaxed)
         } else {
-            self.rt_epoch.get_or_init(Instant::now).elapsed().as_micros() as u64
+            self.rt_epoch
+                .get_or_init(Instant::now)
+                .elapsed()
+                .as_micros() as u64
         }
     }
 

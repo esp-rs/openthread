@@ -8,3 +8,5 @@ tmpsrc
 .vscode
 .embuild
 Cargo.lock
+/tmp/
+/tests/tmp/

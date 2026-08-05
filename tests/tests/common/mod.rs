@@ -77,11 +77,17 @@ impl SimNode {
             let remaining = deadline
                 .checked_duration_since(Instant::now())
                 .unwrap_or_else(|| {
-                    panic!("node {}: timed out waiting for role {roles:?}", self.node_id)
+                    panic!(
+                        "node {}: timed out waiting for role {roles:?}",
+                        self.node_id
+                    )
                 });
 
             let line = self.lines.recv_timeout(remaining).unwrap_or_else(|_| {
-                panic!("node {}: timed out waiting for role {roles:?}", self.node_id)
+                panic!(
+                    "node {}: timed out waiting for role {roles:?}",
+                    self.node_id
+                )
             });
 
             let Some(role) = line.strip_prefix("role: ") else {

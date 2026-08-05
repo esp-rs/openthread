@@ -145,6 +145,8 @@ impl Radio for EspRadio<'_> {
             phy: Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF),
             // .union(Capabilities::AUTO_SLEEP) TODO: Depends on coex being off in ESP-IDF
             mac: MacCapabilities::all(),
+            // TODO: Report the ESP 802.15.4 hardware's real figure.
+            receive_sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
         })
     }
 

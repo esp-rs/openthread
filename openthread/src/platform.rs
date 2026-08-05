@@ -277,27 +277,10 @@ extern "C" fn otPlatRadioClearSrcMatchShortEntries(_instance: *const otInstance)
 #[no_mangle]
 extern "C" fn otPlatRadioClearSrcMatchExtEntries(_instance: *const otInstance) {}
 
-// --- PBKDF2 (FTD with commissioning) ---
-//
-// A router acting as a commissioner derives the PSKc via PBKDF2. OpenThread
-// requests it from the platform when `OPENTHREAD_CONFIG_PLATFORM_PBKDF2_ENABLE`
-// is set. Only referenced when both FTD and a commissioning feature are linked.
-//
-// TODO: route this to mbedtls (`mbedtls_pkcs5_pbkdf2_hmac_ext`); for now it
-// reports failure so callers don't silently use an all-zero key.
-#[no_mangle]
-extern "C" fn otPlatCryptoPbkdf2GenerateKey(
-    _password: *const u8,
-    _password_len: u16,
-    _salt: *const u8,
-    _salt_len: u16,
-    _iteration_counter: u32,
-    _key_len: u16,
-    _key: *mut u8,
-) -> otError {
-    // OT_ERROR_NOT_CAPABLE
-    crate::sys::otError_OT_ERROR_NOT_CAPABLE
-}
+// NOTE: `otPlatCryptoPbkdf2GenerateKey` (PSKc derivation, FTD commissioning)
+// is deliberately NOT defined here: OpenThread's `crypto_platform.cpp` ships
+// a working `OT_TOOL_WEAK` implementation for every FTD build under both of
+// its crypto-lib variants, and a strong Rust stub would shadow it.
 
 #[no_mangle]
 extern "C" fn otPlatSettingsInit(
@@ -406,11 +389,18 @@ extern "C" fn otPlatLog(
     _format: *const c_char,
     str: *const c_char,
 ) -> otError {
-    if level > 0 {
+    {
         if let Ok(str) = unsafe { CStr::from_ptr(str) }.to_str() {
             match level {
+                0 /*NONE*/ => {
+                    // Level-"none" records are not ordinary logs:
+                    // OpenThread emits them only for content that must always surface - the MeshCoP certification dumps of reference-device
+                    // builds (`DumpCert`: `[THCI]` headers plus hex lines). The distinct prefix lets embedders that must expose these on their
+                    // console (test DUTs driven by the upstream cert harness) route on it.
+                    info!("[OpenThread-OUT] {}", str);
+                }
                 1 /*CRIT*/ => {
-                    info!("[OpenThread] {}", str);
+                    error!("[OpenThread] {}", str);
                 }
                 2 /*WARN*/ => {
                     warn!("[OpenThread] {}", str);

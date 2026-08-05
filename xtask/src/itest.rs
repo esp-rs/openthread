@@ -17,10 +17,10 @@
 //!   of symlinks points at the DUT. Needs the system `expect` binary.
 //!
 //! Both suites run against curated allowlists (see [`CERT_TESTS`] /
-//! [`EXPECT_TESTS`]): the upstream corpus assumes capabilities the DUT does
-//! not have yet (virtual time, persistent settings across `reset`, MTD-only
-//! builds, posix/RCP nodes, diag commands), so tests are enabled as they are
-//! verified, with the reason for exclusion documented next to the list.
+//! [`EXPECT_TESTS`]), where every entry is verified green against the DUT.
+//! The cert allowlists cover the entire upstream `Cert_*` corpus; the expect
+//! allowlist covers the tests runnable with a CLI-FTD-only DUT (the rest of
+//! that corpus needs posix/RCP node flavors or `diag` commands).
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -34,12 +34,9 @@ use anyhow::{bail, Context, Result};
 use log::info;
 
 /// The `thread-cert` tests run by default: verified green against the DUT in
-/// real-time mode. Notes on the corpus:
-/// - Tests calling `node.reset()`/`factory_reset()` mid-run (e.g. the
-///   `Cert_5_5_*` reboot group) need settings to survive a reset, which the
-///   RAM-settings DUT cannot offer yet.
-/// - Tests with large topologies (16 routers) or long attach cascades are
-///   excluded for wall-clock reasons only - real time runs at 1x.
+/// real-time mode. The rest of the corpus runs in virtual time only (see
+/// [`CERT_TESTS_VT_EXTRA`]) - mostly for wall-clock reasons, since real time
+/// serves every scripted delay at 1x.
 const CERT_TESTS: &[&str] = &[
     // Two-node leader/router attach, with full packet verification by the
     // harness sniffer (MLE parsing incl. decryption).
@@ -67,15 +64,8 @@ const CERT_TESTS: &[&str] = &[
 /// or known-marginal. Real-time promotion is per-test, by demonstrated
 /// stability at 1x.
 ///
-/// The still-excluded remainder of the corpus falls into three buckets:
-/// - Reset persistence (`Cert_5_5_*` reboots/splits, `Cert_6_5_*` child
-///   resets, `Cert_5_1_13`, `Cert_9_2_08`): needs settings to survive
-///   `reset`, which the RAM-settings DUT cannot offer yet.
-/// - Link-quality manipulation (`Cert_5_1_11`, `Cert_6_1_06`): needs
-///   investigation of the harness's RSS shaping against `SimRadio`.
-/// - Individual harness packet-verification asserts (`Cert_5_1_05`,
-///   `Cert_5_3_06/08/09`, `Cert_7_1_06`, three `Cert_8_*`,
-///   `Cert_9_2_15/16`): each needs its own investigation.
+/// Together with [`CERT_TESTS`], this covers the ENTIRE upstream `Cert_*`
+/// corpus (102 scenarios) - nothing is excluded.
 const CERT_TESTS_VT_EXTRA: &[&str] = &[
     // A SED-originated ping races the SED poll latency against the ping
     // deadline - deterministic under virtual time, marginal at 1x.
@@ -83,10 +73,12 @@ const CERT_TESTS_VT_EXTRA: &[&str] = &[
     // MLE attach, router lifecycle and topology formation.
     "Cert_5_1_03_RouterAddressReallocation",
     "Cert_5_1_04_RouterAddressReallocation",
+    "Cert_5_1_05_RouterAddressTimeout",
     "Cert_5_1_06_RemoveRouterId",
     "Cert_5_1_07_MaxChildCount",
     "Cert_5_1_08_RouterAttachConnectivity",
     "Cert_5_1_10_RouterAttachLinkQuality",
+    "Cert_5_1_11_REEDAttachLinkQuality",
     "Cert_5_1_12_NewRouterNeighborSync",
     "Cert_5_2_03_LeaderReject2Hops",
     "Cert_5_2_04_REEDUpgrade",
@@ -95,11 +87,26 @@ const CERT_TESTS_VT_EXTRA: &[&str] = &[
     "Cert_5_2_07_REEDSynchronization",
     // Network layer: routing, address queries, duplicate detection.
     "Cert_5_3_05_RoutingLinkQuality",
+    "Cert_5_3_06_RouterIdMask",
     "Cert_5_3_07_DuplicateAddress",
+    "Cert_5_3_08_ChildAddressSet",
+    "Cert_5_3_09_AddressQuery",
     "Cert_5_3_10_AddressQuery",
     "Cert_5_3_11_AddressQueryTimeoutIntervals",
-    // Partition merge (no reset involved, unlike the rest of `Cert_5_5_*`).
+    // Reboot / split-merge / child-reset / persistent-dataset scenarios:
+    // settings survive the CLI `reset` in a per-node file (the DUT's
+    // `FileSettings`), so a reset node rejoins with its dataset intact.
+    "Cert_5_1_13_RouterReset",
+    "Cert_5_5_01_LeaderReboot",
+    "Cert_5_5_02_LeaderReboot",
+    "Cert_5_5_03_SplitMergeChildren",
+    "Cert_5_5_04_SplitMergeRouters",
     "Cert_5_5_05_SplitMergeREED",
+    "Cert_5_5_07_SplitMergeThreeWay",
+    "Cert_6_5_01_ChildResetReattach",
+    "Cert_6_5_02_ChildResetReattach",
+    "Cert_6_5_03_ChildResetSynchronize",
+    "Cert_9_2_08_PersistentDatasets",
     // Network data registration/propagation (the `border-router` DUT feature).
     "Cert_5_6_01_NetworkDataRegisterBeforeAttachLeader",
     "Cert_5_6_02_NetworkDataRegisterBeforeAttachRouter",
@@ -125,6 +132,7 @@ const CERT_TESTS_VT_EXTRA: &[&str] = &[
     "Cert_6_1_03_RouterAttachConnectivity",
     "Cert_6_1_04_REEDAttachConnectivity",
     "Cert_6_1_05_REEDAttachConnectivity",
+    "Cert_6_1_06_REEDAttachLinkQuality",
     "Cert_6_1_07_RouterAttachLinkQuality",
     "Cert_6_2_01_NewPartition",
     "Cert_6_2_02_NewPartition",
@@ -140,13 +148,19 @@ const CERT_TESTS_VT_EXTRA: &[&str] = &[
     "Cert_7_1_03_BorderRouterAsLeader",
     "Cert_7_1_04_BorderRouterAsRouter",
     "Cert_7_1_05_BorderRouterAsRouter",
+    "Cert_7_1_06_BorderRouterAsLeader",
     "Cert_7_1_07_BorderRouterAsLeader",
     "Cert_7_1_08_BorderRouterAsFED",
     // MeshCoP commissioning (the `commissioner` + `joiner` DUT features:
-    // J-PAKE over DTLS).
+    // J-PAKE over DTLS; the packet-verifying tests additionally read the
+    // `[THCI]` certification dumps off the node's console - see the DUT's
+    // cert-log tee).
+    "Cert_8_1_01_Commissioning",
     "Cert_8_1_02_Commissioning",
+    "Cert_8_1_06_Commissioning",
     "Cert_8_2_01_JoinerRouter",
     "Cert_8_2_02_JoinerRouter",
+    "Cert_8_2_05_JoinerRouter",
     "Cert_8_3_01_CommissionerPetition",
     // MeshCoP active/pending operational datasets (MGMT_*_SET dissemination,
     // delay timers, announce, energy scan / PAN-id query).
@@ -163,20 +177,92 @@ const CERT_TESTS_VT_EXTRA: &[&str] = &[
     "Cert_9_2_12_Announce",
     "Cert_9_2_13_EnergyScan",
     "Cert_9_2_14_PanIdQuery",
+    "Cert_9_2_15_PendingPartition",
+    "Cert_9_2_16_ActivePendingPartition",
     "Cert_9_2_17_Orphan",
     "Cert_9_2_18_RollBackActiveTimestamp",
     "Cert_9_2_19_PendingDatasetGet",
 ];
 
-/// The `expect` tests run by default: verified green against the DUT.
+/// The `expect` tests run by default: verified green against the DUT. The
+/// rest of the corpus needs node flavors the DUT shim directory deliberately
+/// does not provide (posix hosts, RCPs, MTD builds) or `diag` commands.
+const EXPECT_TESTS: &[&str] = &[
+    "cli-dataset",
+    "cli-networkname",
+    "cli-extaddr",
+    "cli-counters",
+    "cli-ping",
+];
+
+/// The `test_*.py` functional scripts (same directory and runner as the
+/// `Cert_*` scenarios) run in virtual time: verified green against the DUT.
 ///
-/// Notable exclusions from verification so far (both get through their
-/// two-node MeshCoP commissioning setup, then fail later):
-/// - `cli-dataset`: `dataset init pending` does not answer the expected
-///   `Error 23: NotFound` - needs investigation.
-/// - `cli-ping`: the rapid-interval ping burst (ten pings ~1.2 ms apart)
-///   loses replies - needs investigation.
-const EXPECT_TESTS: &[&str] = &["cli-extaddr", "cli-counters", "cli-networkname"];
+/// The excluded remainder of that pool:
+/// - `test_anycast_locator` (`locate`), `test_diag` (factory diag),
+///   `test_ipv6_fragmentation`, `test_radio_filter` (`radiofilter`): need
+///   OpenThread knobs not yet plumbed as crate features (anycast locator,
+///   `OT_DIAGNOSTIC`, IPv6 fragmentation, the radio test-filter).
+/// - `test_srp_register_500_services`: registration stalls mid-burst -
+///   likely OpenThread's internal heap; try a `heap-int-*` bump.
+/// - `test_anycast`, `test_child_supervision`, `test_pbbr_aloc`:
+///   behavioral / backbone-flavored failures, each needs investigation.
+const FUNC_TESTS_VT: &[&str] = &[
+    "test_br_upgrade_router_role",
+    "test_coap",
+    "test_coap_block",
+    "test_coap_observe",
+    "test_coaps",
+    "test_common",
+    "test_crypto",
+    "test_dataset_updater",
+    "test_detach",
+    "test_dns_client_config_auto_start",
+    "test_dnssd",
+    "test_dnssd_name_with_special_chars",
+    "test_history_tracker",
+    "test_inform_previous_parent_on_reattach",
+    "test_ipv6",
+    "test_ipv6_source_selection",
+    "test_key_rotation_and_key_guard_time",
+    "test_leader_reboot_multiple_link_request",
+    "test_lowpan",
+    "test_mac802154",
+    "test_mac_scan",
+    "test_mle",
+    "test_mle_msg_key_seq_jump",
+    "test_netdata_publisher",
+    "test_network_data",
+    "test_network_layer",
+    "test_on_mesh_prefix",
+    "test_ping",
+    "test_ping_lla_src",
+    "test_reed_address_solicit_rejected",
+    "test_reset",
+    "test_router_downgrade_on_sec_policy_change",
+    "test_router_multicast_link_request",
+    "test_router_reattach",
+    "test_router_reboot_multiple_link_request",
+    "test_router_upgrade",
+    "test_route_table",
+    "test_service",
+    "test_set_mliid",
+    "test_srp_auto_host_address",
+    "test_srp_auto_start_mode",
+    "test_srp_client_change_lease",
+    "test_srp_client_remove_host",
+    "test_srp_client_save_server_info",
+    "test_srp_lease",
+    "test_srp_many_services_mtu_check",
+    "test_srp_name_conflicts",
+    "test_srp_register_services_diff_lease",
+    "test_srp_register_single_service",
+    "test_srp_server_anycast_mode",
+    "test_srp_server_reboot_port",
+    "test_srp_sub_type",
+    "test_srp_ttl",
+    "test_zero_len_external_route",
+];
 
 /// Wall-clock budget for a test; exceeding it kills and fails the test.
 ///
@@ -241,8 +327,7 @@ enum Outcome {
 pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
     let ot_root = workspace.join("openthread-sys").join("openthread");
     let build_dir = workspace.join(".build").join("itest");
-    fs::create_dir_all(&build_dir)
-        .with_context(|| format!("creating {}", build_dir.display()))?;
+    fs::create_dir_all(&build_dir).with_context(|| format!("creating {}", build_dir.display()))?;
 
     let cli_ftd = build_dut(workspace, args.skip_build)?;
 
@@ -255,9 +340,14 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
             Suite::Cert if args.virtual_time => CERT_TESTS_VT_EXTRA,
             _ => &[][..],
         };
+        let func = match args.suite {
+            Suite::Cert if args.virtual_time => FUNC_TESTS_VT,
+            _ => &[][..],
+        };
         defaults
             .iter()
             .chain(extra)
+            .chain(func)
             .map(|t| t.to_string())
             .collect()
     } else {
@@ -286,9 +376,7 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
                 args.virtual_time,
                 args.timeout,
             )?,
-            Suite::Expect => {
-                run_expect_test(&ot_root, &build_dir, &cli_ftd, test, args.timeout)?
-            }
+            Suite::Expect => run_expect_test(&ot_root, &build_dir, &cli_ftd, test, args.timeout)?,
         };
 
         match &outcome {
@@ -443,7 +531,9 @@ fn run_cert_test(
         // Per-node DUT log files in the run dir (`node.<id>`); the level
         // comes from `RUST_LOG`, so `RUST_LOG=openthread=debug cargo xtask
         // itest <test>` captures a failing node's stack-side view.
-        .env("CLI_FTD_LOG", run_dir.join("node"));
+        .env("CLI_FTD_LOG", run_dir.join("node"))
+        // Per-node persisted settings land in the run dir (fresh per run).
+        .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
 
     run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
 }
@@ -500,7 +590,10 @@ fn run_expect_test(
         // nothing there (our log goes to `run_dir` via an absolute path;
         // gcov prefixes only materialize for coverage builds).
         .current_dir(ot_root)
-        .env("OT_SIMULATION_APPS", &apps);
+        .env("OT_SIMULATION_APPS", &apps)
+        // The DUT nodes run with the repo root as cwd (see above); point
+        // their persisted settings at the run dir instead.
+        .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
 
     run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
 }
@@ -514,8 +607,8 @@ fn run_logged(
     test: &str,
     timeout_secs: Option<u64>,
 ) -> Result<Outcome> {
-    let log = fs::File::create(log_path)
-        .with_context(|| format!("creating {}", log_path.display()))?;
+    let log =
+        fs::File::create(log_path).with_context(|| format!("creating {}", log_path.display()))?;
 
     let mut child = command
         .stdin(Stdio::null())

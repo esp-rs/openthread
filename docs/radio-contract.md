@@ -18,7 +18,7 @@ has independently grown an RX queue:
 | `SpinelRadio` | `rx_queue: heapless::Deque<RxFrame, 8>` | frames arriving during command waits |
 | `EspRadio` | esp-radio's queue (`rx_queue_size`) | IRQ-fed buffering below the trait |
 | `ProxyRadio` | request/response zerocopy channels | bridging to a high-priority executor |
-| `MacRadio` | 4-slot `pending_rx` parking queue | frames crossing the TX ACK wait |
+| `MacRadio` | 8-slot `pending_rx` parking queue | frames crossing the TX ACK wait |
 | `VtRadio` (tests) | unbounded `VecDeque` | lockstep event bursts |
 
 A queue is not wrong - reception is asynchronous and something must hold
@@ -178,7 +178,7 @@ states. Concretely:
   commands alone and the check disappears (along with the deferred
   `pending_rx_when_idle` application hack).
 - **G5** - `MacRadio`'s ACK wait consumes the RX stream, requiring the
-  4-slot parking queue (frames crossing the wait are screened, ACKed and
+  bounded parking queue (frames crossing the wait are screened, ACKed and
   parked for the next `receive()`). This is a correct-but-minimal
   realization of C2 given the current trait shape; the structural answer is
   below.

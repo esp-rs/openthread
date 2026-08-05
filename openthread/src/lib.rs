@@ -1367,17 +1367,27 @@ impl<'a> OpenThread<'a> {
         // internally by the `MacRadio` wrapper, not reported to the C stack.) On
         // failure we advertise no PHY offload (OpenThread then does everything in
         // software) and let the radio recover lazily on the first request.
-        let radio_caps = match radio.init().await {
-            Ok(caps) => caps.phy,
+        let (radio_caps, radio_sensitivity) = match radio.init().await {
+            Ok(caps) => (caps.phy, caps.receive_sensitivity),
             Err(e) => {
                 warn!(
                     "Radio init failed: {:?}; advertising no PHY capabilities",
                     e
                 );
-                Capabilities::empty()
+                (
+                    Capabilities::empty(),
+                    radio::RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
+                )
             }
         };
-        self.activate().state().ot.radio_caps = radio_caps.bits();
+
+        {
+            let mut activated = self.activate();
+            let state = activated.state();
+
+            state.ot.radio_caps = radio_caps.bits();
+            state.ot.radio_sensitivity = radio_sensitivity;
+        }
 
         let radio_cmd = || poll_fn(move |cx| self.activate().state().ot.radio.poll_wait(cx));
 
@@ -1866,6 +1876,7 @@ impl OtResources {
             // anyway, as it needs a synchronous RSSI read (`otPlatRadioGetRssi`)
             // which is unimplementable on top of an async radio.
             radio_caps: (OT_RADIO_CAPS_ACK_TIMEOUT | sys::OT_RADIO_CAPS_ENERGY_SCAN) as otRadioCaps,
+            radio_sensitivity: radio::RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
         }));
 
         info!("OpenThread resources initialized");
@@ -2640,9 +2651,8 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_receive_sensitivity(&mut self) -> i8 {
-        // The C stack's `kDefaultReceiveSensitivity` (`radio/radio.hpp`) as the
-        // noise floor for grading neighbors, until drivers can report real figures.
-        let sens = -110;
+        // As reported by the driver ([`RadioCaps::receive_sensitivity`]).
+        let sens = self.state().ot.radio_sensitivity;
         trace!(
             "Plat radio receive sensitivity callback, sensitivity: {}",
             sens
@@ -2940,15 +2950,17 @@ impl<'a> OtContext<'a> {
             index
         );
 
-        if index < 0 {
-            Err(OtError::new(otError_OT_ERROR_NOT_FOUND))?;
-        }
-
         let state = self.state();
 
         let settings = &mut state.ot.settings;
 
-        if !settings.remove(key, Some(index as _))? {
+        // A negative index means "delete ALL values for the key" (the
+        // `otPlatSettingsDelete` contract's `aIndex == -1`) - e.g. how the
+        // pending dataset is dropped when it promotes to active, or how all
+        // child info records are purged at once.
+        let index = (index >= 0).then_some(index as usize);
+
+        if !settings.remove(key, index)? {
             Err(OtError::new(otError_OT_ERROR_NOT_FOUND))?;
         }
 
@@ -3042,6 +3054,10 @@ struct OtState<'a> {
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,
+    /// Receive sensitivity (dBm) reported via
+    /// `otPlatRadioGetReceiveSensitivity` - the noise floor OpenThread grades
+    /// neighbor link margins against. Fetched with the capabilities.
+    radio_sensitivity: i8,
     /// Resources for the radio (PHY data frames and their descriptors)
     radio_resources: &'a mut RadioResources,
     /// Resources for dealing with the operational dataset
