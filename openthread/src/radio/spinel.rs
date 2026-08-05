@@ -158,6 +158,8 @@ const PROP_MAC_ENERGY_SCAN_RESULT: u32 = 0x39;
 const PROP_RADIO_CAPS: u32 = 0x1207;
 const PROP_PHY_CHAN: u32 = 0x21;
 const PROP_PHY_TX_POWER: u32 = 0x25;
+/// `SPINEL_PROP_PHY_RX_SENSITIVITY` — the RCP's receive sensitivity in dBm.
+const PROP_PHY_RX_SENSITIVITY: u32 = 0x27;
 const PROP_MAC_15_4_LADDR: u32 = 0x34;
 const PROP_MAC_15_4_SADDR: u32 = 0x35;
 /// `SPINEL_PROP_MAC_15_4_ALT_SADDR` (`MAC__BEGIN + 12`) — a *second* short
@@ -497,6 +499,10 @@ pub struct SpinelRadio<'a, T> {
     /// handshake. Until the handshake runs it holds the fixed baseline
     /// ([`SPINEL_RADIO_CAPS`]); afterwards it is the RCP's reported set.
     caps: Capabilities,
+    /// The receive sensitivity read from the RCP's `PHY_RX_SENSITIVITY`
+    /// during the handshake; the crate-wide default until then (and for RCP
+    /// firmwares that do not implement the property).
+    sensitivity: i8,
     /// Last-applied config; used to only re-send changed properties.
     config: Option<Config>,
     /// Whether raw-stream (RX) is currently enabled on the RCP.
@@ -542,6 +548,7 @@ where
             transport,
             eui64: None,
             caps: SPINEL_RADIO_CAPS,
+            sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
             config: None,
             rx_enabled: false,
             next_tid: 1,
@@ -741,7 +748,13 @@ where
             .await
             .map_err(|_| RadioErrorKind::TxFailed)?;
 
-        let (_prop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
+        let (rprop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
+        if rprop != prop {
+            // Typically a `LAST_STATUS` error reply - e.g. the RCP does not
+            // implement the property. Parsing its payload as the requested
+            // property's value would accept a status code as data.
+            return Err(RadioErrorKind::Other);
+        }
         let len = self.rx_len;
         Ok(f(&self.rx_frame[off..len]))
     }
@@ -909,6 +922,25 @@ where
             caps_bits,
             SPINEL_RADIO_CAPS.bits()
         );
+
+        // Read the RCP's receive sensitivity. Best-effort: an RCP firmware
+        // without the property answers with an error status, and the
+        // crate-wide default stands in (same tolerance as the
+        // `RX_ON_WHEN_IDLE_MODE` NOTE in `flush_config`).
+        match self
+            .get_prop(PROP_PHY_RX_SENSITIVITY, |payload| {
+                payload.first().map(|&s| s as i8)
+            })
+            .await
+        {
+            Ok(Some(sensitivity)) => self.sensitivity = sensitivity,
+            _ => {
+                info!(
+                    "RCP does not report PHY_RX_SENSITIVITY; using the default {} dBm",
+                    self.sensitivity
+                );
+            }
+        }
 
         // Enable the PHY.
         self.set_prop(PROP_PHY_ENABLED, &[1]).await?;
@@ -1117,8 +1149,7 @@ where
         Ok(RadioCaps {
             phy: self.caps,
             mac: SPINEL_RADIO_MAC_CAPS,
-            // TODO: Query the RCP's real figure (`SPINEL_PROP_PHY_RX_SENSITIVITY`).
-            receive_sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
+            receive_sensitivity: self.sensitivity,
         })
     }
 

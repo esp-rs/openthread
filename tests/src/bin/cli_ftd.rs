@@ -93,7 +93,7 @@ fn main() {
         fn log(&self, record: &log::Record) {
             let msg = record.args().to_string();
 
-            if let Some(cert) = msg.strip_prefix("[OpenThread-cert] ") {
+            if let Some(cert) = msg.strip_prefix("[OpenThread-OUT] ") {
                 cli_output(format!("{cert}\r\n").as_bytes());
             }
 

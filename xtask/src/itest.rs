@@ -199,14 +199,21 @@ const EXPECT_TESTS: &[&str] = &[
 /// `Cert_*` scenarios) run in virtual time: verified green against the DUT.
 ///
 /// The excluded remainder of that pool:
-/// - `test_anycast_locator` (`locate`), `test_diag` (factory diag),
-///   `test_ipv6_fragmentation`, `test_radio_filter` (`radiofilter`): need
-///   OpenThread knobs not yet plumbed as crate features (anycast locator,
-///   `OT_DIAGNOSTIC`, IPv6 fragmentation, the radio test-filter).
+/// - `test_anycast` (its `ns` round; `ds`/`cs` pass), `test_anycast_locator`
+///   (`locate`), `test_diag` (factory diag), `test_ipv6_fragmentation`,
+///   `test_radio_filter` (`radiofilter`): need OpenThread knobs not yet
+///   plumbed as crate features (`OT_NEIGHBOR_DISCOVERY_AGENT`, the anycast
+///   locator, `OT_DIAGNOSTIC`, IPv6 fragmentation, the radio test-filter).
 /// - `test_srp_register_500_services`: registration stalls mid-burst -
 ///   likely OpenThread's internal heap; try a `heap-int-*` bump.
-/// - `test_anycast`, `test_child_supervision`, `test_pbbr_aloc`:
-///   behavioral / backbone-flavored failures, each needs investigation.
+/// - `test_child_supervision`: the DUT acks every data poll with Frame
+///   Pending = 1 (the `otPlatRadio*SrcMatch*` callbacks are no-ops), so the
+///   parent answers each poll with an empty data frame and the child's
+///   supervision check never trips. Needs the source-match offload plumbed
+///   down to the ACKing layer (`MacRadio` / capable radios).
+/// - `test_pbbr_aloc`: needs the Backbone Router node flavor (node.py spawns
+///   a literal `./ot-cli-ftd` from the cwd for it, and the DUT would need
+///   `OT_BACKBONE_ROUTER`).
 const FUNC_TESTS_VT: &[&str] = &[
     "test_br_upgrade_router_role",
     "test_coap",
