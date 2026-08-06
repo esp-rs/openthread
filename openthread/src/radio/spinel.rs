@@ -1220,9 +1220,18 @@ where
         self.flush_config(config).await
     }
 
-    fn update_src_match(&mut self, entries: &SrcMatchEntries) {
+    async fn set_src_match(&mut self, entries: &SrcMatchEntries) -> Result<(), Self::Error> {
         self.src_match = entries.clone();
         self.src_match_dirty = true;
+
+        // Push right away when the link is already up; before the handshake
+        // the dirty flag keeps it pending and the operation prologues flush
+        // it (which also re-delivers the table across an RCP re-init).
+        if self.eui64.is_some() {
+            self.flush_src_match().await?;
+        }
+
+        Ok(())
     }
 
     async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {

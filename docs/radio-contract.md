@@ -1,8 +1,5 @@
 # The radio contract: what OpenThread actually expects from `Radio`
 
-Status: DRAFT for review. Nothing in here is implemented yet except where
-explicitly marked; the current code's divergences are listed as numbered gaps.
-
 ## Provenance
 
 Running the unmodified upstream `thread-cert` suites against this crate's
@@ -150,10 +147,36 @@ Commands are transitions; **Receive is a state, not an operation**. While in
 Receive the platform streams `ReceiveDone`s. The transmit sequence is a
 temporary excursion that must land back in Receive by itself.
 
-## Gaps in the current implementation
+The crate mirrors this split literally (`lib.rs::run_radio`):
 
-The runner (`lib.rs::run_radio`) models commands as operations rather than
-states. Concretely:
+- **Sleep/Receive is state**, carried by [`Config::receive`] like any other
+  standing configuration - not a command, and not a trait method. A driver
+  powers its receiver down when it turns `false` and must then MISS traffic
+  rather than queue it (C6); the simulation radios discard whatever
+  accumulated on the `false -> true` edge, which is their wake boundary.
+- **Transmit and energy scan are excursions**, the only two `RadioCommand`s
+  besides `Interrupt`. They are raced against the arrival of a NEW command:
+  a command landing mid-excursion is the stack cancelling it (C5), so the
+  excursion future is dropped and no completion is reported. Because the
+  command signal holds one value, a cancel also supersedes a not-yet-started
+  excursion - the abandoned frame is simply never sent.
+- **`Interrupt`** is what `otPlatRadioReceive`/`Sleep`/`Disable` raise. It
+  carries no work of its own: it exists to cancel an excursion, or to bring
+  the runner back around to re-read the configuration and re-enter Receive.
+- **Configuration and source-match updates are NOT commands.** They wake the
+  runner through their own signals - which interrupts Receive, since Receive
+  owes the stack no completion - but they never abort a transmit or a scan.
+  (Getting this wrong hangs the MAC: the stack waits forever for a
+  completion callback belonging to an operation that was quietly killed.)
+  Source-match in particular must land *during* ongoing Receive: it decides
+  the Frame Pending bit of the ACKs the radio sends to data polls, and
+  OpenThread updates it without issuing any radio command afterwards.
+
+## Gaps that this closed (historical)
+
+The runner used to model commands as operations rather than states. All of
+G1-G4 are fixed; G5 stands by design. Kept because the reasoning is the
+justification for the current shape:
 
 - **G1** - the Tx arm `break`s to the command await after `TxDone`. Safe on
   the normal path only because the `Receive` command is signaled during the
@@ -163,7 +186,8 @@ states. Concretely:
   Discover flows.
 - **G2** - the Tx arm reports `TxDone(ABORT)` when interrupted by a new
   command, violating C5's silent-abort rule (observed benign, still wrong).
-- **G3** - there is no `RadioCommand::Sleep`; `otPlatRadioSleep` is a no-op.
+- **G3** - `otPlatRadioSleep` was a no-op (fixed: it clears
+  [`Config::receive`], which is the driver's power-down hook).
   "Sleep" only emerges when the Rx arm's continuation check happens to
   break. Violates C6 twice: hardware drivers get no power-down hook, and
   frames arriving "while asleep" accumulate in driver buffers (`VT_RX`, UDP
@@ -195,11 +219,15 @@ states. Concretely:
    acceptable - that is saturation, not contract violation.
 3. Cancellation (dropping the `transmit` future) is a sanctioned abort: the
    frame may already be on the air; the driver must return to Receive and
-   the caller must not report a completion for it (C5).
+   the caller must not report a completion for it (C5). The crate only ever
+   cancels on a new *command* - never on a configuration change.
 4. After the transmit sequence, the driver returns to Receive on its own
    (C4), on `mRxChannelAfterTxDone` where supported, else the TX channel.
-5. `sleep()` (new, default no-op) stops reception; frames arriving while
-   asleep are dropped, not buffered (C6).
+5. `Config::receive == false` stops reception; frames arriving while parked
+   are dropped, not buffered (C6). This is a configuration field rather than
+   a `sleep()` method deliberately: Sleep-vs-Receive is the radio's standing
+   state, so it travels with the rest of the configuration and a driver
+   applies it in `set_config` like everything else.
 6. Software MAC emulation (ACKs, filtering, FP handling) belongs *below*
    the trait, at an execution layer that can meet the 802.15.4 turnaround
    timing - in hardware, in RCP firmware, in the radio IRQ (the
@@ -212,7 +240,7 @@ states. Concretely:
 The `Radio` trait's "Contract" section now carries these, renumbered:
 items 1-3 and 5 above are trait contract points 1-4. Item 4 (auto-return
 to Receive) is deliberately NOT a trait obligation - the crate's runner
-discharges it (plan step 1), and a driver owes nothing there beyond item
+discharges it (see the runner model above), and a driver owes nothing there beyond item
 2's continuity. Item 6 is an architecture principle, not a per-driver
 obligation. The trait text also spells out the two personalities hiding
 in points 1 and 2: without `TX_ACK`/`RX_ACK` they collapse to pure send /
@@ -221,7 +249,7 @@ below keeps THIS list's numbering.
 
 ## Per-driver conformance
 
-| Driver | MAC | Ob.1 (tx=full seq) | Ob.2 (rx continuity) | Ob.4 (auto-RX) | Ob.5 (sleep) |
+| Driver | MAC | Ob.1 (tx=full seq) | Ob.2 (rx continuity) | Ob.4 (auto-RX) | Ob.5 (`receive=false` drops) |
 | --- | --- | --- | --- | --- | --- |
 | `nrf-802154` | driver IRQ layer | yes | yes (IRQ queue) | yes (`rx_when_idle`) | yes |
 | `EspRadio` | esp-radio HW/blob | yes | yes (driver queue) | yes | needs check |
@@ -229,58 +257,11 @@ below keeps THIS list's numbering.
 | `embassy-nrf` + `MacRadio` | software | via wrapper | via parking queue (G5) | runner (done) | runner parks; PHY power-down needs `ProxyRadio` plumbing |
 | `SimRadio`/`VtRadio` + `MacRadio` | software | via wrapper | via parking queue | runner (done) | yes (flush-on-wake) |
 
-## Plan
-
-Each step lands only with the full real-time and virtual-time suites green
-(`cargo test` in `tests/`, `cargo xtask itest` both modes) - the suites that
-exposed all of this are the safety net for fixing it.
-
-1. **Runner as state machine** (no trait change): restructure `run_radio`
-   around `{Sleep, Receive(conf), EnergyScan, TransmitSequence}`; Tx arm
-   returns to Receive instead of the command await (G1); silent abort on
-   command interruption (G2); `RadioCommand::Sleep` plumbed from
-   `otPlatRadioSleep` (G3); drop the `rx_when_idle` continuation check and
-   the deferred-application hack (G4). **DONE** - validated with the full
-   real-time sweep (7/7), five consecutive virtual-time batches (8/8 each)
-   and the crate integration tests.
-2. **Trait contract**: the obligations above as `Radio` documentation, plus
-   `async fn sleep(&mut self)` with a default no-op implementation. **DONE**
-   - forwarded through the `&mut` blanket impl and `MacRadio` (parked
-   frames stay parked: they were screened and ACKed while awake); the
-   runner's Sleep arm calls it (failure logged, tolerated). `ProxyRadio`
-   keeps the default no-op for now - forwarding sleep through its channel
-   protocol is follow-up work.
-3. **Sim fidelity**: `SimRadio`/`VtRadio` honor sleep by discarding (match
-   the C simulation radio); verify SED cert tests still pass - and now
-   prove the right thing. **DONE** - flush-on-wake in both radios (the
-   resolution of the open question below: gate-at-arrival and
-   flush-on-wake are indistinguishable to the stack, and flushing suits
-   queue-below drivers); the `VtRadio` flush still settles the echo
-   bookkeeping for pre-sleep transmissions, which is mandatory or the
-   FIFO echo matching desyncs. The flush point is `set_config` - the
-   first call of any post-sleep operation and therefore the precise wake
-   boundary: flushing on the first `receive` instead would race the
-   parent's ACK to a just-transmitted data poll (that `receive` happens
-   inside the ACK wait), a real-time-only race that virtual time never
-   exhibits.
-4. **`MacRadio` disposition**: keep as the bare-PHY helper with its
-   obligations documented (parking queue stays for as long as an ACK wait
-   above the trait exists); new drivers are pointed at the below-trait
-   model (`nrf-802154`) instead.
-
 ## Open questions
 
-- Sleep-drop mechanics for internally-queued drivers: gate at arrival vs
-  flush on wake. (The C radio gates at arrival; flushing on wake is
-  indistinguishable to the stack but simpler for queue-below drivers.)
-- ~~Does `Config::rx_when_idle` remain in `Config` (as the C7-dimension-2
-  policy for capability-advertising drivers) or move to a dedicated
-  `set_rx_on_when_idle` call, mirroring the platform API more closely?~~
-  Resolved: it remains in `Config`, renamed to `auto_sleep` with inverted
-  polarity (see the C7 naming note) - it is a standing policy, which is
-  exactly what `Config` fields are.
-- `EspRadio`/`SpinelRadio` sleep behavior needs verification against Ob.5
-  (esp-radio and RCP firmwares have their own power states).
+- `EspRadio`/`SpinelRadio` behavior on `Config::receive == false` needs
+  verification against Ob.5 (esp-radio and RCP firmwares have their own
+  power states, and both currently just store the flag).
 - Whether to tolerate (ignore) a late `TxDone` after a C5 abort in the
   crate's glue, for robustness against drivers that report one anyway.
 - RX timestamps: the glue stamps `mRxInfo.mTimestamp` at *delivery*

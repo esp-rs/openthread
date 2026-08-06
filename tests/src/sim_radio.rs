@@ -107,11 +107,6 @@ pub struct SimRadio {
     rx: Async<UdpSocket>,
     tx: Async<UdpSocket>,
     config: Config,
-    /// Set by [`Radio::sleep`]; the next `receive` flushes everything that
-    /// accumulated in the socket while asleep (contract point 5: a sleeping
-    /// radio misses frames - the C simulation radio drops them at arrival,
-    /// flushing on wake is the queue-based equivalent).
-    slept: bool,
 }
 
 impl SimRadio {
@@ -140,7 +135,6 @@ impl SimRadio {
             rx: Async::new(Self::rx_socket(port_base, local)?)?,
             tx: Async::new(Self::tx_socket(port_base + node_id, local)?)?,
             config: Config::new(),
-            slept: false,
         })
     }
 
@@ -205,19 +199,20 @@ impl Radio for SimRadio {
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
+        // `Config::receive` turning true again is the wake boundary:
+        // everything sitting in the socket at this point arrived while the
+        // radio was parked, and a parked radio MISSES traffic rather than
+        // queueing it (contract C6), so it is discarded. Nothing legitimate
+        // can be lost here - our own wake-up transmission (e.g. a data poll)
+        // has not gone out yet, so no reply to it can exist. Flushing any
+        // later (say, on the first `receive`, which for a poll happens
+        // inside the ACK wait) would race the parent's microsecond-scale ACK
+        // on the loopback medium.
+        let waking = config.receive && !self.config.receive;
+
         self.config = config.clone();
 
-        // `set_config` is the first call of any post-sleep operation, which
-        // makes it the precise wake boundary: everything in the socket at
-        // this point arrived while asleep and is discarded (contract point
-        // 5), while nothing legitimate can be lost - our own wake-up
-        // transmission (e.g. a data poll) has not gone out yet, so no reply
-        // to it can exist. Flushing any later (say, on the first `receive`,
-        // which for a poll happens inside the ACK wait) would race the
-        // parent's microsecond-scale ACK on the loopback medium.
-        if self.slept {
-            self.slept = false;
-
+        if waking {
             let mut buf = [0; PSDU_MAX + 1];
             while self.rx.as_ref().recv_from(&mut buf).is_ok() {}
         }
@@ -290,11 +285,6 @@ impl Radio for SimRadio {
                 rssi: Some(SIM_RSSI),
             });
         }
-    }
-
-    async fn sleep(&mut self) -> Result<(), Self::Error> {
-        self.slept = true;
-        Ok(())
     }
 }
 

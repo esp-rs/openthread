@@ -643,11 +643,25 @@ fn run_logged(
 
     // Sweep the whole process group (the group id is the child's pid),
     // whatever the outcome - node processes must never outlive their test.
-    let _ = Command::new("kill")
-        .arg("-9")
-        .arg(format!("-{}", child.id()))
-        .stderr(Stdio::null())
-        .status();
+    //
+    // Via `killpg(2)` directly, NEVER by spawning `kill -9 -<pgid>`: procps'
+    // `kill` parses a bare negative argument as an option cluster and keeps
+    // only its first digit, so `kill -9 -1015086` actually executes
+    // `kill(-1, SIGKILL)` - "signal every process this user may signal",
+    // which wipes out the whole desktop session (editor server, language
+    // servers, the agent driving the suite...). Verified with strace:
+    //   kill -0 -1015086     ->  kill(-1, 0)          (!!)
+    //   kill -0 -99999       ->  kill(-9, 0)
+    //   kill -0 -- -1015086  ->  kill(-1015086, 0)    (correct)
+    // The damage is pid-dependent - it bites whenever the pid starts with a
+    // '1', i.e. for most pids once the system's pid counter passes 1000000 -
+    // which is what made it look like a sporadic environment problem.
+    //
+    // SAFETY: plain libc call; the pid is our own child's, and an
+    // already-reaped group simply yields `ESRCH`, which is ignored.
+    unsafe {
+        libc::killpg(child.id() as libc::pid_t, libc::SIGKILL);
+    }
 
     let outcome = match status {
         None => Outcome::Failed(format!("timed out after {}s", timeout.as_secs())),

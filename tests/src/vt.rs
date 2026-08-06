@@ -248,9 +248,6 @@ pub struct VtRadio {
     /// and those echoes must not surface as received frames. A queue,
     /// because back-to-back unacked transmissions can outpace the echoes.
     echoes: VecDeque<(usize, [u8; PSDU_MAX])>,
-    /// Set by [`Radio::sleep`]; the next `receive` flushes what accumulated
-    /// while asleep (contract point 5), still settling echo bookkeeping.
-    slept: bool,
 }
 
 impl VtRadio {
@@ -259,7 +256,6 @@ impl VtRadio {
             link,
             config: Config::new(),
             echoes: VecDeque::new(),
-            slept: false,
         }
     }
 
@@ -309,16 +305,17 @@ impl Radio for VtRadio {
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
+        // The wake boundary - `Config::receive` turning true again (see
+        // `SimRadio::set_config` for the rationale; here the ordering is
+        // deterministic, but symmetry keeps the two radios honest): frames
+        // queued while parked are missed - though the echoes of own
+        // pre-park transmissions among them must still settle the echo
+        // bookkeeping, or the FIFO matching desyncs.
+        let waking = config.receive && !self.config.receive;
+
         self.config = config.clone();
 
-        // The wake boundary (see `SimRadio::set_config` for the rationale;
-        // here the ordering is deterministic, but symmetry keeps the two
-        // radios honest): frames queued while asleep are missed - though
-        // the echoes of own pre-sleep transmissions among them must still
-        // settle the echo bookkeeping, or the FIFO matching desyncs.
-        if self.slept {
-            self.slept = false;
-
+        if waking {
             while let Some(frame) = VT_RX.try_receive() {
                 let _ = self.consume_echo(&frame);
             }
@@ -402,10 +399,5 @@ impl Radio for VtRadio {
                 rssi: Some(SIM_RSSI),
             });
         }
-    }
-
-    async fn sleep(&mut self) -> Result<(), Self::Error> {
-        self.slept = true;
-        Ok(())
     }
 }

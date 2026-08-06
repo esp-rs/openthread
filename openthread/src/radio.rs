@@ -274,6 +274,24 @@ pub struct Config {
     pub cca: Cca,
     /// TBD
     pub sfd: u8,
+    /// Whether the radio is in receive mode.
+    ///
+    /// This is the radio's Receive-vs-Sleep state (`otPlatRadioReceive` /
+    /// `otPlatRadioSleep`), and therefore also the driver's power-management
+    /// hook: a driver that can power its receiver down should do so when this
+    /// turns `false`, and bring it back up when it turns `true`.
+    ///
+    /// Frames arriving while it is `false` MUST be dropped, not buffered: the
+    /// stack relies on a parked radio genuinely missing traffic (a sleepy
+    /// child's parent buffers for it on exactly that assumption - see
+    /// `docs/radio-contract.md`, C6). A driver whose RX path keeps filling
+    /// autonomously while parked (hardware FIFOs, IRQ handlers, simulation
+    /// event pumps) must therefore discard whatever accumulated, at the
+    /// latest when this turns `true` again.
+    ///
+    /// Disregarded if the radio does not have any MAC offloading capabilities
+    /// and therefore is not capable of receiving frames autonomously, and emulated by [`MacRadio`].
+    pub receive: bool,
     /// Allow the radio to autonomously power its receiver down during idle
     /// periods, instead of keeping it in RX.
     /// Disregarded unless the radio advertises [`Capabilities::AUTO_SLEEP`],
@@ -324,6 +342,7 @@ impl Config {
             power: 20,
             cca: Cca::Carrier,
             sfd: 0,
+            receive: false,
             auto_sleep: false,
             promiscuous: false,
             pan_id: None,
@@ -435,11 +454,26 @@ pub trait Radio {
     /// Set the radio configuration.
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error>;
 
-    // TODO
-    //fn rssi(&mut self) -> i8;
+    /// Update the radio's source-address-match table (see
+    /// [`SrcMatchEntries`] for the contract it serves).
+    ///
+    /// Called by the crate whenever the stack mutates the table, with the
+    /// complete new table each time (never incrementally). Synchronous by
+    /// design - it is pure bookkeeping; a radio that must push the table to
+    /// distant hardware (e.g. an RCP's source-match properties) should stash
+    /// the snapshot and flush it on its next async operation.
+    ///
+    /// The default does nothing, which is correct for a bare radio whose
+    /// ACKs are emulated above it (`MacRadio` keeps and consults its own
+    /// copy). A radio doing its own RX ACKs should apply the table to
+    /// whatever decides its ACKs' Frame Pending bit; ignoring it means every
+    /// data poll is answered FP = 1, which is protocol-safe but keeps sleepy
+    /// children listening needlessly after each poll.
+    async fn set_src_match(&mut self, entries: &SrcMatchEntries) -> Result<(), Self::Error> {
+        let _ = entries;
 
-    // TODO
-    //fn receive_sensitivity(&mut self) -> i8;
+        Ok(())
+    }
 
     /// Perform an energy scan on `channel`: measure the energy observed over
     /// `duration_millis` and return the maximum RSSI, in dBm.
@@ -499,42 +533,6 @@ pub trait Radio {
     /// Returns:
     /// - The meta-data associated with the received frame.
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error>;
-
-    /// Put the radio to sleep (`otPlatRadioSleep`): stop receiving until the
-    /// next operation.
-    ///
-    /// Frames arriving while asleep MUST be dropped, not buffered - the
-    /// stack relies on a sleeping radio missing traffic (contract point 4;
-    /// a sleepy child's parent buffers for it on exactly that assumption).
-    /// A driver with an internal RX queue that keeps filling autonomously
-    /// (hardware, IRQ handlers, simulation event pumps) should flush
-    /// sleep-period arrivals on its next `receive`.
-    ///
-    /// The default implementation is a no-op: sufficient for radios whose
-    /// reception stops when `receive` is not being polled and that have no
-    /// power model worth managing.
-    async fn sleep(&mut self) -> Result<(), Self::Error> {
-        Ok(())
-    }
-
-    /// Update the radio's source-address-match table (see
-    /// [`SrcMatchEntries`] for the contract it serves).
-    ///
-    /// Called by the crate whenever the stack mutates the table, with the
-    /// complete new table each time (never incrementally). Synchronous by
-    /// design - it is pure bookkeeping; a radio that must push the table to
-    /// distant hardware (e.g. an RCP's source-match properties) should stash
-    /// the snapshot and flush it on its next async operation.
-    ///
-    /// The default does nothing, which is correct for a bare radio whose
-    /// ACKs are emulated above it (`MacRadio` keeps and consults its own
-    /// copy). A radio doing its own RX ACKs should apply the table to
-    /// whatever decides its ACKs' Frame Pending bit; ignoring it means every
-    /// data poll is answered FP = 1, which is protocol-safe but keeps sleepy
-    /// children listening needlessly after each poll.
-    fn update_src_match(&mut self, entries: &SrcMatchEntries) {
-        let _ = entries;
-    }
 }
 
 impl<T> Radio for &mut T
@@ -549,6 +547,10 @@ where
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         T::set_config(self, config).await
+    }
+
+    async fn set_src_match(&mut self, entries: &SrcMatchEntries) -> Result<(), Self::Error> {
+        T::set_src_match(self, entries).await
     }
 
     async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
@@ -566,14 +568,6 @@ where
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         T::receive(self, psdu_buf).await
-    }
-
-    async fn sleep(&mut self) -> Result<(), Self::Error> {
-        T::sleep(self).await
-    }
-
-    fn update_src_match(&mut self, entries: &SrcMatchEntries) {
-        T::update_src_match(self, entries)
     }
 }
 
@@ -860,16 +854,6 @@ where
         })
     }
 
-    fn update_src_match(&mut self, entries: &SrcMatchEntries) {
-        if self.mac_caps.contains(MacCapabilities::SRC_MATCH) {
-            // The inner radio's own acking honors the table - hand it down.
-            self.radio.update_src_match(entries);
-        } else {
-            // This wrapper's software ACKs consult the copy.
-            self.src_match = entries.clone();
-        }
-    }
-
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.radio
             .set_config(config)
@@ -885,6 +869,21 @@ where
         self.ext_addr = config.ext_addr.unwrap_or(MacHeader::BROADCAST_EXT_ADDR);
 
         Ok(())
+    }
+
+    async fn set_src_match(&mut self, entries: &SrcMatchEntries) -> Result<(), Self::Error> {
+        if self.mac_caps.contains(MacCapabilities::SRC_MATCH) {
+            // The inner radio's own acking honors the table - hand it down.
+            self.radio
+                .set_src_match(entries)
+                .await
+                .map_err(Self::Error::Io)
+        } else {
+            // This wrapper's software ACKs consult the copy.
+            self.src_match = entries.clone();
+
+            Ok(())
+        }
     }
 
     async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
@@ -1039,12 +1038,6 @@ where
                 break Ok(psdu_meta);
             }
         }
-    }
-
-    async fn sleep(&mut self) -> Result<(), Self::Error> {
-        // No MAC-layer processing; the parked frames (screened and ACKed
-        // while awake) stay parked - they were legitimately received.
-        self.radio.sleep().await.map_err(Self::Error::Io)
     }
 }
 
