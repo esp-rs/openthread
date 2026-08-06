@@ -1718,7 +1718,7 @@ impl<'a> OpenThread<'a> {
     /// TODO: Radios with RX-ACK offload may decide differently; plumb
     /// the real outcome through `PsduMeta`.
     fn acked_with_frame_pending(psdu: &[u8], src_match: &radio::SrcMatchEntries) -> bool {
-        let mut hdr = radio::mac::MacHeader::new();
+        let mut hdr = radio::MacHeader::new();
 
         hdr.load(psdu).is_some()
             && hdr.is_command()
