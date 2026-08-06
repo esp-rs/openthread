@@ -1587,13 +1587,6 @@ impl<'a> OpenThread<'a> {
     where
         R: Radio,
     {
-        let channel = {
-            let mut ot = self.activate();
-            let state = ot.state();
-
-            state.ot.radio_conf.channel
-        };
-
         let done = Cell::new(false);
         let _guard = scopeguard::guard((), |_| {
             if !done.get() {
@@ -1610,9 +1603,9 @@ impl<'a> OpenThread<'a> {
             }
         });
 
-        trace!("Energy scan: channel {}, {} ms", channel, duration_millis);
+        trace!("Energy scan: {} ms", duration_millis);
 
-        let result = radio.energy_scan(channel, duration_millis).await;
+        let result = radio.energy_scan(duration_millis).await;
 
         {
             let mut ot = self.activate();

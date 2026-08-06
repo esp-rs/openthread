@@ -490,8 +490,8 @@ pub trait Radio {
     /// snapshots the radio capabilities before the actual `Radio` instance is
     /// known, and its software-sampling fallback needs a synchronous RSSI
     /// read, which is unimplementable on top of this async trait).
-    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
-        let _ = (channel, duration_millis);
+    async fn energy_scan(&mut self, duration_millis: u16) -> Result<i8, Self::Error> {
+        let _ = duration_millis;
 
         Ok(crate::sys::OT_RADIO_RSSI_INVALID as i8)
     }
@@ -553,8 +553,8 @@ where
         T::set_src_match(self, entries).await
     }
 
-    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
-        T::energy_scan(self, channel, duration_millis).await
+    async fn energy_scan(&mut self, duration_millis: u16) -> Result<i8, Self::Error> {
+        T::energy_scan(self, duration_millis).await
     }
 
     async fn transmit(
@@ -661,6 +661,7 @@ pub struct MacRadio<R, T> {
     pending_rx: heapless::Deque<(PsduMeta, [u8; OT_RADIO_FRAME_MAX_SIZE as _]), 12>,
     /// The source-address-match table, consulted for the Frame Pending bit
     /// of the software ACKs answering data polls (see [`SrcMatchEntries`]).
+    // TODO: Inject from outside
     src_match: SrcMatchEntries,
     /// The PAN ID to filter by, if the filter policy allows it.
     pan_id: u16,
@@ -886,10 +887,10 @@ where
         }
     }
 
-    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+    async fn energy_scan(&mut self, duration_millis: u16) -> Result<i8, Self::Error> {
         // Energy scan involves no MAC-layer processing - pass through.
         self.radio
-            .energy_scan(channel, duration_millis)
+            .energy_scan(duration_millis)
             .await
             .map_err(Self::Error::Io)
     }
