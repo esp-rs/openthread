@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+* `NrfRadio`: convert the LQI energy reading into RSSI dBm according to nRF Product Specifications (#108)
 * Fix FTD Routers silently dropping mesh-local unicasts (#106)
   * Report OpenThread's default receive sensitivity (-110 dBm) instead of 0 dBm as the noise floor for link-quality grading
 * Advertise **Thread 1.4** instead of Thread 1.1 (#103)
