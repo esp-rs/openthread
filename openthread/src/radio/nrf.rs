@@ -139,6 +139,10 @@ impl Radio for NrfRadio<'_> {
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         trace!("NRF Radio, about to receive");
 
+        // `ED_RSSIOFFS`, offset for converting the radio's LQI energy reading to dBm.
+        // nRF52/53/54 Product Specifications report -92 or -93.
+        const ED_RSSI_OFFSET: i8 = -93;
+
         let channel = self.config.channel;
 
         loop {
@@ -157,8 +161,7 @@ impl Radio for NrfRadio<'_> {
 
             trace!("NRF Radio, received: {}", Bytes(&psdu_buf[..len]));
 
-            let lqi = packet.lqi();
-            let rssi = lqi as _; // TODO: Convert LQI to RSSI
+            let rssi = ED_RSSI_OFFSET.saturating_add_unsigned(packet.lqi());
 
             break Ok(PsduMeta {
                 // TODO: `embassy-nrf` driver provides the PSDU without the CRC,
