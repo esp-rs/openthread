@@ -15,7 +15,7 @@ use core::net::{Ipv6Addr, SocketAddrV6};
 use core::pin::pin;
 use core::ptr::addr_of_mut;
 
-use embassy_futures::select::{Either, Either3};
+use embassy_futures::select::{Either, Either3, Either4};
 
 use embassy_time::Instant;
 
@@ -75,17 +75,17 @@ use sys::{
     otDeviceRole_OT_DEVICE_ROLE_DETACHED, otDeviceRole_OT_DEVICE_ROLE_DISABLED,
     otDeviceRole_OT_DEVICE_ROLE_LEADER, otDeviceRole_OT_DEVICE_ROLE_ROUTER, otError,
     otError_OT_ERROR_ABORT, otError_OT_ERROR_CHANNEL_ACCESS_FAILURE, otError_OT_ERROR_DROP,
-    otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND, otError_OT_ERROR_NO_ACK,
-    otError_OT_ERROR_NO_ADDRESS, otError_OT_ERROR_NO_BUFS, otInstance, otInstanceFinalize,
-    otInstanceInitSingle, otIp6Address, otIp6GetUnicastAddresses, otIp6IsEnabled,
-    otIp6NewMessageFromBuffer, otIp6Send, otIp6SetEnabled, otIp6SetReceiveCallback, otIpCounters,
-    otLinkModeConfig, otMacCounters, otMessage, otMessageFree, otMessageGetBufferInfo,
-    otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead, otMessageSettings, otMleCounters,
-    otOperationalDataset, otOperationalDatasetTlvs, otPlatAlarmMilliFired,
-    otPlatRadioEnergyScanDone, otPlatRadioReceiveDone, otPlatRadioTxDone, otPlatRadioTxStarted,
-    otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess, otThreadGetDeviceRole,
-    otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode, OT_RADIO_CAPS_ACK_TIMEOUT,
-    OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
+    otError_OT_ERROR_INVALID_STATE, otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND,
+    otError_OT_ERROR_NO_ACK, otError_OT_ERROR_NO_ADDRESS, otError_OT_ERROR_NO_BUFS, otInstance,
+    otInstanceFinalize, otInstanceInitSingle, otIp6Address, otIp6GetUnicastAddresses,
+    otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send, otIp6SetEnabled, otIp6SetReceiveCallback,
+    otIpCounters, otLinkModeConfig, otMacCounters, otMessage, otMessageFree,
+    otMessageGetBufferInfo, otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead,
+    otMessageSettings, otMleCounters, otOperationalDataset, otOperationalDatasetTlvs,
+    otPlatAlarmMilliFired, otPlatRadioEnergyScanDone, otPlatRadioReceiveDone, otPlatRadioTxDone,
+    otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess,
+    otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode,
+    OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -1400,6 +1400,8 @@ impl<'a> OpenThread<'a> {
         let radio_cmd = || poll_fn(move |cx| self.activate().state().ot.radio.poll_wait(cx));
         let src_match_changed =
             || poll_fn(move |cx| self.activate().state().ot.src_match_changed.poll_wait(cx));
+        let conf_changed =
+            || poll_fn(move |cx| self.activate().state().ot.radio_conf_changed.poll_wait(cx));
 
         loop {
             trace!("Waiting for radio command");
@@ -1572,19 +1574,25 @@ impl<'a> OpenThread<'a> {
                         let result = {
                             let mut new_cmd = pin!(radio_cmd());
                             let mut src_match = pin!(src_match_changed());
+                            let mut conf = pin!(conf_changed());
                             let mut rx = pin!(radio.receive(&mut psdu_buf));
 
-                            embassy_futures::select::select3(&mut new_cmd, &mut src_match, &mut rx)
-                                .await
+                            embassy_futures::select::select4(
+                                &mut new_cmd,
+                                &mut src_match,
+                                &mut conf,
+                                &mut rx,
+                            )
+                            .await
                         };
 
                         match result {
-                            Either3::First(new_cmd) => {
+                            Either4::First(new_cmd) => {
                                 trace!("Rx interrupted by new command: {:?}", new_cmd);
 
                                 cmd = new_cmd;
                             }
-                            Either3::Second(()) => {
+                            Either4::Second(()) => {
                                 // The stack mutated the source-address-match
                                 // table: deliver a fresh snapshot to the
                                 // acking layer and keep receiving - this is
@@ -1606,7 +1614,26 @@ impl<'a> OpenThread<'a> {
 
                                 radio.update_src_match(&entries);
                             }
-                            Either3::Third(result) => {
+                            Either4::Third(()) => {
+                                // A standing configuration policy changed
+                                // (addresses, promiscuous, power, auto-sleep)
+                                // with no radio command in flight: refresh
+                                // the active Receive so the driver applies
+                                // it now - the C platforms apply setters
+                                // immediately, and e.g. a changed RLOC16
+                                // must reach the RX filter without waiting
+                                // for the stack's next command. The
+                                // commanded channel is preserved (the
+                                // standing config's channel may lag the
+                                // active command's).
+                                let mut conf = self.activate().state().ot.radio_conf.clone();
+                                conf.channel = unwrap!(cmd.conf()).channel;
+
+                                trace!("Radio conf refresh: {:?}", conf);
+
+                                cmd = RadioCommand::Rx(conf);
+                            }
+                            Either4::Fourth(result) => {
                                 let mut ot = self.activate();
 
                                 {
@@ -1916,7 +1943,9 @@ impl OtResources {
             radio_conf: Config::new(),
             src_match: radio::SrcMatchEntries::default(),
             src_match_changed: Signal::new(),
+            radio_conf_changed: Signal::new(),
             last_rssi: OT_RADIO_RSSI_INVALID as i8,
+            radio_enabled: false,
             // The *initial* radio capabilities, before the actual radio is
             // brought up by `run_radio` and reports its real set.
             //
@@ -2688,7 +2717,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_is_enabled(&mut self) -> bool {
-        let enabled = true; // TODO
+        let enabled = self.state().ot.radio_enabled;
         trace!("Plat radio is enabled callback, enabled: {}", enabled);
 
         enabled
@@ -2712,24 +2741,37 @@ impl<'a> OtContext<'a> {
         sens
     }
 
+    fn plat_radio_enable(&mut self) -> Result<(), OtError> {
+        info!("Plat radio enable callback");
+
+        let state = self.state();
+        state.ot.radio_enabled = true;
+
+        // No need to signal anything
+        // state.ot.radio.signal(RadioCommand::Sleep);
+
+        Ok(())
+    }
+
+    fn plat_radio_disable(&mut self) -> Result<(), OtError> {
+        info!("Plat radio disable callback");
+
+        let state = self.state();
+        state.ot.radio_enabled = false;
+
+        state.ot.radio.signal(RadioCommand::Sleep);
+
+        Ok(())
+    }
+
     fn plat_radio_get_promiscuous(&mut self) -> bool {
-        let promiscuous = false; // TODO
+        let promiscuous = self.state().ot.radio_conf.promiscuous;
         trace!(
             "Plat radio get promiscuous callback, promiscuous: {}",
             promiscuous
         );
 
         promiscuous
-    }
-
-    fn plat_radio_enable(&mut self) -> Result<(), OtError> {
-        info!("Plat radio enable callback");
-        Ok(()) // TODO
-    }
-
-    fn plat_radio_disable(&mut self) -> Result<(), OtError> {
-        info!("Plat radio disable callback");
-        Ok(()) // TODO
     }
 
     fn plat_radio_set_promiscuous(&mut self, promiscuous: bool) {
@@ -2742,6 +2784,7 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.promiscuous != promiscuous {
             state.ot.radio_conf.promiscuous = promiscuous;
+            state.ot.radio_conf_changed.signal(());
         }
     }
 
@@ -2764,6 +2807,7 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.power != power {
             state.ot.radio_conf.power = power;
+            state.ot.radio_conf_changed.signal(());
         }
 
         Ok(())
@@ -2790,6 +2834,7 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.ext_addr != Some(address) {
             state.ot.radio_conf.ext_addr = Some(address);
+            state.ot.radio_conf_changed.signal(());
         }
     }
 
@@ -2803,6 +2848,7 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.short_addr != Some(address) {
             state.ot.radio_conf.short_addr = Some(address);
+            state.ot.radio_conf_changed.signal(());
         }
     }
 
@@ -2821,6 +2867,7 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.alt_short_addr != alt {
             state.ot.radio_conf.alt_short_addr = alt;
+            state.ot.radio_conf_changed.signal(());
         }
     }
 
@@ -2831,6 +2878,7 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.pan_id != Some(pan_id) {
             state.ot.radio_conf.pan_id = Some(pan_id);
+            state.ot.radio_conf_changed.signal(());
         }
     }
 
@@ -2841,6 +2889,10 @@ impl<'a> OtContext<'a> {
         );
 
         let state = self.state();
+
+        if !state.ot.radio_enabled {
+            Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
+        }
 
         let mut conf = state.ot.radio_conf.clone();
         conf.channel = channel;
@@ -2856,6 +2908,11 @@ impl<'a> OtContext<'a> {
         info!("Plat radio sleep callback");
 
         let state = self.state();
+
+        if !state.ot.radio_enabled {
+            Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
+        }
+
         state.ot.radio.signal(RadioCommand::Sleep);
 
         Ok(())
@@ -2877,6 +2934,10 @@ impl<'a> OtContext<'a> {
 
         let state = self.state();
 
+        if !state.ot.radio_enabled {
+            Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
+        }
+
         let psdu = unsafe { core::slice::from_raw_parts_mut(frame.mPsdu, frame.mLength as _) };
 
         state.ot.radio_resources.snd_frame = *frame;
@@ -2895,6 +2956,10 @@ impl<'a> OtContext<'a> {
         trace!("Plat radio RX cmd: ch{}", channel);
 
         let state = self.state();
+
+        if !state.ot.radio_enabled {
+            Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
+        }
 
         let mut conf = state.ot.radio_conf.clone();
         conf.channel = channel;
@@ -2916,7 +2981,11 @@ impl<'a> OtContext<'a> {
 
         let state = self.state();
 
-        state.ot.radio_conf.auto_sleep = !on;
+        #[allow(clippy::nonminimal_bool)] // `!= !on` mirrors the polarity flip below
+        if state.ot.radio_conf.auto_sleep != !on {
+            state.ot.radio_conf.auto_sleep = !on;
+            state.ot.radio_conf_changed.signal(());
+        }
     }
 
     /// The `otPlatRadio*SrcMatch*` surface: mutate the mirrored table and
@@ -3221,11 +3290,23 @@ struct OtState<'a> {
     src_match: radio::SrcMatchEntries,
     /// Raised on every `src_match` mutation; consumed by the radio runner.
     src_match_changed: Signal<()>,
+    /// Raised whenever a standing radio-configuration policy in
+    /// [`OtState::radio_conf`] changes (addresses, promiscuous mode, power,
+    /// auto-sleep); consumed by the radio runner, which refreshes the active
+    /// Receive so the change reaches the driver without waiting for the
+    /// stack's next radio command.
+    radio_conf_changed: Signal<()>,
     /// The RSSI of the most recently received frame (ACKs included) - the
     /// cheap latch `otPlatRadioGetRssi`'s synchronous query is served from
     /// (real radio drivers commonly do the same). Invalid until the first
     /// reception.
     last_rssi: i8,
+    /// Whether the radio is enabled (`otPlatRadioEnable`/`Disable`) - the
+    /// Disabled-vs-not axis of the radio state machine, orthogonal to the
+    /// commanded Sleep/Receive/Transmit states the runner executes. Radio
+    /// operations arriving while disabled answer `INVALID_STATE`, per the
+    /// C contract.
+    radio_enabled: bool,
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,
