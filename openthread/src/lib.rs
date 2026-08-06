@@ -1495,6 +1495,13 @@ impl<'a> OpenThread<'a> {
 
                                 {
                                     let state = ot.state();
+
+                                    if let Some(rssi) =
+                                        result.as_ref().ok().and_then(|m| m.and_then(|m| m.rssi))
+                                    {
+                                        state.ot.last_rssi = rssi;
+                                    }
+
                                     let radio_resources = &mut state.ot.radio_resources;
 
                                     match result {
@@ -1616,6 +1623,11 @@ impl<'a> OpenThread<'a> {
                                             );
 
                                             let instance = state.ot.instance;
+
+                                            if let Some(rssi) = rcv_psdu_meta.rssi {
+                                                state.ot.last_rssi = rssi;
+                                            }
+
                                             // Computed before `radio_resources`
                                             // takes its mutable borrow.
                                             let acked_with_fp = acked_with_frame_pending(
@@ -1904,6 +1916,7 @@ impl OtResources {
             radio_conf: Config::new(),
             src_match: radio::SrcMatchEntries::default(),
             src_match_changed: Signal::new(),
+            last_rssi: OT_RADIO_RSSI_INVALID as i8,
             // The *initial* radio capabilities, before the actual radio is
             // brought up by `run_radio` and reports its real set.
             //
@@ -2682,15 +2695,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_get_rssi(&mut self) -> i8 {
-        // This is a *synchronous* platform API, but the radio is an async
-        // driver owned by the radio runner task - there is no way to sample it
-        // from here. Report "invalid" (the value the API defines for "no
-        // measurement available"), so consumers - most notably OpenThread's
-        // software energy scan, used when the radio does not advertise
-        // `Capabilities::ENERGY_SCAN` - see honest invalid readings rather
-        // than fake ones. Radios that can measure energy advertise
-        // `ENERGY_SCAN` and serve scans via `Radio::energy_scan` instead.
-        let rssi = OT_RADIO_RSSI_INVALID as i8;
+        let rssi = self.state().ot.last_rssi;
         trace!("Plat radio get RSSI callback, RSSI: {}", rssi);
 
         rssi
@@ -3216,6 +3221,11 @@ struct OtState<'a> {
     src_match: radio::SrcMatchEntries,
     /// Raised on every `src_match` mutation; consumed by the radio runner.
     src_match_changed: Signal<()>,
+    /// The RSSI of the most recently received frame (ACKs included) - the
+    /// cheap latch `otPlatRadioGetRssi`'s synchronous query is served from
+    /// (real radio drivers commonly do the same). Invalid until the first
+    /// reception.
+    last_rssi: i8,
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,

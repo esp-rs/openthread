@@ -199,12 +199,6 @@ const EXPECT_TESTS: &[&str] = &[
 /// `Cert_*` scenarios) run in virtual time: verified green against the DUT.
 ///
 /// The excluded remainder of that pool:
-/// - `test_radio_filter`: its bare `scan energy` (duration 0) takes
-///   OpenThread's SYNCHRONOUS sampling path (`Mac::PerformEnergyScan` loops
-///   `Receive(ch)` + `otPlatRadioGetRssi`), and the async `Radio` trait has
-///   no synchronous RSSI read - the glue honestly answers "invalid", so
-///   every channel is omitted. Needs the trait's dormant `fn rssi()` TODO
-///   (sims would report their idle sample, hardware its last-RX latch).
 /// - `test_srp_register_500_services`: the DUT stops answering after eight
 ///   `srp client service add` commands land while registration traffic is
 ///   in flight - a wedge needing dedicated debugging (not heap: reproduced
@@ -247,6 +241,7 @@ const FUNC_TESTS_VT: &[&str] = &[
     "test_on_mesh_prefix",
     "test_ping",
     "test_ping_lla_src",
+    "test_radio_filter",
     "test_reed_address_solicit_rejected",
     "test_reset",
     "test_router_downgrade_on_sec_policy_change",
