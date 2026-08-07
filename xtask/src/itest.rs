@@ -300,31 +300,118 @@ const FUNC_TESTS_VT: &[&str] = &[
 ];
 
 /// The tests the hardware tier runs by default, with the node count each
-/// needs (i.e. the number of dongles it takes to run it).
+/// needs (i.e. the number of radios it takes to run it).
 ///
-/// Unlike every other allowlist in this file, these entries are **not**
-/// verified green - there is no hardware in CI to verify them against. They
-/// are a deliberately small bring-up set, chosen to isolate failures to the
-/// radio rather than the scenario: the two `Cert_*` entries are already
-/// verified at 1x pacing on the simulated medium (they are in
-/// [`CERT_TESTS`]), so a failure here points at the co-processor link, not
-/// at the stack above it. Grow the list as entries go green on real
-/// hardware - the same per-test promotion rule the other allowlists use.
+/// Verified green against two real radios (an nRF52840 and an ESP32-C6, both
+/// running stock `ot-rcp`). Deliberately small: it is the smoke test that says
+/// the rig works, and it runs in a few minutes. The wider pool is
+/// [`HW_TESTS_EXTRA`], behind `--hw-extended`.
 const HW_TESTS: &[(&str, usize)] = &[
-    // Leader/router attach: the smallest scenario that proves two real
-    // radios can find and join each other.
+    // Leader/router attach: the smallest scenario that proves two real radios
+    // can find and join each other.
     ("Cert_5_1_01_RouterAttach", 2),
-    // Link-local unicast + multicast ping exchanges - real ACKs, real
-    // retries, real timing.
+    // Link-local unicast + multicast ping exchanges - real ACKs, real retries,
+    // real timing.
     ("Cert_5_3_01_LinkLocal", 2),
     // An active scan, i.e. the co-processor's own channel-scan path.
     ("test_mac_scan", 2),
-    // REED -> router promotion; more MLE traffic over the same two radios.
+    // REED -> router promotion; sustained MLE traffic over the same two radios.
     ("test_router_upgrade", 2),
-    // Multi-hop ping across a three-node line (needs a third dongle).
+];
+
+/// Additional tests the hardware tier runs with `--hw-extended`: every
+/// upstream scenario needing at most three nodes that is *already verified in
+/// simulation*.
+///
+/// That filter is the point. Each of these is green on the simulated medium
+/// (see [`CERT_TESTS`] / [`CERT_TESTS_VT_EXTRA`] / [`FUNC_TESTS_VT`]), so a
+/// failure here is about the radio path - the spinel link, the co-processor's
+/// MAC, real over-the-air timing - and not about the scenario.
+///
+/// Unlike every other allowlist in this file, these are **candidates**: they
+/// have not been run against hardware. Promote entries into [`HW_TESTS`] as
+/// they go green, the same per-test rule the simulation lists use.
+///
+/// Expect this to take a while. Real radios serve every scripted delay at 1x
+/// and some scenarios sleep out protocol timers, so the full set is hours
+/// rather than minutes - name individual tests on the command line to work
+/// through it in batches.
+const HW_TESTS_EXTRA: &[(&str, usize)] = &[
+    ("test_set_mliid", 1),
+    ("Cert_5_1_05_RouterAddressTimeout", 2),
+    ("Cert_5_1_06_RemoveRouterId", 2),
+    ("Cert_5_1_13_RouterReset", 2),
+    ("Cert_5_5_01_LeaderReboot", 2),
+    ("Cert_5_8_02_KeyIncrement", 2),
+    ("Cert_5_8_03_KeyIncrementRollOver", 2),
+    ("Cert_6_1_01_RouterAttach", 2),
+    ("Cert_6_3_02_NetworkDataUpdate", 2),
+    ("Cert_6_4_01_LinkLocal", 2),
+    ("Cert_6_5_01_ChildResetReattach", 2),
+    ("Cert_6_5_03_ChildResetSynchronize", 2),
+    ("Cert_6_6_01_KeyIncrement", 2),
+    ("Cert_6_6_02_KeyIncrementRollOver", 2),
+    ("Cert_8_1_01_Commissioning", 2),
+    ("Cert_8_1_02_Commissioning", 2),
+    ("Cert_8_1_06_Commissioning", 2),
+    ("Cert_8_3_01_CommissionerPetition", 2),
+    ("Cert_9_2_01_MGMTCommissionerGet", 2),
+    ("Cert_9_2_02_MGMTCommissionerSet", 2),
+    ("Cert_9_2_03_ActiveDatasetGet", 2),
+    ("Cert_9_2_04_ActiveDataset", 2),
+    ("Cert_9_2_05_ActiveDataset", 2),
+    ("Cert_9_2_19_PendingDatasetGet", 2),
+    ("test_child_supervision", 2),
+    ("test_coap_block", 2),
+    ("test_coap_observe", 2),
+    ("test_coaps", 2),
+    ("test_dns_client_config_auto_start", 2),
+    ("test_dnssd_name_with_special_chars", 2),
+    ("test_history_tracker", 2),
+    ("test_ipv6_fragmentation", 2),
+    ("test_ipv6_source_selection", 2),
+    ("test_leader_reboot_multiple_link_request", 2),
+    ("test_reed_address_solicit_rejected", 2),
+    ("test_router_downgrade_on_sec_policy_change", 2),
+    ("test_srp_auto_host_address", 2),
+    ("test_srp_client_change_lease", 2),
+    ("test_srp_client_remove_host", 2),
+    ("test_srp_lease", 2),
+    ("test_srp_many_services_mtu_check", 2),
+    ("test_srp_register_services_diff_lease", 2),
+    ("test_srp_register_single_service", 2),
+    ("test_srp_server_reboot_port", 2),
+    ("test_srp_sub_type", 2),
+    ("test_srp_ttl", 2),
+    ("Cert_5_1_03_RouterAddressReallocation", 3),
+    ("Cert_5_1_04_RouterAddressReallocation", 3),
+    ("Cert_5_1_12_NewRouterNeighborSync", 3),
+    ("Cert_5_3_06_RouterIdMask", 3),
+    ("Cert_5_3_11_AddressQueryTimeoutIntervals", 3),
+    ("Cert_5_5_02_LeaderReboot", 3),
+    ("Cert_6_1_02_REEDAttach", 3),
+    ("Cert_6_2_01_NewPartition", 3),
+    ("Cert_6_3_01_OrphanReattach", 3),
+    ("Cert_6_4_02_RealmLocal", 3),
+    ("Cert_6_5_02_ChildResetReattach", 3),
+    ("Cert_7_1_08_BorderRouterAsFED", 3),
+    ("Cert_8_2_01_JoinerRouter", 3),
+    ("Cert_8_2_02_JoinerRouter", 3),
+    ("Cert_8_2_05_JoinerRouter", 3),
+    ("Cert_9_2_07_DelayTimer", 3),
+    ("Cert_9_2_08_PersistentDatasets", 3),
+    ("Cert_9_2_17_Orphan", 3),
+    ("test_detach", 3),
+    ("test_inform_previous_parent_on_reattach", 3),
     ("test_ping", 3),
-    // Route table convergence over three real links.
+    ("test_ping_lla_src", 3),
+    ("test_radio_filter", 3),
+    ("test_reset", 3),
     ("test_route_table", 3),
+    ("test_service", 3),
+    ("test_srp_name_conflicts", 3),
+    ("test_srp_server_anycast_mode", 3),
+    ("test_zero_len_external_route", 3),
 ];
 
 /// Wall-clock budget for a test; exceeding it kills and fails the test.
@@ -370,6 +457,13 @@ pub struct ItestArgs {
     /// 460800). Ignored by devices exposing a USB CDC serial port.
     #[arg(long)]
     hw_baud: Option<u32>,
+
+    /// Widen the hardware run from the verified smoke set to every
+    /// simulation-verified scenario the attached radios can host
+    /// ([`HW_TESTS_EXTRA`]). Hours, not minutes - real radios serve every
+    /// scripted delay at 1x.
+    #[arg(long, requires = "hw_port")]
+    hw_extended: bool,
 
     /// Skip (re)building the DUT binaries.
     #[arg(long)]
@@ -446,9 +540,16 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
         if !hw_ports.is_empty() {
             // Only what the attached dongles can actually host; the rest is
             // reported, not silently dropped.
-            let (runnable, oversized): (Vec<_>, Vec<_>) = HW_TESTS
-                .iter()
-                .partition(|(_, nodes)| *nodes <= hw_ports.len());
+            let extra: &[(&str, usize)] = if args.hw_extended {
+                HW_TESTS_EXTRA
+            } else {
+                &[]
+            };
+
+            let pool = HW_TESTS.iter().chain(extra.iter());
+
+            let (runnable, oversized): (Vec<_>, Vec<_>) =
+                pool.partition(|(_, nodes)| *nodes <= hw_ports.len());
 
             skipped_oversized = oversized
                 .iter()
