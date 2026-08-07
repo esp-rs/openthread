@@ -158,16 +158,26 @@ impl MacCapabilities {
     /// [`PhyRadioRunner`](crate::PhyRadioRunner). Both panic on a radio that
     /// reports less.
     ///
-    /// This is everything except [`SRC_MATCH`](Self::SRC_MATCH), which is the
-    /// one capability nothing can polyfill: the source-match table only matters
-    /// to whoever sends the ACKs, so a radio doing its own RX ACKs without one
-    /// answers every data poll with Frame Pending set - protocol-safe
-    /// over-promising that no software layer above it can improve on.
+    /// This is everything except the two capabilities a software layer above
+    /// the radio cannot supply, and whose absence costs a diagnostic or an
+    /// optimization rather than correct Thread operation:
+    ///
+    /// - [`SRC_MATCH`](Self::SRC_MATCH): the source-match table only matters to
+    ///   whoever sends the ACKs, so a radio doing its own RX ACKs without one
+    ///   answers every data poll with Frame Pending set - protocol-safe
+    ///   over-promising that nothing above it can improve on.
+    /// - [`PROMISCUOUS`](Self::PROMISCUOUS): a wrapper can only *add* filtering
+    ///   to what a radio delivers, never recover frames the radio's own filter
+    ///   already dropped. A radio that filters in hardware but cannot be told
+    ///   to stop simply cannot sniff - and sniffing is not part of operating a
+    ///   Thread network.
     ///
     /// A radio reporting less than this - a bare PHY, typically - must be
     /// wrapped by the user in a [`MacRadio`], which emulates the missing pieces
     /// in software.
-    pub const REQUIRED: Self = Self::all().difference(Self::SRC_MATCH);
+    pub const REQUIRED: Self = Self::all()
+        .difference(Self::SRC_MATCH)
+        .difference(Self::PROMISCUOUS);
 
     /// Panic unless these capabilities cover [`Self::REQUIRED`].
     pub(crate) fn assert_required(&self) {
