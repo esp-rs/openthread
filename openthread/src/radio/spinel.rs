@@ -295,6 +295,24 @@ fn spinel_frame_prefix(out: &mut [u8], tid: u8, cmd: u32, prop: u32) -> Option<u
 
 /// Parse the header of an incoming spinel frame: returns `(tid, cmd, prop,
 /// payload_offset)`.
+/// Log a spinel frame's header, so a link that misbehaves can be read off a
+/// `RUST_LOG=openthread=trace` run rather than guessed at. Deliberately just
+/// the header plus the payload length: whole frames at this level would bury
+/// the conversation in radio traffic.
+fn trace_frame(direction: &str, frame: &[u8]) {
+    match spinel_parse_header(frame) {
+        Some((tid, cmd, prop, off)) => trace!(
+            "{} tid {} cmd 0x{:x} prop 0x{:x} ({} bytes)",
+            direction,
+            tid,
+            cmd,
+            prop,
+            frame.len().saturating_sub(off),
+        ),
+        None => trace!("{} unparseable ({} bytes)", direction, frame.len()),
+    }
+}
+
 fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
     if frame.is_empty() {
         return None;
@@ -427,6 +445,11 @@ const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
     .union(MacCapabilities::FILTER_EXT_ADDR)
     .union(MacCapabilities::TX_ACK)
     .union(MacCapabilities::RX_ACK)
+    // The RCP's MAC filter can be switched off wholesale
+    // (`PROP_MAC_PROMISCUOUS_MODE`, pushed by `flush_config`). Note this is
+    // one no layer above could emulate: software can only add filtering to
+    // what a radio delivers, never recover what the radio already dropped.
+    .union(MacCapabilities::PROMISCUOUS)
     // The RCP firmware's MAC keeps a source-match table (fed via the
     // `MAC_SRC_MATCH_*` properties, see `flush_src_match`) and answers data
     // polls' ACKs from it.
@@ -648,6 +671,8 @@ where
     /// Send an already-built raw spinel `frame` to the transport (which frames it
     /// for its wire — HDLC for UART, the SPI header protocol for SPI).
     async fn send_frame(&mut self, frame: &[u8]) -> Result<(), RadioErrorKind> {
+        trace_frame("RCP <-", frame);
+
         self.transport
             .send(frame)
             .await
@@ -673,6 +698,9 @@ where
             }
         };
         self.rx_len = len;
+
+        trace_frame("RCP ->", &self.rx_frame[..len]);
+
         Ok(len)
     }
 
@@ -830,15 +858,49 @@ where
             .await
             .map_err(|_| RadioErrorKind::TxFailed)?;
 
-        let (rprop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
-        if rprop != prop {
-            // Typically a `LAST_STATUS` error reply - e.g. the RCP does not
-            // implement the property. Parsing its payload as the requested
-            // property's value would accept a status code as data.
-            return Err(RadioErrorKind::Other);
-        }
+        let off = self.await_prop(tid, prop).await?;
         let len = self.rx_len;
+
         Ok(f(&self.rx_frame[off..len]))
+    }
+
+    /// Await the response to `tid` that actually carries `prop`.
+    ///
+    /// A `PROP_VALUE_GET` is answered either with the property itself or with
+    /// `LAST_STATUS` - the RCP's way of saying it cannot serve the request,
+    /// which is an error for this property (and, for the optional reads,
+    /// simply means "use the default"). Parsing that status code as if it were
+    /// the property's value would silently accept nonsense.
+    ///
+    /// Any *other* property arriving under our tid is neither: it is a stray
+    /// frame, and the response we asked for is still coming - so keep waiting
+    /// rather than failing the transaction.
+    async fn await_prop(&mut self, tid: u8, prop: u32) -> Result<usize, RadioErrorKind> {
+        loop {
+            let (rprop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
+
+            if rprop == prop {
+                return Ok(off);
+            }
+
+            if rprop == PROP_LAST_STATUS {
+                let status = spinel_uint_decode(&self.rx_frame[off..self.rx_len])
+                    .map(|(status, _)| status)
+                    .unwrap_or(0);
+
+                // Not an error in itself - a refusal is a normal protocol
+                // outcome, and the caller decides whether it matters (the
+                // best-effort reads fall back to a default, and say so).
+                debug!("RCP: property 0x{:x} refused, LAST_STATUS {}", prop, status);
+
+                return Err(RadioErrorKind::Other);
+            }
+
+            warn!(
+                "RCP: awaiting property 0x{:x} on tid {}, got 0x{:x} - ignoring",
+                prop, tid, rprop
+            );
+        }
     }
 
     /// Await a single response frame with a matching `tid`, dispatching any
@@ -991,11 +1053,20 @@ where
         // why the `Radio` trait's compile-time `const CAPS` cannot carry it and
         // [`Radio::init`] returns it instead. We keep any bits our fixed baseline
         // guarantees even if a minimal RCP under-reports.
+        // Best-effort: this property is an OpenThread extension, and stock RCP
+        // firmware that predates it (or omits it) answers `PROP_NOT_FOUND`.
+        // The fixed baseline below is then the whole answer - which is what
+        // the RCP can do anyway, since the baseline is exactly the set the
+        // raw-MAC contract guarantees.
         let caps_bits = self
             .get_prop(PROP_RADIO_CAPS, |payload| {
                 spinel_uint_decode(payload).map(|(v, _)| v).unwrap_or(0)
             })
-            .await?;
+            .await
+            .unwrap_or_else(|_| {
+                info!("RCP does not report RADIO_CAPS; using the baseline only");
+                0
+            });
         self.caps = Capabilities::from_bits_truncate(caps_bits as u16) | SPINEL_RADIO_CAPS;
 
         info!(

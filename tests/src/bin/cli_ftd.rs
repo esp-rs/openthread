@@ -111,6 +111,20 @@ fn main() {
     log::set_boxed_logger(Box::new(TeeOtLogger { inner })).expect("install logger");
     log::set_max_level(max_level);
 
+    // Route panics through the logger too. A node's stderr goes into the
+    // harness's pexpect buffer, which it never writes anywhere - so by default
+    // a panicking node just vanishes ("EOF" on the harness side) with no trace
+    // of why. The per-node log file is the artifact that survives, so put the
+    // panic there as well as on stderr.
+    {
+        let default_hook = std::panic::take_hook();
+
+        std::panic::set_hook(Box::new(move |info| {
+            log::error!("node panicked: {info}");
+            default_hook(info);
+        }));
+    }
+
     std::thread::spawn(read_stdin);
 
     // Virtual-time mode when the harness says so (the env var is set for the

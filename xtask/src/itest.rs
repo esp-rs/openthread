@@ -455,29 +455,26 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
                 .map(|(test, nodes)| format!("{test} (needs {nodes})"))
                 .collect();
 
-            runnable
-                .iter()
-                .map(|(test, _)| test.to_string())
-                .collect()
+            runnable.iter().map(|(test, _)| test.to_string()).collect()
         } else {
-        let defaults = match args.suite {
-            Suite::Cert => CERT_TESTS,
-            Suite::Expect => EXPECT_TESTS,
-        };
-        let extra = match args.suite {
-            Suite::Cert if args.virtual_time => CERT_TESTS_VT_EXTRA,
-            _ => &[][..],
-        };
-        let func = match args.suite {
-            Suite::Cert if args.virtual_time => FUNC_TESTS_VT,
-            _ => &[][..],
-        };
-        defaults
-            .iter()
-            .chain(extra)
-            .chain(func)
-            .map(|t| t.to_string())
-            .collect()
+            let defaults = match args.suite {
+                Suite::Cert => CERT_TESTS,
+                Suite::Expect => EXPECT_TESTS,
+            };
+            let extra = match args.suite {
+                Suite::Cert if args.virtual_time => CERT_TESTS_VT_EXTRA,
+                _ => &[][..],
+            };
+            let func = match args.suite {
+                Suite::Cert if args.virtual_time => FUNC_TESTS_VT,
+                _ => &[][..],
+            };
+            defaults
+                .iter()
+                .chain(extra)
+                .chain(func)
+                .map(|t| t.to_string())
+                .collect()
         }
     } else {
         args.tests
@@ -713,128 +710,127 @@ fn ensure_venv(build_dir: &Path, thread_cert: &Path) -> Result<PathBuf> {
 }
 
 impl Runner {
-fn run_cert_test(&self, test: &str, index: usize) -> Result<Outcome> {
-    let Self {
-        ot_root,
-        build_dir,
-        cli_ftd,
-        hw,
-        virtual_time,
-        timeout_secs,
-    } = self;
-    let (virtual_time, timeout_secs) = (*virtual_time, *timeout_secs);
+    fn run_cert_test(&self, test: &str, index: usize) -> Result<Outcome> {
+        let Self {
+            ot_root,
+            build_dir,
+            cli_ftd,
+            hw,
+            virtual_time,
+            timeout_secs,
+        } = self;
+        let (virtual_time, timeout_secs) = (*virtual_time, *timeout_secs);
 
-    let thread_cert = ot_root.join("tests").join("scripts").join("thread-cert");
-    let python = ensure_venv(build_dir, &thread_cert)?;
+        let thread_cert = ot_root.join("tests").join("scripts").join("thread-cert");
+        let python = ensure_venv(build_dir, &thread_cert)?;
 
-    let script = thread_cert.join(format!("{test}.py"));
-    if !script.is_file() {
-        bail!("no such thread-cert test: {}", script.display());
+        let script = thread_cert.join(format!("{test}.py"));
+        if !script.is_file() {
+            bail!("no such thread-cert test: {}", script.display());
+        }
+
+        // A fresh cwd per run: the harness drops logs and pcaps into it.
+        let run_dir = build_dir.join("run").join(test);
+        if run_dir.exists() {
+            fs::remove_dir_all(&run_dir)?;
+        }
+        fs::create_dir_all(&run_dir)?;
+
+        let mut command = Command::new(&python);
+        command
+            .arg(&script)
+            .current_dir(&run_dir)
+            .env("PYTHONPATH", &thread_cert)
+            // The DUT: node.py spawns `$OT_CLI_PATH <node id>` under a pexpect pty.
+            .env("OT_CLI_PATH", cli_ftd)
+            // Real or virtual time - for the harness AND, via inheritance, the
+            // spawned DUT nodes (which switch their clock/radio accordingly).
+            .env("VIRTUAL_TIME", if virtual_time { "1" } else { "0" })
+            // Matches the wrapped OpenThread's `OT_THREAD_VERSION` - and keeps
+            // node.py off its 1.1-compatibility binary paths.
+            .env("THREAD_VERSION", "1.4")
+            // Distinct radio medium per test, so a straggler node of a previous
+            // test cannot inject frames into this one.
+            .env("PORT_OFFSET", (index % 10).to_string())
+            // Per-node DUT log files in the run dir (`node.<id>`); the level
+            // comes from `RUST_LOG`, so `RUST_LOG=openthread=debug cargo xtask
+            // itest <test>` captures a failing node's stack-side view.
+            .env("CLI_FTD_LOG", run_dir.join("node"))
+            // Per-node persisted settings land in the run dir (fresh per run).
+            .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
+
+        // Real radios, if this is a hardware run (`PORT_OFFSET` above then means
+        // nothing - there is only one air).
+        hw.apply(&mut command);
+
+        run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
     }
 
-    // A fresh cwd per run: the harness drops logs and pcaps into it.
-    let run_dir = build_dir.join("run").join(test);
-    if run_dir.exists() {
-        fs::remove_dir_all(&run_dir)?;
-    }
-    fs::create_dir_all(&run_dir)?;
+    fn run_expect_test(&self, test: &str) -> Result<Outcome> {
+        let Self {
+            ot_root,
+            build_dir,
+            cli_ftd,
+            hw,
+            timeout_secs,
+            ..
+        } = self;
+        let timeout_secs = *timeout_secs;
 
-    let mut command = Command::new(&python);
-    command
-        .arg(&script)
-        .current_dir(&run_dir)
-        .env("PYTHONPATH", &thread_cert)
-        // The DUT: node.py spawns `$OT_CLI_PATH <node id>` under a pexpect pty.
-        .env("OT_CLI_PATH", cli_ftd)
-        // Real or virtual time - for the harness AND, via inheritance, the
-        // spawned DUT nodes (which switch their clock/radio accordingly).
-        .env("VIRTUAL_TIME", if virtual_time { "1" } else { "0" })
-        // Matches the wrapped OpenThread's `OT_THREAD_VERSION` - and keeps
-        // node.py off its 1.1-compatibility binary paths.
-        .env("THREAD_VERSION", "1.4")
-        // Distinct radio medium per test, so a straggler node of a previous
-        // test cannot inject frames into this one.
-        .env("PORT_OFFSET", (index % 10).to_string())
-        // Per-node DUT log files in the run dir (`node.<id>`); the level
-        // comes from `RUST_LOG`, so `RUST_LOG=openthread=debug cargo xtask
-        // itest <test>` captures a failing node's stack-side view.
-        .env("CLI_FTD_LOG", run_dir.join("node"))
-        // Per-node persisted settings land in the run dir (fresh per run).
-        .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
-
-    // Real radios, if this is a hardware run (`PORT_OFFSET` above then means
-    // nothing - there is only one air).
-    hw.apply(&mut command);
-
-    run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
-}
-
-fn run_expect_test(&self, test: &str) -> Result<Outcome> {
-    let Self {
-        ot_root,
-        build_dir,
-        cli_ftd,
-        hw,
-        timeout_secs,
-        ..
-    } = self;
-    let timeout_secs = *timeout_secs;
-
-    if !binary_exists("expect") {
-        bail!(
-            "the `expect` binary is required for the expect suite \
+        if !binary_exists("expect") {
+            bail!(
+                "the `expect` binary is required for the expect suite \
              (e.g. `sudo apt-get install expect`)"
-        );
+            );
+        }
+
+        let script = ot_root
+            .join("tests")
+            .join("scripts")
+            .join("expect")
+            .join(format!("{test}.exp"));
+        if !script.is_file() {
+            bail!("no such expect test: {}", script.display());
+        }
+
+        // `$OT_SIMULATION_APPS/cli/ot-cli-ftd` is how the suite spawns nodes;
+        // point it at the DUT via a shim directory. No `ot-cli-mtd`/`ncp/ot-rcp`
+        // links: tests needing those flavors must stay off the allowlist.
+        let apps = build_dir.join("simulation-apps");
+        let cli_dir = apps.join("cli");
+        fs::create_dir_all(&cli_dir)?;
+
+        let link = cli_dir.join("ot-cli-ftd");
+        if fs::symlink_metadata(&link).is_ok() {
+            fs::remove_file(&link)?;
+        }
+        std::os::unix::fs::symlink(cli_ftd, &link)
+            .with_context(|| format!("symlinking {}", link.display()))?;
+
+        let run_dir = build_dir.join("run").join(test);
+        if run_dir.exists() {
+            fs::remove_dir_all(&run_dir)?;
+        }
+        fs::create_dir_all(&run_dir)?;
+
+        let mut command = Command::new("expect");
+        command
+            .arg("-f")
+            .arg(&script)
+            // The scripts `source tests/scripts/expect/_common.exp` relative to
+            // the cwd, so they must run from the OpenThread repo root. They write
+            // nothing there (our log goes to `run_dir` via an absolute path;
+            // gcov prefixes only materialize for coverage builds).
+            .current_dir(ot_root)
+            .env("OT_SIMULATION_APPS", &apps)
+            // The DUT nodes run with the repo root as cwd (see above); point
+            // their persisted settings at the run dir instead.
+            .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
+
+        hw.apply(&mut command);
+
+        run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
     }
-
-    let script = ot_root
-        .join("tests")
-        .join("scripts")
-        .join("expect")
-        .join(format!("{test}.exp"));
-    if !script.is_file() {
-        bail!("no such expect test: {}", script.display());
-    }
-
-    // `$OT_SIMULATION_APPS/cli/ot-cli-ftd` is how the suite spawns nodes;
-    // point it at the DUT via a shim directory. No `ot-cli-mtd`/`ncp/ot-rcp`
-    // links: tests needing those flavors must stay off the allowlist.
-    let apps = build_dir.join("simulation-apps");
-    let cli_dir = apps.join("cli");
-    fs::create_dir_all(&cli_dir)?;
-
-    let link = cli_dir.join("ot-cli-ftd");
-    if fs::symlink_metadata(&link).is_ok() {
-        fs::remove_file(&link)?;
-    }
-    std::os::unix::fs::symlink(cli_ftd, &link)
-        .with_context(|| format!("symlinking {}", link.display()))?;
-
-    let run_dir = build_dir.join("run").join(test);
-    if run_dir.exists() {
-        fs::remove_dir_all(&run_dir)?;
-    }
-    fs::create_dir_all(&run_dir)?;
-
-    let mut command = Command::new("expect");
-    command
-        .arg("-f")
-        .arg(&script)
-        // The scripts `source tests/scripts/expect/_common.exp` relative to
-        // the cwd, so they must run from the OpenThread repo root. They write
-        // nothing there (our log goes to `run_dir` via an absolute path;
-        // gcov prefixes only materialize for coverage builds).
-        .current_dir(ot_root)
-        .env("OT_SIMULATION_APPS", &apps)
-        // The DUT nodes run with the repo root as cwd (see above); point
-        // their persisted settings at the run dir instead.
-        .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
-
-    hw.apply(&mut command);
-
-    run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
-}
-
 
     /// On a failed hardware run, say so when the cause was the radio link
     /// rather than the scenario.
@@ -852,26 +848,22 @@ fn run_expect_test(&self, test: &str) -> Result<Outcome> {
 
         let run_dir = self.build_dir.join("run").join(test);
 
-        let Ok(entries) = fs::read_dir(&run_dir) else {
-            return;
-        };
-
-        let dead: Vec<String> = entries
-            .flatten()
-            .filter(|entry| {
-                entry
-                    .file_name()
-                    .to_string_lossy()
-                    .starts_with("node.")
-            })
-            .filter(|entry| {
-                fs::read_to_string(entry.path())
+        let dead: Vec<String> = nodes(&run_dir)
+            .into_iter()
+            .filter(|node| {
+                fs::read_to_string(run_dir.join(node))
                     .is_ok_and(|log| log.contains(RADIO_INIT_FAILED))
             })
-            .map(|entry| entry.file_name().to_string_lossy().into_owned())
             .collect();
 
         if dead.is_empty() {
+            // The radios are up, so whatever went wrong is above them - and
+            // the per-node logs are where it will be visible (the harness
+            // output only shows its own side of a node that went away).
+            for node in nodes(&run_dir) {
+                echo_log_tail(&run_dir.join(&node), 20);
+            }
+
             return;
         }
 
@@ -882,6 +874,22 @@ fn run_expect_test(&self, test: &str) -> Result<Outcome> {
             dead.join(", "),
         );
     }
+}
+
+/// The per-node log file names in a run directory (`node.1`, `node.2`, ...).
+fn nodes(run_dir: &Path) -> Vec<String> {
+    let Ok(entries) = fs::read_dir(run_dir) else {
+        return Vec::new();
+    };
+
+    let mut nodes: Vec<String> = entries
+        .flatten()
+        .map(|entry| entry.file_name().to_string_lossy().into_owned())
+        .filter(|name| name.starts_with("node."))
+        .collect();
+
+    nodes.sort();
+    nodes
 }
 
 /// Run a test command with its output captured to `log_path`, a wall-clock
