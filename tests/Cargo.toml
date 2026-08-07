@@ -36,8 +36,9 @@ embassy-time = { version = "0.5", default-features = false }
 embassy-time-driver = { version = "0.2", features = ["tick-hz-1_000_000"] }
 embassy-futures = "0.1"
 # `poll(2)` for the executor's idle blocking (simulator event socket + the
-# cross-thread wake pipe).
-nix = { version = "0.30", default-features = false, features = ["poll"] }
+# cross-thread wake pipe); `term`/`fs` for the HIL tier's serial bridge, which
+# puts the device's console tty into raw mode.
+nix = { version = "0.30", default-features = false, features = ["poll", "term", "fs"] }
 log = "0.4"
 env_logger = "0.11"
 rand = { version = "0.9", features = ["std", "std_rng", "os_rng"] }

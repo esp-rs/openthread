@@ -57,6 +57,19 @@ static INPUT: Channel<CriticalSectionRawMutex, String, 8> = Channel::new();
 fn main() {
     let args = NodeArgs::parse();
 
+    // An MCU node runs the stack as firmware; this process would only be in
+    // the way. Hand the harness's pipes straight to `serial_bridge`, which
+    // pumps them to the board's console.
+    //
+    // The dispatch lives here because the harness spawns ONE `OT_CLI_PATH`
+    // binary for every node, while a rig may well be mixed - so something has
+    // to look at the port map and pick the flavor this node needs.
+    if let Some(node) = openthread_tests::hw_radio::node_for(args.node_id) {
+        if node.kind == openthread_tests::hw_radio::NodeKind::Mcu {
+            exec_serial_bridge();
+        }
+    }
+
     // Logs MUST NOT go where the CLI conversation runs: under thread-cert's
     // `PopenSpawn` even stderr is merged into the stream the harness parses,
     // so a stray log line can derail its line matching. With
@@ -181,6 +194,21 @@ impl NodeArgs {
     }
 }
 
+/// Replace this process with `serial_bridge`, keeping the harness's pipes and
+/// our command line (the bridge reads the same node id and port map).
+fn exec_serial_bridge() -> ! {
+    let bridge = std::env::current_exe()
+        .ok()
+        .and_then(|exe| Some(exe.parent()?.join("serial_bridge")))
+        .expect("locating `serial_bridge` next to this binary");
+
+    let err = std::process::Command::new(&bridge)
+        .args(std::env::args_os().skip(1))
+        .exec();
+
+    panic!("exec {}: {err}", bridge.display());
+}
+
 /// Re-execute this process with its original command line: the `reset` /
 /// `factoryreset` implementation (fresh stack, same pty/stdio fds).
 ///
@@ -269,36 +297,29 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
 
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
-    // The hardware tier takes precedence over both simulated media: a run
-    // configured for real radios must never quietly degrade into a simulated
-    // one (see `openthread_tests::hw_radio`).
-    #[cfg(feature = "hw")]
-    let hw_port = openthread_tests::hw_radio::port_for(node_id);
+    // A hardware run takes precedence over both simulated media: it must never
+    // quietly degrade into a simulated one (see `openthread_tests::hw_radio`).
+    // An MCU node has already been handed off to `serial_bridge` in `main`, so
+    // anything left here is an RCP node.
+    let hw_node = openthread_tests::hw_radio::node_for(node_id);
+
     #[cfg(not(feature = "hw"))]
-    let hw_port: Option<(String, u32)> = {
-        // Without the feature the port map is unreadable, so a hardware run
-        // pointed at this binary would quietly become a simulated one - the
-        // one outcome worth failing hard over (`--skip-build` after a
-        // non-`hw` build is exactly how that happens).
-        assert!(
-            std::env::var_os("OT_HW_PORTS").is_none(),
-            "OT_HW_PORTS is set, but this DUT was built without the `hw` feature; \
-             rebuild with `--features hw`"
-        );
+    assert!(
+        hw_node.is_none(),
+        "this node's board is an RCP, but the DUT was built without the `hw` \
+         feature; rebuild with `--features hw`"
+    );
 
-        None
-    };
-
-    match (hw_port, radio_link) {
+    match (hw_node, radio_link) {
         #[cfg(feature = "hw")]
-        (Some((port, baud)), _) => {
+        (Some(node), _) => {
             // A real co-processor owns the RF and the whole MAC, so - unlike
             // the simulation radios below - no `MacRadio` goes on top.
-            let radio = openthread_tests::hw_radio::radio(&port, baud);
+            let radio = openthread_tests::hw_radio::radio(&node.device, node.baud);
             spawner.spawn(run_ot_hw(ot.clone(), radio).unwrap());
         }
         #[cfg(not(feature = "hw"))]
-        (Some(_), _) => unreachable!("no port map without the `hw` feature"),
+        (Some(_), _) => unreachable!("guarded by the assertion above"),
         // These simulation radios are PHY-only, so the runner tasks below wrap
         // them in a `MacRadio` - which emulates every MAC duty their reported
         // capabilities lack, i.e. all of them.

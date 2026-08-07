@@ -442,13 +442,15 @@ pub struct ItestArgs {
     #[arg(long)]
     virtual_time: bool,
 
-    /// Run against real radios instead of the simulated medium: a serial
-    /// device per node, given in node-id order (`--hw-port /dev/ttyACM0
-    /// --hw-port /dev/ttyACM1 ...`), each an 802.15.4 co-processor the DUT
-    /// drives over spinel. A device may carry its own link speed
-    /// (`--hw-port /dev/ttyUSB0@460800`), which a mixed rig needs. Falls back
-    /// to the `OT_HW_PORTS` environment variable (comma-separated). Real time
-    /// only, and never CI - see the module docs.
+    /// Run against real hardware instead of the simulated medium: one board
+    /// per node, in node-id order. Each is `<device>[@<baud>][=<kind>]`, where
+    /// the kind is `rcp` (default - an 802.15.4 co-processor the host DUT
+    /// drives over spinel) or `mcu` (a board running the whole stack as
+    /// firmware, reached through `serial_bridge`). So
+    /// `--hw-port /dev/ttyACM0=mcu --hw-port /dev/ttyACM1=rcp` puts a device
+    /// under test against a known-good peer. Falls back to the `OT_HW_PORTS`
+    /// environment variable (comma-separated). Real time only, and never CI -
+    /// see the module docs.
     #[arg(long, value_name = "DEVICE[@BAUD]")]
     hw_port: Vec<String>,
 
@@ -520,7 +522,17 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
         );
     }
 
-    let cli_ftd = build_dut(workspace, args.skip_build, !hw_ports.is_empty())?;
+    // `hw` is only needed for the spinel radio, i.e. for RCP nodes. An
+    // all-MCU rig needs none of it: those nodes are bridged to firmware.
+    let needs_spinel = hw_ports
+        .iter()
+        .any(|port| !port.ends_with("=mcu"));
+
+    let cli_ftd = build_dut(
+        workspace,
+        args.skip_build,
+        !hw_ports.is_empty() && needs_spinel,
+    )?;
 
     let runner = Runner {
         ot_root,
@@ -663,10 +675,12 @@ fn hw_ports(args: &ItestArgs) -> Result<Vec<String>> {
     };
 
     // A missing device is worth catching here rather than as an opaque node
-    // failure ten seconds into a test. The optional `@baud` suffix is the
-    // node's business (see `openthread_tests::hw_radio`), not part of the path.
+    // failure ten seconds into a test. The optional `@baud` / `=kind` suffixes
+    // are the node's business (see `openthread_tests::hw_radio`), not part of
+    // the path.
     for port in &ports {
-        let device = port.rsplit_once('@').map_or(&**port, |(device, _)| device);
+        let device = port.rsplit_once('=').map_or(&**port, |(device, _)| device);
+        let device = device.rsplit_once('@').map_or(device, |(device, _)| device);
 
         if !Path::new(device).exists() {
             bail!("no such radio device: {device}");

@@ -15,7 +15,6 @@
 //! same binary, same harness, real RF.
 
 pub mod executor;
-#[cfg(feature = "hw")]
 pub mod hw_radio;
 pub mod settings;
 pub mod sim_radio;
