@@ -255,15 +255,44 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
 
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
-    // These simulation radios are PHY-only, so the runner tasks below wrap
-    // them in a `MacRadio` - which emulates every MAC duty their reported
-    // capabilities lack, i.e. all of them.
-    match radio_link {
-        Some(link) => {
+    // The hardware tier takes precedence over both simulated media: a run
+    // configured for real radios must never quietly degrade into a simulated
+    // one (see `openthread_tests::hw_radio`).
+    #[cfg(feature = "hw")]
+    let hw_port = openthread_tests::hw_radio::port_for(node_id);
+    #[cfg(not(feature = "hw"))]
+    let hw_port: Option<(String, u32)> = {
+        // Without the feature the port map is unreadable, so a hardware run
+        // pointed at this binary would quietly become a simulated one - the
+        // one outcome worth failing hard over (`--skip-build` after a
+        // non-`hw` build is exactly how that happens).
+        assert!(
+            std::env::var_os("OT_HW_PORTS").is_none(),
+            "OT_HW_PORTS is set, but this DUT was built without the `hw` feature; \
+             rebuild with `--features hw`"
+        );
+
+        None
+    };
+
+    match (hw_port, radio_link) {
+        #[cfg(feature = "hw")]
+        (Some((port, baud)), _) => {
+            // A real co-processor owns the RF and the whole MAC, so - unlike
+            // the simulation radios below - no `MacRadio` goes on top.
+            let radio = openthread_tests::hw_radio::radio(&port, baud);
+            spawner.spawn(run_ot_hw(ot.clone(), radio).unwrap());
+        }
+        #[cfg(not(feature = "hw"))]
+        (Some(_), _) => unreachable!("no port map without the `hw` feature"),
+        // These simulation radios are PHY-only, so the runner tasks below wrap
+        // them in a `MacRadio` - which emulates every MAC duty their reported
+        // capabilities lack, i.e. all of them.
+        (None, Some(link)) => {
             let radio = VtRadio::new(link);
             spawner.spawn(run_ot_vt(ot.clone(), radio).unwrap());
         }
-        None => {
+        (None, None) => {
             let radio = SimRadio::new_with(
                 node_id,
                 openthread_tests::sim_radio::port_base_from_env(),
@@ -323,6 +352,14 @@ async fn run_ot_rt(ot: OpenThread<'static>, radio: SimRadio) -> ! {
 
     ot.run(MacRadio::new(radio, EmbassyTimeTimer, mac_radio_resources))
         .await
+}
+
+/// The hardware tier's runner: the co-processor reports a complete MAC
+/// offload, so the radio goes to `OpenThread::run` as-is.
+#[cfg(feature = "hw")]
+#[embassy_executor::task]
+async fn run_ot_hw(ot: OpenThread<'static>, radio: openthread_tests::hw_radio::HwRadio) -> ! {
+    ot.run(radio).await
 }
 
 #[embassy_executor::task]

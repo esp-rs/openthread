@@ -14,6 +14,12 @@ default = []
 # Regenerate the OpenThread bindings on the fly (needed until the committed
 # host-target bindings match the active feature set).
 force-generate-bindings = ["openthread/force-generate-bindings"]
+# The hardware tier: additionally build the RCP-over-serial radio, so a node
+# can drive a real 802.15.4 co-processor instead of the simulated medium
+# (`openthread/std` = the `rcp` spinel host plus the host `SerialPort`).
+# Purely additive - a `hw`-enabled binary still runs the simulation radios
+# when `OT_HW_PORTS` is unset. See `src/hw_radio.rs`.
+hw = ["openthread/std"]
 
 [dependencies]
 # No `platform-std`/`executor-thread`: the node binaries run on this crate's
@@ -110,3 +116,9 @@ name = "sim_node"
 [[bin]]
 path = "./src/bin/cli_ftd.rs"
 name = "cli_ftd"
+
+# The hardware tier's bring-up probe; pointless without a radio to probe.
+[[bin]]
+path = "./src/bin/hw_probe.rs"
+name = "hw_probe"
+required-features = ["hw"]

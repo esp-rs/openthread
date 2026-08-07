@@ -21,6 +21,36 @@
 //! The cert allowlists cover the entire upstream `Cert_*` corpus; the expect
 //! allowlist covers the tests runnable with a CLI-FTD-only DUT (the rest of
 //! that corpus needs posix/RCP node flavors or `diag` commands).
+//!
+//! # The hardware tier
+//!
+//! With `--hw-port` the simulated medium is dropped for real RF: each node
+//! drives its own 802.15.4 co-processor over a serial link (the DUT's
+//! `SpinelRadio`, see `openthread_tests::hw_radio`). Nothing else changes -
+//! the harness still spawns `$OT_CLI_PATH <node id>` and still talks to it
+//! over a pty - so the same unmodified upstream scenarios run, which is the
+//! whole point: it is the only tier where the spinel radio, the serial
+//! transport and real over-the-air timing are exercised at all.
+//!
+//! It is manually invoked and never part of CI: it needs one dongle per node
+//! physically attached to the machine. Consequences of real RF:
+//!
+//! - real time only (virtual time has no meaning when the radio keeps its
+//!   own clock);
+//! - one test at a time, and no medium isolation between tests - there is a
+//!   single air, so `PORT_OFFSET` cannot separate a straggler node of a
+//!   previous run from this one;
+//! - node count is capped by the number of attached dongles, so
+//!   [`HW_TESTS`] carries each test's node count and the oversized ones are
+//!   reported as skipped rather than dropped silently.
+//!
+//! A second hardware tier is the natural follow-on: node = firmware on an
+//! MCU, driven over its serial console. It reuses everything here - the port
+//! map, the node-count gating, the allowlist - and only swaps what
+//! `OT_CLI_PATH` points at, from the host DUT to a bridge binary that pipes
+//! stdin/stdout to a serial port. That one exercises the on-MCU drivers
+//! (`NrfRadio`/`EspRadio`), `MacRadio`'s real ACK deadlines and
+//! `ProxyRadio`'s executor split, none of which this tier reaches.
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -269,6 +299,34 @@ const FUNC_TESTS_VT: &[&str] = &[
     "test_zero_len_external_route",
 ];
 
+/// The tests the hardware tier runs by default, with the node count each
+/// needs (i.e. the number of dongles it takes to run it).
+///
+/// Unlike every other allowlist in this file, these entries are **not**
+/// verified green - there is no hardware in CI to verify them against. They
+/// are a deliberately small bring-up set, chosen to isolate failures to the
+/// radio rather than the scenario: the two `Cert_*` entries are already
+/// verified at 1x pacing on the simulated medium (they are in
+/// [`CERT_TESTS`]), so a failure here points at the co-processor link, not
+/// at the stack above it. Grow the list as entries go green on real
+/// hardware - the same per-test promotion rule the other allowlists use.
+const HW_TESTS: &[(&str, usize)] = &[
+    // Leader/router attach: the smallest scenario that proves two real
+    // radios can find and join each other.
+    ("Cert_5_1_01_RouterAttach", 2),
+    // Link-local unicast + multicast ping exchanges - real ACKs, real
+    // retries, real timing.
+    ("Cert_5_3_01_LinkLocal", 2),
+    // An active scan, i.e. the co-processor's own channel-scan path.
+    ("test_mac_scan", 2),
+    // REED -> router promotion; more MLE traffic over the same two radios.
+    ("test_router_upgrade", 2),
+    // Multi-hop ping across a three-node line (needs a third dongle).
+    ("test_ping", 3),
+    // Route table convergence over three real links.
+    ("test_route_table", 3),
+];
+
 /// Wall-clock budget for a test; exceeding it kills and fails the test.
 ///
 /// Sized for real-time mode, where every `simulator.go(N)` in a script is a
@@ -296,6 +354,22 @@ pub struct ItestArgs {
     /// switches modes via the inherited `VIRTUAL_TIME` env var.
     #[arg(long)]
     virtual_time: bool,
+
+    /// Run against real radios instead of the simulated medium: a serial
+    /// device per node, given in node-id order (`--hw-port /dev/ttyACM0
+    /// --hw-port /dev/ttyACM1 ...`), each an 802.15.4 co-processor the DUT
+    /// drives over spinel. A device may carry its own link speed
+    /// (`--hw-port /dev/ttyUSB0@460800`), which a mixed rig needs. Falls back
+    /// to the `OT_HW_PORTS` environment variable (comma-separated). Real time
+    /// only, and never CI - see the module docs.
+    #[arg(long, value_name = "DEVICE[@BAUD]")]
+    hw_port: Vec<String>,
+
+    /// The link speed for `--hw-port` devices that do not carry one of their
+    /// own (default: 115200, as in the host examples; ESP32xx RCPs want
+    /// 460800). Ignored by devices exposing a USB CDC serial port.
+    #[arg(long)]
+    hw_baud: Option<u32>,
 
     /// Skip (re)building the DUT binaries.
     #[arg(long)]
@@ -334,9 +408,58 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
     let build_dir = workspace.join(".build").join("itest");
     fs::create_dir_all(&build_dir).with_context(|| format!("creating {}", build_dir.display()))?;
 
-    let cli_ftd = build_dut(workspace, args.skip_build)?;
+    let hw_ports = hw_ports(args)?;
+
+    if !hw_ports.is_empty() {
+        if args.virtual_time {
+            bail!(
+                "--virtual-time and --hw-port are mutually exclusive: a real radio \
+                 keeps its own clock, so the simulator's lockstep protocol cannot \
+                 drive it"
+            );
+        }
+
+        info!(
+            "Hardware tier: {} node(s) on {}",
+            hw_ports.len(),
+            hw_ports.join(", "),
+        );
+    }
+
+    let cli_ftd = build_dut(workspace, args.skip_build, !hw_ports.is_empty())?;
+
+    let runner = Runner {
+        ot_root,
+        build_dir: build_dir.clone(),
+        cli_ftd,
+        hw: Hw {
+            ports: hw_ports.clone(),
+            baud: args.hw_baud,
+        },
+        virtual_time: args.virtual_time,
+        timeout_secs: args.timeout,
+    };
+
+    let mut skipped_oversized = Vec::new();
 
     let tests: Vec<String> = if args.tests.is_empty() {
+        if !hw_ports.is_empty() {
+            // Only what the attached dongles can actually host; the rest is
+            // reported, not silently dropped.
+            let (runnable, oversized): (Vec<_>, Vec<_>) = HW_TESTS
+                .iter()
+                .partition(|(_, nodes)| *nodes <= hw_ports.len());
+
+            skipped_oversized = oversized
+                .iter()
+                .map(|(test, nodes)| format!("{test} (needs {nodes})"))
+                .collect();
+
+            runnable
+                .iter()
+                .map(|(test, _)| test.to_string())
+                .collect()
+        } else {
         let defaults = match args.suite {
             Suite::Cert => CERT_TESTS,
             Suite::Expect => EXPECT_TESTS,
@@ -355,6 +478,7 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
             .chain(func)
             .map(|t| t.to_string())
             .collect()
+        }
     } else {
         args.tests
             .iter()
@@ -372,22 +496,17 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
         info!("Running {test} ({}/{})", index + 1, tests.len());
 
         let outcome = match args.suite {
-            Suite::Cert => run_cert_test(
-                &ot_root,
-                &build_dir,
-                &cli_ftd,
-                test,
-                index,
-                args.virtual_time,
-                args.timeout,
-            )?,
-            Suite::Expect => run_expect_test(&ot_root, &build_dir, &cli_ftd, test, args.timeout)?,
+            Suite::Cert => runner.run_cert_test(test, index)?,
+            Suite::Expect => runner.run_expect_test(test)?,
         };
 
         match &outcome {
             Outcome::Passed => info!("{test}: PASSED"),
             Outcome::Skipped => info!("{test}: SKIPPED"),
-            Outcome::Failed(reason) => info!("{test}: FAILED ({reason})"),
+            Outcome::Failed(reason) => {
+                info!("{test}: FAILED ({reason})");
+                runner.hw_hint(test);
+            }
         }
 
         results.push((test.clone(), outcome));
@@ -397,6 +516,14 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
         .iter()
         .filter_map(|(test, outcome)| matches!(outcome, Outcome::Failed(_)).then_some(&**test))
         .collect();
+
+    if !skipped_oversized.is_empty() {
+        info!(
+            "Not run - more nodes than attached radios ({}): {}",
+            hw_ports.len(),
+            skipped_oversized.join(", "),
+        );
+    }
 
     info!(
         "Summary: {} passed, {} skipped, {} failed (of {})",
@@ -419,18 +546,110 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
     Ok(())
 }
 
+/// The radio devices of the hardware tier, in node-id order; empty when this
+/// is an ordinary simulated run.
+///
+/// `--hw-port` wins over `OT_HW_PORTS`, which exists so a shell can export
+/// the rig once and leave the command lines alone.
+fn hw_ports(args: &ItestArgs) -> Result<Vec<String>> {
+    let ports: Vec<String> = if !args.hw_port.is_empty() {
+        args.hw_port.clone()
+    } else {
+        std::env::var("OT_HW_PORTS")
+            .unwrap_or_default()
+            .split(',')
+            .map(str::trim)
+            .filter(|port| !port.is_empty())
+            .map(str::to_string)
+            .collect()
+    };
+
+    // A missing device is worth catching here rather than as an opaque node
+    // failure ten seconds into a test. The optional `@baud` suffix is the
+    // node's business (see `openthread_tests::hw_radio`), not part of the path.
+    for port in &ports {
+        let device = port.rsplit_once('@').map_or(&**port, |(device, _)| device);
+
+        if !Path::new(device).exists() {
+            bail!("no such radio device: {device}");
+        }
+    }
+
+    Ok(ports)
+}
+
+/// The hardware tier's configuration, as handed to the node processes.
+struct Hw {
+    /// The serial devices, in node-id order (empty = simulated run).
+    ports: Vec<String>,
+    /// The link speed, if overridden.
+    baud: Option<u32>,
+}
+
+impl Hw {
+    /// Whether this is a hardware run at all.
+    fn active(&self) -> bool {
+        !self.ports.is_empty()
+    }
+
+    /// Apply the port map to a node-spawning command. A no-op for a
+    /// simulated run, so callers need no branch of their own.
+    fn apply(&self, command: &mut Command) {
+        if self.ports.is_empty() {
+            return;
+        }
+
+        command.env("OT_HW_PORTS", self.ports.join(","));
+
+        if let Some(baud) = self.baud {
+            command.env("OT_HW_BAUD", baud.to_string());
+        }
+    }
+}
+
+/// What the node logs say when the co-processor did not answer its startup
+/// handshake - see [`Runner::hw_hint`].
+const RADIO_INIT_FAILED: &str = "Radio init failed";
+
+/// Everything a test run needs, constant for the whole invocation: where the
+/// upstream suites live, where our artifacts go, which DUT binary to spawn,
+/// and how the nodes' radios are configured.
+struct Runner {
+    /// The OpenThread submodule root the suites are taken from.
+    ot_root: PathBuf,
+    /// Where logs, the venv and per-test run dirs go.
+    build_dir: PathBuf,
+    /// The DUT the harness spawns per node.
+    cli_ftd: PathBuf,
+    /// The radio configuration (simulated, or the hardware tier's port map).
+    hw: Hw,
+    /// Virtual-time mode, for the `cert` suite.
+    virtual_time: bool,
+    /// Per-test wall-clock budget override.
+    timeout_secs: Option<u64>,
+}
+
 /// Build the DUT binaries (the `openthread-tests` crate is intentionally
 /// outside the workspace, like `examples`) and return the `cli_ftd` path.
-fn build_dut(workspace: &Path, skip_build: bool) -> Result<PathBuf> {
+///
+/// `hw` additionally enables the RCP-over-serial radio; the node binary
+/// refuses to start with a port map it cannot read, so a stale non-`hw`
+/// build cannot turn a hardware run into a simulated one behind our back.
+fn build_dut(workspace: &Path, skip_build: bool, hw: bool) -> Result<PathBuf> {
     let tests_crate = workspace.join("tests");
 
     if !skip_build {
         info!("Building the DUT binaries (openthread-tests)");
 
         let cargo = std::env::var_os("CARGO").unwrap_or_else(|| "cargo".into());
-        let status = Command::new(cargo)
-            .arg("build")
-            .arg("--bins")
+        let mut command = Command::new(cargo);
+        command.arg("build").arg("--bins");
+
+        if hw {
+            command.arg("--features").arg("hw");
+        }
+
+        let status = command
             .current_dir(&tests_crate)
             .status()
             .context("spawning `cargo build` for openthread-tests")?;
@@ -493,15 +712,18 @@ fn ensure_venv(build_dir: &Path, thread_cert: &Path) -> Result<PathBuf> {
     Ok(python)
 }
 
-fn run_cert_test(
-    ot_root: &Path,
-    build_dir: &Path,
-    cli_ftd: &Path,
-    test: &str,
-    index: usize,
-    virtual_time: bool,
-    timeout_secs: Option<u64>,
-) -> Result<Outcome> {
+impl Runner {
+fn run_cert_test(&self, test: &str, index: usize) -> Result<Outcome> {
+    let Self {
+        ot_root,
+        build_dir,
+        cli_ftd,
+        hw,
+        virtual_time,
+        timeout_secs,
+    } = self;
+    let (virtual_time, timeout_secs) = (*virtual_time, *timeout_secs);
+
     let thread_cert = ot_root.join("tests").join("scripts").join("thread-cert");
     let python = ensure_venv(build_dir, &thread_cert)?;
 
@@ -540,16 +762,24 @@ fn run_cert_test(
         // Per-node persisted settings land in the run dir (fresh per run).
         .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
 
+    // Real radios, if this is a hardware run (`PORT_OFFSET` above then means
+    // nothing - there is only one air).
+    hw.apply(&mut command);
+
     run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
 }
 
-fn run_expect_test(
-    ot_root: &Path,
-    build_dir: &Path,
-    cli_ftd: &Path,
-    test: &str,
-    timeout_secs: Option<u64>,
-) -> Result<Outcome> {
+fn run_expect_test(&self, test: &str) -> Result<Outcome> {
+    let Self {
+        ot_root,
+        build_dir,
+        cli_ftd,
+        hw,
+        timeout_secs,
+        ..
+    } = self;
+    let timeout_secs = *timeout_secs;
+
     if !binary_exists("expect") {
         bail!(
             "the `expect` binary is required for the expect suite \
@@ -600,7 +830,58 @@ fn run_expect_test(
         // their persisted settings at the run dir instead.
         .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
 
+    hw.apply(&mut command);
+
     run_logged(command, &run_dir.join("output.log"), test, timeout_secs)
+}
+
+
+    /// On a failed hardware run, say so when the cause was the radio link
+    /// rather than the scenario.
+    ///
+    /// The stack deliberately does not treat a failed radio handshake as
+    /// fatal - it warns, advertises no capabilities and lets the radio
+    /// recover later - which is right for a device in the field but turns a
+    /// wrong port into a confusing cascade here (the node limps on radio-less
+    /// until the harness gives up on it). So dig the real cause out of the
+    /// node logs and put it in front of the reader.
+    fn hw_hint(&self, test: &str) {
+        if !self.hw.active() {
+            return;
+        }
+
+        let run_dir = self.build_dir.join("run").join(test);
+
+        let Ok(entries) = fs::read_dir(&run_dir) else {
+            return;
+        };
+
+        let dead: Vec<String> = entries
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with("node.")
+            })
+            .filter(|entry| {
+                fs::read_to_string(entry.path())
+                    .is_ok_and(|log| log.contains(RADIO_INIT_FAILED))
+            })
+            .map(|entry| entry.file_name().to_string_lossy().into_owned())
+            .collect();
+
+        if dead.is_empty() {
+            return;
+        }
+
+        info!(
+            "{test}: the radio never came up on {} - check that each --hw-port is an \
+             802.15.4 co-processor running `ot-rcp`, and that --hw-baud matches its \
+             link speed (default 115200, but 460800 for ESP32xx RCPs)",
+            dead.join(", "),
+        );
+    }
 }
 
 /// Run a test command with its output captured to `log_path`, a wall-clock

@@ -9,8 +9,14 @@
 //!   ([`sim_radio`]);
 //! - virtual time: frames and time as events of the upstream Python
 //!   simulator's lockstep protocol ([`vt`], [`executor`]).
+//!
+//! With the `hw` feature they can also drop the simulated medium entirely and
+//! drive a real 802.15.4 co-processor over a serial link ([`hw_radio`]) -
+//! same binary, same harness, real RF.
 
 pub mod executor;
+#[cfg(feature = "hw")]
+pub mod hw_radio;
 pub mod settings;
 pub mod sim_radio;
 pub mod vt;
