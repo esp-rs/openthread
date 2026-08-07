@@ -1,4 +1,4 @@
-use core::cell::Cell;
+use core::cell::{Cell, RefCell};
 use core::fmt::Debug;
 use core::future::Future;
 use core::mem::MaybeUninit;
@@ -6,18 +6,17 @@ use core::mem::MaybeUninit;
 use embassy_futures::select::{select, Either};
 
 use embassy_sync::blocking_mutex::raw::{CriticalSectionRawMutex, RawMutex};
+use embassy_sync::blocking_mutex::Mutex;
 use embassy_sync::signal::Signal;
 use embassy_sync::zerocopy_channel::{Channel, Receiver, Sender};
 
 use crate::fmt::Bytes;
-use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
-use crate::{Config, PsduMeta, Radio, RadioCaps, RadioError as _, RadioErrorKind};
-use crate::{MacRadio, MacRadioTimer};
+use crate::sys::{OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID};
+use crate::{Config, PsduMeta, Radio, RadioCaps, RadioError as _, RadioErrorKind, SrcMatchConfig};
 
 /// The resources for the radio proxy.
 pub struct ProxyRadioResources {
-    request_buf: MaybeUninit<[ProxyRadioRequest; 1]>,
-    response_buf: MaybeUninit<[ProxyRadioResponse; 1]>,
+    rx_buf: MaybeUninit<[ProxyRadioFrame; 1]>,
     state: MaybeUninit<ProxyRadioState<'static>>,
 }
 
@@ -25,8 +24,7 @@ impl ProxyRadioResources {
     /// Create a new set of radio proxy resources.
     pub const fn new() -> Self {
         Self {
-            request_buf: MaybeUninit::uninit(),
-            response_buf: MaybeUninit::uninit(),
+            rx_buf: MaybeUninit::uninit(),
             state: MaybeUninit::uninit(),
         }
     }
@@ -51,68 +49,125 @@ impl Default for ProxyRadioResources {
 ///   by passing it to `OpenThread::run`
 /// - `PhyRadioRunner`, which is `Send` and therefore can be sent to a separate executor - to run the radio.
 ///   Invoke `PhyRadioRunner::run(<the-phy-radio>, <delay-provider>).await` in that separate executor.
+///
+/// # Wire protocol
+///
+/// The two halves talk over two independent primitives, because the two
+/// directions have genuinely different semantics:
+///
+/// - **Commands** (everything except [`Radio::receive`]) use a *rendezvous*:
+///   a single shared slot holding at most one outstanding command plus its
+///   response, guarded by a blocking mutex, with a signal in each direction.
+///   There is no queue, and that is the point: cancelling a command is simply
+///   overwriting (or clearing) the slot, so the two halves can never disagree
+///   about which command is in flight.
+///
+/// - **Received frames** flow the other way over their own channel, decoupled
+///   from the command rendezvous. A frame is committed to the channel with no
+///   await in between, and taken out of it only once fully copied, so dropping
+///   either side's future can never lose a frame - which is exactly what
+///   [`Radio::receive`]'s cancellation-safety contract demands.
 pub struct ProxyRadio<'a> {
-    /// The request channel to the PHY radio
-    request: Sender<'a, CriticalSectionRawMutex, ProxyRadioRequest>,
-    /// The response channel from the PHY radio
-    response: Receiver<'a, CriticalSectionRawMutex, ProxyRadioResponse>,
-    /// Whether the current response was cancelled
-    /// If set to `true`, this means we have to drop the pending response from the driver
-    cancelled: Cell<bool>,
-    /// The signal to indicate a new request to the PHY radio, so that
-    /// the PHY radio can cancel the current request (if any) and start processing the new one
-    cancel: &'a Signal<CriticalSectionRawMutex, ()>,
+    /// The received frames channel: the runner pushes, we pop.
+    rx: Receiver<'a, CriticalSectionRawMutex, ProxyRadioFrame>,
+    /// The command rendezvous shared with the runner.
+    exchange: &'a Mutex<CriticalSectionRawMutex, RefCell<Exchange>>,
+    /// Raised by us whenever we publish or withdraw a command.
+    cmd: &'a Signal<CriticalSectionRawMutex, ()>,
+    /// Raised by the runner whenever it publishes a response.
+    resp: &'a Signal<CriticalSectionRawMutex, ()>,
     /// The PHY radio's capabilities, published by the runner. `init` awaits it.
     caps: &'a Signal<CriticalSectionRawMutex, RadioCaps>,
-    /// The current radio configuration
-    config: Config,
 }
 
 impl<'a> ProxyRadio<'a> {
-    const INIT_REQUEST: [ProxyRadioRequest; 1] = [ProxyRadioRequest::new()];
-    const INIT_RESPONSE: [ProxyRadioResponse; 1] = [ProxyRadioResponse::new()];
+    const INIT_RX: [ProxyRadioFrame; 1] = [ProxyRadioFrame::new()];
 
     /// Create a new `ProxyRadio` and its `PhyRadioRunner` instances.
     ///
     /// Arguments:
     /// - `resources`: The radio proxy resources
     pub fn new(resources: &'a mut ProxyRadioResources) -> (Self, PhyRadioRunner<'a>) {
-        resources.request_buf.write(Self::INIT_REQUEST);
-        resources.response_buf.write(Self::INIT_RESPONSE);
+        resources.rx_buf.write(Self::INIT_RX);
 
-        let request_buf = unsafe { resources.request_buf.assume_init_mut() };
-        let response_buf = unsafe { resources.response_buf.assume_init_mut() };
+        let rx_buf = unsafe { resources.rx_buf.assume_init_mut() };
 
-        resources.state.write(ProxyRadioState::new(
-            unsafe {
-                core::mem::transmute::<
-                    &mut [ProxyRadioRequest; 1],
-                    &'static mut [ProxyRadioRequest; 1],
-                >(request_buf)
-            },
-            unsafe {
-                core::mem::transmute::<
-                    &mut [ProxyRadioResponse; 1],
-                    &'static mut [ProxyRadioResponse; 1],
-                >(response_buf)
-            },
-        ));
+        resources.state.write(ProxyRadioState::new(unsafe {
+            core::mem::transmute::<&mut [ProxyRadioFrame; 1], &'static mut [ProxyRadioFrame; 1]>(
+                rx_buf,
+            )
+        }));
 
         let state = unsafe { resources.state.assume_init_mut() };
 
         state.split()
     }
 
-    /// Clear any cancelled response from the driver
-    async fn process_cancelled(&mut self) {
-        if self.cancelled.get() {
-            self.response.receive().await;
+    /// Hand `request` to the PHY radio and await its response.
+    ///
+    /// Publishing replaces whatever command was in the slot and clears the
+    /// response to it in the same breath. Dropping this future simply empties
+    /// the slot - so cancellation needs no acknowledgement from the runner, and
+    /// there is never a stale response to drain.
+    async fn exec(&mut self, request: ProxyRadioRequest) -> ProxyRadioResponse {
+        // Copied out of `self` so the drop guard below borrows these directly
+        // rather than through `self` (which is mutably borrowed by the await).
+        let exchange = self.exchange;
+        let cmd = self.cmd;
+        let resp = self.resp;
 
-            self.cancelled.set(false);
-            self.response.receive_done();
+        trace!("ProxyRadio, command: {:?}", request);
 
-            trace!("ProxyRadio, cancelled response cleared");
-        }
+        // Signals are raised and cleared under the same lock as the slot they
+        // describe, so that a publish/withdraw by us and a take by the runner
+        // can never interleave into a lost or a stale wakeup.
+        exchange.lock(|exchange| {
+            let mut exchange = exchange.borrow_mut();
+
+            exchange.request = Some(request);
+            exchange.response = None;
+
+            resp.reset();
+            cmd.signal(());
+        });
+
+        let completed = Cell::new(false);
+
+        let _guard = scopeguard::guard((), |_| {
+            if !completed.get() {
+                exchange.lock(|exchange| {
+                    let mut exchange = exchange.borrow_mut();
+
+                    // A response already in the slot means the runner is done
+                    // with this command and has nothing left to interrupt -
+                    // signalling it would only cost it a restarted `receive`.
+                    let interrupted = exchange.response.take().is_none();
+
+                    exchange.request = None;
+
+                    if interrupted {
+                        cmd.signal(());
+                    }
+                });
+
+                trace!("ProxyRadio, command withdrawn");
+            }
+        });
+
+        let response = loop {
+            resp.wait().await;
+
+            if let Some(response) = exchange.lock(|exchange| exchange.borrow_mut().response.take())
+            {
+                break response;
+            }
+        };
+
+        completed.set(true);
+
+        trace!("ProxyRadio, response: {:?}", response);
+
+        response
     }
 }
 
@@ -123,154 +178,118 @@ impl Radio for ProxyRadio<'_> {
         // The actual radio (and its `init`) lives on the `PhyRadioRunner`, which
         // publishes the discovered capabilities to the shared `caps` signal.
         // Await them here so the proxy reports the real, runtime-discovered set —
-        // both PHY and MAC — just like every other radio. (The runner wraps the
-        // radio in a `MacRadio`, so the MAC set it publishes is the full offload
-        // set; the runner must be running for TX/RX to work at all, so this
-        // resolves once it has brought the radio up.)
-        //
-        // TODO: the proxy's request/response protocol carries only TX/RX, so
-        // `Radio::energy_scan` is *not* forwarded to the PHY radio: the proxy
-        // keeps the default implementation and reports "no measurement". This
-        // costs nothing today (no proxied radio can measure channel energy —
-        // see the `esp`/`nrf` notes); forward it through the protocol if one
-        // ever can.
-        Ok(self.caps.wait().await)
+        // both PHY and MAC — just like every other radio. (The runner must be
+        // running for TX/RX to work at all, so this resolves once it has brought
+        // the radio up.)
+        let caps = self.caps.wait().await;
+
+        // Put it back, so that a second `init` answers instead of hanging.
+        self.caps.signal(caps);
+
+        Ok(caps)
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
-        // There is no separate command for updating the configuration
-        // The updated configuration is always valid for the next request
-        self.config = config.clone();
-        Ok(())
+        self.exec(ProxyRadioRequest::Config(config.clone()))
+            .await
+            .result
+    }
+
+    async fn set_src_match_config(&mut self, config: &SrcMatchConfig) -> Result<(), Self::Error> {
+        self.exec(ProxyRadioRequest::SrcMatch(config.clone()))
+            .await
+            .result
+    }
+
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
+        self.exec(ProxyRadioRequest::Receive { channel })
+            .await
+            .result
+    }
+
+    async fn set_sleep(&mut self) -> Result<(), Self::Error> {
+        self.exec(ProxyRadioRequest::Sleep).await.result
+    }
+
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        let response = self
+            .exec(ProxyRadioRequest::EnergyScan {
+                channel,
+                duration_millis,
+            })
+            .await;
+
+        response.result.map(|_| response.energy)
     }
 
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        cca: bool,
+        channel: u8,
+        power: i8,
+        cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         trace!("ProxyRadio, about to transmit: {}", Bytes(psdu));
 
-        self.process_cancelled().await;
+        let response = self
+            .exec(ProxyRadioRequest::Transmit {
+                psdu: unwrap!(heapless::Vec::from_slice(psdu)),
+                channel,
+                power,
+                cca_threshold,
+            })
+            .await;
 
-        {
-            let req = self.request.send().await;
-
-            req.tx = true;
-            req.config = self.config.clone();
-            req.cca = cca;
-            req.psdu.clear();
-            unwrap!(req.psdu.extend_from_slice(psdu));
-
-            trace!("ProxyRadio, transmit request sent: {:?}", req);
-
-            self.request.send_done();
-        }
-
-        self.cancelled.set(true);
-        let _guard = scopeguard::guard((), |_| {
-            if self.cancelled.get() {
-                trace!("ProxyRadio, transmit request cancelled");
-                self.cancel.signal(())
-            }
-        });
-
-        trace!("ProxyRadio, waiting for transmit response");
-
-        let resp = self.response.receive().await;
-
-        trace!("ProxyRadio, transmit response received: {:?}", resp);
-
-        let psdu_meta = (ack_psdu_buf.is_some() && !resp.psdu.is_empty()).then_some(PsduMeta {
-            len: resp.psdu.len(),
-            channel: resp.psdu_channel,
-            rssi: resp.psdu_rssi,
+        let psdu_meta = (ack_psdu_buf.is_some() && !response.psdu.is_empty()).then_some(PsduMeta {
+            len: response.psdu.len(),
+            channel: response.psdu_channel,
+            rssi: response.psdu_rssi,
         });
 
         if let Some(ack_psdu_buf) = ack_psdu_buf {
             if psdu_meta.is_some() {
-                ack_psdu_buf[..resp.psdu.len()].copy_from_slice(&resp.psdu);
+                ack_psdu_buf[..response.psdu.len()].copy_from_slice(&response.psdu);
             } else {
                 ack_psdu_buf.fill(0);
             }
         }
 
-        let result = resp.result.map(|_| psdu_meta);
-
-        self.cancelled.set(false);
-        self.response.receive_done();
-
-        trace!("ProxyRadio, transmit response done");
-
-        result
+        response.result.map(|_| psdu_meta)
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         trace!("ProxyRadio, about to receive");
 
-        self.process_cancelled().await;
+        // Cancellation-safe by construction: the only await is the channel pop,
+        // and the frame is not consumed (`receive_done`) until it has been fully
+        // copied out, with no await in between.
+        let frame = self.rx.receive().await;
 
-        {
-            let req = self.request.send().await;
+        let result = frame.result;
 
-            req.tx = false;
-            req.config = self.config.clone();
-            req.psdu.clear();
-
-            trace!("ProxyRadio, receive request sent: {:?}", req);
-
-            self.request.send_done();
+        if let Ok(psdu_meta) = &result {
+            psdu_buf[..psdu_meta.len].copy_from_slice(&frame.psdu[..psdu_meta.len]);
         }
 
-        self.cancelled.set(true);
-        let _guard = scopeguard::guard((), |_| {
-            if self.cancelled.get() {
-                trace!("ProxyRadio, receive request cancelled");
-                self.cancel.signal(());
-            }
-        });
+        self.rx.receive_done();
 
-        trace!("ProxyRadio, waiting for receive response");
+        trace!("ProxyRadio, receive done: {:?}", result);
 
-        let resp = self.response.receive().await;
-
-        trace!("ProxyRadio, receive response received: {:?}", resp);
-
-        match resp.result {
-            Ok(()) => {
-                let len = resp.psdu.len();
-                psdu_buf[..len].copy_from_slice(&resp.psdu);
-
-                let psdu_meta = PsduMeta {
-                    len,
-                    channel: resp.psdu_channel,
-                    rssi: resp.psdu_rssi,
-                };
-
-                self.cancelled.set(false);
-                self.response.receive_done();
-
-                Ok(psdu_meta)
-            }
-            Err(e) => {
-                self.cancelled.set(false);
-                self.response.receive_done();
-                Err(e)
-            }
-        }
+        result
     }
 }
 
 /// A type modeling the running of the PHY radio - the other side of the `ProxyRadio` pipe.
 pub struct PhyRadioRunner<'a> {
-    /// The request channel from the proxy radio
-    request: Receiver<'a, CriticalSectionRawMutex, ProxyRadioRequest>,
-    /// The response channel to the proxy radio
-    response: Sender<'a, CriticalSectionRawMutex, ProxyRadioResponse>,
-    /// The signal to indicate a new request from the proxy radio
-    /// which means we have to cancel processing the current request (if any)
-    cancel: &'a Signal<CriticalSectionRawMutex, ()>,
+    /// The received frames channel: we push, the proxy pops.
+    rx: Sender<'a, CriticalSectionRawMutex, ProxyRadioFrame>,
+    /// The command rendezvous shared with the proxy.
+    exchange: &'a Mutex<CriticalSectionRawMutex, RefCell<Exchange>>,
+    /// Raised by the proxy whenever it publishes or withdraws a command.
+    cmd: &'a Signal<CriticalSectionRawMutex, ()>,
+    /// Raised by us whenever we publish a response.
+    resp: &'a Signal<CriticalSectionRawMutex, ()>,
     /// The signal on which we publish the actual radio's capabilities (after
     /// running its `init`) so the `ProxyRadio` half can report them.
     caps: &'a Signal<CriticalSectionRawMutex, RadioCaps>,
@@ -279,134 +298,219 @@ pub struct PhyRadioRunner<'a> {
 impl PhyRadioRunner<'_> {
     /// Run the PHY radio.
     ///
+    /// The radio must offload the complete MAC
+    /// ([`MacCapabilities::REQUIRED`](crate::MacCapabilities::REQUIRED)), or
+    /// this method panics - wrap a bare PHY in a [`MacRadio`](crate::MacRadio)
+    /// first. Doing
+    /// the wrapping *here*, on the runner's side, is the whole point of the
+    /// proxy: the software MAC's ACK deadlines then get this (higher-priority)
+    /// executor to meet them in.
+    ///
     /// Arguments:
     /// - `radio`: The PHY radio to run.
-    /// - `delay`: The delay implementation to use.
-    pub async fn run<R, T>(&mut self, radio: R, delay: T) -> !
+    pub async fn run<R>(&mut self, mut radio: R) -> !
     where
         R: Radio,
-        T: MacRadioTimer,
     {
-        let mut radio = MacRadio::new(radio, delay);
-
-        // Bring the radio up before serving requests and publish its capabilities
+        // Bring the radio up before serving commands and publish its capabilities
         // to the `ProxyRadio` half (which is what the OpenThread stack queries).
-        // `radio` is a `MacRadio`, so the MAC set is the full offload set. This is
-        // the runtime caps handshake across the executor boundary: the actual
-        // radio lives here, so only here can its `init` run. On failure we publish
-        // a default (empty) set rather than leave the proxy's `init` waiting
-        // forever; the radio may still recover lazily on the first request.
+        // This is the runtime caps handshake across the executor boundary: the
+        // actual radio lives here, so only here can its `init` run. On failure we
+        // publish a default (empty) set rather than leave the proxy's `init`
+        // waiting forever; the radio may still recover lazily on the first
+        // command.
         let caps = match radio.init().await {
             Ok(caps) => caps,
             Err(e) => {
-                warn!("PhyRadioRunner, radio init failed: {:?}", e);
+                warn!("PhyRadioRunner, radio init failed: {:?}", dbg2fmt!(e));
                 RadioCaps::default()
             }
         };
+
+        caps.mac.assert_required();
+
         self.caps.signal(caps);
 
         debug!("PhyRadioRunner, running");
 
-        loop {
-            {
-                let request = self.request.receive().await;
+        let cmd = self.cmd;
 
-                if Self::process(&mut radio, request, &mut self.response, self.cancel)
+        // Whether the radio is currently in receive state, i.e. whether the last
+        // state command was `Receive` rather than `Sleep`. The RX pump below is
+        // gated on it: `Radio::receive` is what physically drives the receiver
+        // in the PHY drivers, so pumping it unconditionally would keep the
+        // receiver powered through the sleep periods of a sleepy end device -
+        // and deliver frames that a sleeping radio is supposed to miss.
+        let mut receiving = false;
+
+        loop {
+            // Taking the command and clearing its signal happen under the same
+            // lock the proxy publishes under, so a command issued right at this
+            // moment is either taken here or leaves its signal standing - never
+            // dropped, and never mistaken for a cancellation of what we take.
+            let taken = self.exchange.lock(|exchange| {
+                let taken = exchange.borrow_mut().request.take();
+
+                if taken.is_some() {
+                    cmd.reset();
+                }
+
+                taken
+            });
+
+            if let Some(request) = taken {
+                trace!("PhyRadioRunner, processing command: {:?}", request);
+
+                let mut response = ProxyRadioResponse::new();
+
+                // A command owns the radio for its whole duration - in
+                // particular, the RX pump below is not polled while a
+                // `transmit` is waiting for its ACK, as the `Radio` contract
+                // requires. Only a *newer* command may interrupt it.
+                if Self::with_cancel(Self::process(&mut radio, &request, &mut response), cmd)
                     .await
                     .is_some()
                 {
-                    trace!("PhyRadioRunner, processing done");
+                    trace!("PhyRadioRunner, command done: {:?}", response);
+
+                    if response.result.is_ok() {
+                        match request {
+                            ProxyRadioRequest::Receive { .. } => receiving = true,
+                            ProxyRadioRequest::Sleep => receiving = false,
+                            _ => (),
+                        }
+                    }
+
+                    self.publish(response);
                 } else {
-                    // Processing was cancelled by a new request, need to send an "interrupted" response
-
-                    let response = self.response.send().await;
-
-                    response.psdu.clear();
-                    response.result = Err(RadioErrorKind::Other);
-                    response.psdu_channel = 0;
-                    response.psdu_rssi = None;
-
-                    self.response.send_done();
-
-                    trace!("PhyRadioRunner, processing cancelled");
+                    trace!("PhyRadioRunner, command cancelled");
                 }
-
-                self.request.receive_done();
+            } else if receiving {
+                // Idle and receiving: pump received frames to the proxy until a
+                // command shows up.
+                Self::with_cancel(Self::pump_rx(&mut radio, &mut self.rx), cmd).await;
+            } else {
+                // Idle and sleeping: nothing to do until a command shows up.
+                cmd.wait().await;
             }
         }
     }
 
-    // Process a single request (TX or RX) by first updating the driver configuration
-    // (driver should skip that if the new configuration is the same as the current one),
-    // and then transmitting or receiving the frame.
-    //
-    // Updating the configuration, as well as the TX/RX operation might be cancelled at
-    // any moment, if a new request arrives.
-    async fn process<T>(
-        mut radio: T,
-        request: &mut ProxyRadioRequest,
-        response_sender: &mut Sender<'_, impl RawMutex, ProxyRadioResponse>,
-        cancel: &Signal<impl RawMutex, ()>,
-    ) -> Option<()>
-    where
-        T: Radio,
-    {
-        let response = Self::with_cancel(response_sender.send(), cancel).await?;
+    /// Publish `response` as the answer to the command we took.
+    ///
+    /// We emptied the command slot when we took it, so a slot that is occupied
+    /// again means the proxy has published a *newer* command while we were
+    /// executing this one: the response has no recipient and must not be left
+    /// behind for that newer command to pick up.
+    fn publish(&self, response: ProxyRadioResponse) {
+        let published = self.exchange.lock(|exchange| {
+            let mut exchange = exchange.borrow_mut();
 
-        response.psdu.clear();
-        response.psdu_channel = 0;
-        response.psdu_rssi = None;
+            if exchange.request.is_none() {
+                exchange.response = Some(response);
+                self.resp.signal(());
 
-        trace!("PhyRadioRunner, processing request: {:?}", request);
-
-        // Always first set the configuration relevant for the current TX/RX request
-        // The PHY driver should have intelligence to skip the configuration update if the new
-        // configuration is the same as the current one
-        let result = Self::with_cancel(radio.set_config(&request.config), cancel)
-            .await?
-            .map_err(|e| e.kind());
-
-        trace!("PhyRadioRunner, configuration set: {:?}", result);
-
-        let result = if result.is_err() {
-            // Setting driver configuration resulted in an error, so skip the rest of the processing
-            result
-        } else {
-            unwrap!(response.psdu.resize_default(response.psdu.capacity()));
-
-            let result = if request.tx {
-                Self::with_cancel(
-                    radio.transmit(&request.psdu, request.cca, Some(&mut response.psdu)),
-                    cancel,
-                )
-                .await?
-                .map_err(|e| e.kind())
+                true
             } else {
-                Self::with_cancel(radio.receive(&mut response.psdu), cancel)
-                    .await?
-                    .map_err(|e| e.kind())
-                    .map(Some)
-            };
-
-            if let Ok(Some(psdu_meta)) = &result {
-                response.psdu.truncate(psdu_meta.len);
-                response.psdu_channel = psdu_meta.channel;
-                response.psdu_rssi = psdu_meta.rssi;
-            } else {
-                // No frame returned, so clear the response fields
-                response.psdu.clear();
+                false
             }
+        });
 
-            result.map(|_| ())
-        };
+        if !published {
+            trace!("PhyRadioRunner, response dropped (command superseded)");
+        }
+    }
 
-        response.result = result;
+    /// Receive a single frame into the proxy's frame channel.
+    ///
+    /// Lossless under cancellation: the frame is committed with `send_done`
+    /// immediately after `receive` returns, with no await in between, so a
+    /// dropped future is always dropped either before anything was received or
+    /// after the frame was handed over.
+    async fn pump_rx<R>(radio: &mut R, rx: &mut Sender<'_, impl RawMutex, ProxyRadioFrame>)
+    where
+        R: Radio,
+    {
+        let frame = rx.send().await;
 
-        trace!("PhyRadioRunner, processed response: {:?}", response);
+        frame.result = radio
+            .receive(&mut frame.psdu)
+            .await
+            .map_err(|e| e.kind())
+            .inspect(|psdu_meta| trace!("PhyRadioRunner, got frame: {:?}", psdu_meta));
 
-        response_sender.send_done();
+        rx.send_done();
+    }
 
-        Some(())
+    /// Execute a single command against the PHY radio, filling in `response`.
+    ///
+    /// May be cancelled at any await point by a newer command; a cancelled
+    /// command produces no response at all (the proxy is no longer waiting for
+    /// one - it withdrew or replaced it).
+    async fn process<R>(
+        radio: &mut R,
+        request: &ProxyRadioRequest,
+        response: &mut ProxyRadioResponse,
+    ) where
+        R: Radio,
+    {
+        match request {
+            ProxyRadioRequest::Config(config) => {
+                response.result = radio.set_config(config).await.map_err(|e| e.kind());
+            }
+            ProxyRadioRequest::SrcMatch(config) => {
+                response.result = radio
+                    .set_src_match_config(config)
+                    .await
+                    .map_err(|e| e.kind());
+            }
+            ProxyRadioRequest::Receive { channel } => {
+                response.result = radio.set_receive(*channel).await.map_err(|e| e.kind());
+            }
+            ProxyRadioRequest::Sleep => {
+                response.result = radio.set_sleep().await.map_err(|e| e.kind());
+            }
+            ProxyRadioRequest::EnergyScan {
+                channel,
+                duration_millis,
+            } => {
+                response.result = radio
+                    .energy_scan(*channel, *duration_millis)
+                    .await
+                    .map_err(|e| e.kind())
+                    .map(|energy| response.energy = energy);
+            }
+            ProxyRadioRequest::Transmit {
+                psdu,
+                channel,
+                power,
+                cca_threshold,
+            } => {
+                unwrap!(response.psdu.resize_default(response.psdu.capacity()));
+
+                let result = radio
+                    .transmit(
+                        psdu,
+                        *channel,
+                        *power,
+                        *cca_threshold,
+                        Some(&mut response.psdu),
+                    )
+                    .await
+                    .map_err(|e| e.kind());
+
+                if let Ok(Some(psdu_meta)) = &result {
+                    response.psdu.truncate(psdu_meta.len);
+                    response.psdu_channel = psdu_meta.channel;
+                    response.psdu_rssi = psdu_meta.rssi;
+                } else {
+                    // No ACK frame returned
+                    response.psdu.clear();
+                }
+
+                response.result = result.map(|_| ());
+            }
+        }
     }
 
     async fn with_cancel<F>(fut: F, cancel: &Signal<impl RawMutex, ()>) -> Option<F::Output>
@@ -421,11 +525,11 @@ impl PhyRadioRunner<'_> {
 }
 
 // Should be safe because while not (yet) marked formally as such, zerocopy-channel's
-// `Receiver` and `Sender` are `Send`, as long as the critical section is `Send` + `Sync`
-// (which is the case as we use `CriticalSectionRawMutex`), and the `ProxyRadioRequest` and
-// `ProxyRadioResponse` are `Send` (which is the case).
+// `Sender` is `Send`, as long as the critical section is `Send` + `Sync`
+// (which is the case as we use `CriticalSectionRawMutex`), and `ProxyRadioFrame`
+// is `Send` (which is the case).
 //
-// The signals are obviously `Send` + `Sync`.
+// The blocking mutex and the signals are obviously `Send` + `Sync`.
 unsafe impl Send for PhyRadioRunner<'_> {}
 
 const PSDU_LEN: usize = OT_RADIO_FRAME_MAX_SIZE as _;
@@ -435,12 +539,14 @@ const PSDU_LEN: usize = OT_RADIO_FRAME_MAX_SIZE as _;
 /// This state is borrowed and shared between
 /// the two ends of the pipe: the proxy radio, and the PHY radio runner.
 struct ProxyRadioState<'a> {
-    /// The request channel to the PHY radio
-    request: Channel<'a, CriticalSectionRawMutex, ProxyRadioRequest>,
-    /// The response channel from the PHY radio
-    response: Channel<'a, CriticalSectionRawMutex, ProxyRadioResponse>,
-    /// The signal to indicate a new request to the PHY radio
-    cancel: Signal<CriticalSectionRawMutex, ()>,
+    /// The received frames channel from the PHY radio
+    rx: Channel<'a, CriticalSectionRawMutex, ProxyRadioFrame>,
+    /// The command rendezvous
+    exchange: Mutex<CriticalSectionRawMutex, RefCell<Exchange>>,
+    /// The signal raised by the proxy radio when it publishes or withdraws a command
+    cmd: Signal<CriticalSectionRawMutex, ()>,
+    /// The signal raised by the PHY radio runner when it publishes a response
+    resp: Signal<CriticalSectionRawMutex, ()>,
     /// The PHY radio's capabilities, published by the runner (which owns the
     /// actual radio and runs its `init`) once, and awaited by `ProxyRadio::init`.
     /// This is how the proxy learns the caps at runtime instead of baking them
@@ -452,88 +558,117 @@ impl<'a> ProxyRadioState<'a> {
     /// Create a new proxy radio state.
     ///
     /// Arguments:
-    /// - `request_buf`: The request buffer
-    /// - `response_buf`: The response buffer
-    fn new(
-        request_buf: &'a mut [ProxyRadioRequest; 1],
-        response_buf: &'a mut [ProxyRadioResponse; 1],
-    ) -> Self {
+    /// - `rx_buf`: The received frames buffer
+    fn new(rx_buf: &'a mut [ProxyRadioFrame; 1]) -> Self {
         Self {
-            request: Channel::new(request_buf),
-            response: Channel::new(response_buf),
-            cancel: Signal::new(),
+            rx: Channel::new(rx_buf),
+            exchange: Mutex::new(RefCell::new(Exchange::new())),
+            cmd: Signal::new(),
+            resp: Signal::new(),
             caps: Signal::new(),
         }
     }
 
     /// Split the state into the proxy radio and the PHY radio runner.
     fn split(&mut self) -> (ProxyRadio<'_>, PhyRadioRunner<'_>) {
-        let (request_sender, request_receiver) = self.request.split();
-        let (response_sender, response_receiver) = self.response.split();
+        let (rx_sender, rx_receiver) = self.rx.split();
 
         (
             ProxyRadio {
-                request: request_sender,
-                response: response_receiver,
-                cancelled: Cell::new(false),
-                cancel: &self.cancel,
+                rx: rx_receiver,
+                exchange: &self.exchange,
+                cmd: &self.cmd,
+                resp: &self.resp,
                 caps: &self.caps,
-                config: Config::new(),
             },
             PhyRadioRunner {
-                request: request_receiver,
-                response: response_sender,
-                cancel: &self.cancel,
+                rx: rx_sender,
+                exchange: &self.exchange,
+                cmd: &self.cmd,
+                resp: &self.resp,
                 caps: &self.caps,
             },
         )
     }
 }
 
-/// A proxy radio request.
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-struct ProxyRadioRequest {
-    /// Transmit or receive
-    tx: bool,
-    /// Whether to perform clear channel assessment (CCA) before transmitting the frame
-    /// (only relevant for TX requests, should be ignored for RX requests)
-    cca: bool,
-    /// The radio configuration for the TX/RX operation
-    config: Config,
-    /// The PSDU to transmit for the TX operation
-    psdu: heapless::Vec<u8, PSDU_LEN>,
+/// The command rendezvous between the two halves of the proxy.
+///
+/// At most one command is ever outstanding, which is why this is a single slot
+/// rather than a queue: `OpenThread` drives the radio one operation at a time,
+/// and abandoning an operation is expressed by *replacing* what is in the slot,
+/// not by queueing a cancellation behind it.
+///
+/// The slot doubles as the token that keeps the two halves in agreement, so no
+/// sequencing beyond it is needed:
+/// - the runner *takes* a command by emptying the slot, and answers only if it
+///   is still empty when it finishes - an occupied slot means a newer command
+///   has landed and this response has no recipient;
+/// - publishing a command clears the response in the same locked section, so a
+///   response for an abandoned command is always overwritten before it can be
+///   mistaken for the answer to the next one.
+///
+/// Both signals are likewise raised and cleared under this lock, so a command
+/// issued at the exact moment the runner takes one can neither be lost nor be
+/// mistaken for a cancellation of what was taken.
+struct Exchange {
+    /// The command awaiting execution, if the runner has not taken it yet.
+    request: Option<ProxyRadioRequest>,
+    /// The response to the outstanding command, once the runner has completed it.
+    response: Option<ProxyRadioResponse>,
 }
 
-impl ProxyRadioRequest {
-    /// Create a new empty proxy radio request.
+impl Exchange {
+    /// Create a new, empty command rendezvous.
     const fn new() -> Self {
         Self {
-            tx: false,
-            cca: false,
-            config: Config::new(),
-            psdu: heapless::Vec::new(),
+            request: None,
+            response: None,
         }
     }
+}
+
+/// A proxy radio command: a single [`Radio`] operation to be executed by the
+/// PHY radio on the runner's executor.
+///
+/// [`Radio::receive`] is deliberately absent - received frames flow over their
+/// own channel ([`ProxyRadioFrame`]) rather than as a request/response pair.
+#[derive(Debug)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+enum ProxyRadioRequest {
+    /// [`Radio::set_config`]
+    Config(Config),
+    /// [`Radio::set_src_match_config`]
+    SrcMatch(SrcMatchConfig),
+    /// [`Radio::set_receive`]
+    Receive { channel: u8 },
+    /// [`Radio::set_sleep`]
+    Sleep,
+    /// [`Radio::energy_scan`]
+    EnergyScan { channel: u8, duration_millis: u16 },
+    /// [`Radio::transmit`]
+    Transmit {
+        psdu: heapless::Vec<u8, PSDU_LEN>,
+        channel: u8,
+        power: i8,
+        cca_threshold: Option<i8>,
+    },
 }
 
 /// A proxy radio response.
 #[derive(Debug)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 struct ProxyRadioResponse {
-    /// The result of the TX/RX operation
+    /// The result of the operation
     result: Result<(), RadioErrorKind>,
-    /// The received PSDU, if the operation was successful:
-    /// - For TX: the received ACK PSDU (might be empty)
-    /// - For RX: the received frame PSDU
+    /// The maximum energy observed, for a successful energy scan
+    energy: i8,
+    /// The received ACK PSDU, for a successful transmit (might be empty)
     psdu: heapless::Vec<u8, PSDU_LEN>,
-    /// The channel on which the frame was received:
-    /// - For TX: the channel on which the ACK frame was received
-    /// - For RX: the channel on which the regular frame was received
+    /// The channel on which the ACK frame was received
     psdu_channel: u8,
-    /// The RSSI of the received frame, if the radio supports appending it at the end of the frame:
-    /// - For TX: the RSSI of the received ACK frame
-    /// - For RX: the RSSI of the received frame
+    /// The RSSI of the received ACK frame, if the radio supports appending it
+    /// at the end of the frame
     psdu_rssi: Option<i8>,
 }
 
@@ -542,9 +677,32 @@ impl ProxyRadioResponse {
     const fn new() -> Self {
         Self {
             result: Ok(()),
+            energy: OT_RADIO_RSSI_INVALID as i8,
             psdu: heapless::Vec::new(),
             psdu_channel: 0,
             psdu_rssi: None,
+        }
+    }
+}
+
+/// A frame received by the PHY radio, on its way to the proxy.
+struct ProxyRadioFrame {
+    /// The outcome of the receive operation - the frame meta-data on success
+    result: Result<PsduMeta, RadioErrorKind>,
+    /// The received PSDU, valid up to `result`'s length on success
+    psdu: [u8; PSDU_LEN],
+}
+
+impl ProxyRadioFrame {
+    /// Create a new empty proxy radio frame.
+    const fn new() -> Self {
+        Self {
+            result: Ok(PsduMeta {
+                len: 0,
+                channel: 0,
+                rssi: None,
+            }),
+            psdu: [0; PSDU_LEN],
         }
     }
 }

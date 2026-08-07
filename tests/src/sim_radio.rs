@@ -37,7 +37,7 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 
 use async_io::Async;
 
-use openthread::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind};
+use openthread::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig};
 
 use socket2::{Domain, Protocol, Socket, Type};
 
@@ -107,6 +107,15 @@ pub struct SimRadio {
     rx: Async<UdpSocket>,
     tx: Async<UdpSocket>,
     config: Config,
+    /// The channel the radio is tuned to: set by `set_receive` (and by a
+    /// `transmit`, which carries its own). Frames on any other channel are
+    /// not heard, exactly like the C simulation platform.
+    channel: u8,
+    /// Whether the radio is parked. A parked radio MISSES traffic rather than
+    /// queueing it (contract C6) - but this "RF" is a UDP socket that cannot
+    /// be switched off, so whatever accumulated while parked is discarded on
+    /// waking (see `set_receive`).
+    sleeping: bool,
 }
 
 impl SimRadio {
@@ -135,7 +144,30 @@ impl SimRadio {
             rx: Async::new(Self::rx_socket(port_base, local)?)?,
             tx: Async::new(Self::tx_socket(port_base + node_id, local)?)?,
             config: Config::new(),
+            channel: 11,
+            sleeping: true,
         })
+    }
+
+    /// Bring the radio out of its parked state, dropping everything the
+    /// socket collected meanwhile: a parked radio hears nothing (contract
+    /// C6), and this "RF" has no way to actually stop listening.
+    ///
+    /// Called by EVERY operation that needs the radio on - not just
+    /// `set_receive`: the runner skips `set_receive` whenever a command is
+    /// already pending, so a sleepy child's poll goes out through `transmit`
+    /// with the radio still marked parked. Flushing before the operation is
+    /// also what makes the flush safe - our own frame has not gone out yet,
+    /// so no reply to it can exist, whereas flushing any later would race the
+    /// parent's microsecond-scale ACK (or its data frame) on the loopback
+    /// medium.
+    fn wake(&mut self) {
+        if self.sleeping {
+            self.sleeping = false;
+
+            let mut buf = [0; PSDU_MAX + 1];
+            while self.rx.as_ref().recv_from(&mut buf).is_ok() {}
+        }
     }
 
     fn rx_socket(port_base: u16, local: Ipv4Addr) -> io::Result<UdpSocket> {
@@ -199,23 +231,28 @@ impl Radio for SimRadio {
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
-        // `Config::receive` turning true again is the wake boundary:
-        // everything sitting in the socket at this point arrived while the
-        // radio was parked, and a parked radio MISSES traffic rather than
-        // queueing it (contract C6), so it is discarded. Nothing legitimate
-        // can be lost here - our own wake-up transmission (e.g. a data poll)
-        // has not gone out yet, so no reply to it can exist. Flushing any
-        // later (say, on the first `receive`, which for a poll happens
-        // inside the ACK wait) would race the parent's microsecond-scale ACK
-        // on the loopback medium.
-        let waking = config.receive && !self.config.receive;
-
+        // Nothing to apply: this is a bare PHY, so the MAC-level policy in
+        // `Config` (filtering, promiscuous mode) is `MacRadio`'s business.
         self.config = config.clone();
 
-        if waking {
-            let mut buf = [0; PSDU_MAX + 1];
-            while self.rx.as_ref().recv_from(&mut buf).is_ok() {}
-        }
+        Ok(())
+    }
+
+    async fn set_src_match_config(&mut self, _config: &SrcMatchConfig) -> Result<(), Self::Error> {
+        // No RX-ACK offload: `MacRadio` keeps the table and decides the Frame
+        // Pending bit of the ACKs it sends in software.
+        Ok(())
+    }
+
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
+        self.channel = channel;
+        self.wake();
+
+        Ok(())
+    }
+
+    async fn set_sleep(&mut self) -> Result<(), Self::Error> {
+        self.sleeping = true;
 
         Ok(())
     }
@@ -223,15 +260,22 @@ impl Radio for SimRadio {
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        _cca: bool, // The simulated channel is always idle
+        channel: u8,
+        _power: i8,                 // The simulated medium is lossless
+        _cca_threshold: Option<i8>, // ... and always idle
         _ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         if !(2..=PSDU_MAX).contains(&psdu.len()) {
             return Err(SimRadioError::TxInvalid);
         }
 
+        // A transmit tunes the radio and wakes it, as it does on real
+        // hardware.
+        self.channel = channel;
+        self.wake();
+
         let mut msg = [0; PSDU_MAX + 1];
-        msg[0] = self.config.channel;
+        msg[0] = channel;
         msg[1..1 + psdu.len()].copy_from_slice(psdu);
         patch_fcs(&mut msg[1..1 + psdu.len()]);
 
@@ -268,7 +312,7 @@ impl Radio for SimRadio {
             }
 
             let channel = msg[0];
-            if channel != self.config.channel {
+            if channel != self.channel {
                 continue;
             }
 

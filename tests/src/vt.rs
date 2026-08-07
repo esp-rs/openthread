@@ -21,7 +21,7 @@ use std::net::{Ipv4Addr, UdpSocket};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::sync::Arc;
 
-use openthread::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind};
+use openthread::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig};
 
 use crate::sim_radio::{patch_fcs, port_base_from_env, PSDU_MAX, SIM_RSSI};
 
@@ -248,6 +248,10 @@ pub struct VtRadio {
     /// and those echoes must not surface as received frames. A queue,
     /// because back-to-back unacked transmissions can outpace the echoes.
     echoes: VecDeque<(usize, [u8; PSDU_MAX])>,
+    /// The channel the radio is tuned to (see `SimRadio`).
+    channel: u8,
+    /// Whether the radio is parked (see `SimRadio`).
+    sleeping: bool,
 }
 
 impl VtRadio {
@@ -256,6 +260,8 @@ impl VtRadio {
             link,
             config: Config::new(),
             echoes: VecDeque::new(),
+            channel: 11,
+            sleeping: true,
         }
     }
 
@@ -268,6 +274,21 @@ impl VtRadio {
     /// to the echo of an ACK **we** sent, and a match-anywhere filter would
     /// eat the real ACK, blinding `MacRadio`'s ACK wait into retransmission
     /// storms.
+    /// Bring the radio out of its parked state, dropping everything that
+    /// queued up meanwhile (see `SimRadio::wake` for the full rationale;
+    /// here the ordering is deterministic, but symmetry keeps the two radios
+    /// honest) - though the echoes of own pre-park transmissions among them
+    /// must still settle the echo bookkeeping, or the FIFO matching desyncs.
+    fn wake(&mut self) {
+        if self.sleeping {
+            self.sleeping = false;
+
+            while let Some(frame) = VT_RX.try_receive() {
+                let _ = self.consume_echo(&frame);
+            }
+        }
+    }
+
     fn consume_echo(&mut self, frame: &VtFrame) -> bool {
         if let Some((len, echo)) = self.echoes.front() {
             if *len == frame.len && echo[..*len] == frame.psdu[..frame.len] {
@@ -305,21 +326,25 @@ impl Radio for VtRadio {
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
-        // The wake boundary - `Config::receive` turning true again (see
-        // `SimRadio::set_config` for the rationale; here the ordering is
-        // deterministic, but symmetry keeps the two radios honest): frames
-        // queued while parked are missed - though the echoes of own
-        // pre-park transmissions among them must still settle the echo
-        // bookkeeping, or the FIFO matching desyncs.
-        let waking = config.receive && !self.config.receive;
-
+        // Nothing to apply - a bare PHY, like `SimRadio`.
         self.config = config.clone();
 
-        if waking {
-            while let Some(frame) = VT_RX.try_receive() {
-                let _ = self.consume_echo(&frame);
-            }
-        }
+        Ok(())
+    }
+
+    async fn set_src_match_config(&mut self, _config: &SrcMatchConfig) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
+        self.channel = channel;
+        self.wake();
+
+        Ok(())
+    }
+
+    async fn set_sleep(&mut self) -> Result<(), Self::Error> {
+        self.sleeping = true;
 
         Ok(())
     }
@@ -327,15 +352,22 @@ impl Radio for VtRadio {
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        _cca: bool, // The simulated channel is always idle
+        channel: u8,
+        _power: i8,                 // The simulated medium is lossless
+        _cca_threshold: Option<i8>, // ... and always idle
         _ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         if !(2..=PSDU_MAX).contains(&psdu.len()) {
             return Err(VtRadioError::TxInvalid);
         }
 
+        // A transmit tunes the radio and wakes it, as it does on real
+        // hardware.
+        self.channel = channel;
+        self.wake();
+
         let mut data = [0; PSDU_MAX + 1];
-        data[0] = self.config.channel;
+        data[0] = channel;
         data[1..1 + psdu.len()].copy_from_slice(psdu);
         patch_fcs(&mut data[1..1 + psdu.len()]);
 
@@ -383,7 +415,7 @@ impl Radio for VtRadio {
                 );
             }
 
-            if frame.channel != self.config.channel {
+            if frame.channel != self.channel {
                 continue;
             }
 

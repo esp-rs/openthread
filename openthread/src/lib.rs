@@ -796,7 +796,7 @@ impl<'a> OpenThread<'a> {
     ///
     /// Group membership is a property of the *interface*: once joined, the
     /// group's datagrams are delivered to every consumer — each native
-    /// [`UdpSocket`](crate::UdpSocket) bound to a matching port, as well as the
+    /// [`UdpSocket`] bound to a matching port, as well as the
     /// raw IPv6 egress ([`Self::rx`] / the `enet` driver). Needed e.g. for
     /// Matter group messaging over Thread, where group-addressed commands
     /// arrive on site-local multicast addresses.
@@ -1113,14 +1113,19 @@ impl<'a> OpenThread<'a> {
     /// the tasks will fight with each other by each re-registering its own waker, thus keeping the CPU constantly busy.
     ///
     /// NOTE:
-    /// If the provided radio does not implement some of the MAC capabilities required by OpenThread (`MacCapabilities`)
-    /// it is advisable to use `ProxyRadio` and `PhyRadioRunner` to run the radio in a higher priority executor, where
-    /// the radio MAC capabilities (which are then emulated in software) can meet their timing deadlines.
+    /// The radio must offload the complete MAC (`MacCapabilities::REQUIRED`), or this method panics.
+    /// A radio that does not - a bare PHY, typically - has to be wrapped by the caller in a `MacRadio`,
+    /// which emulates the missing capabilities in software.
+    ///
+    /// NOTE:
+    /// When the software emulation is in play, it is advisable to use `ProxyRadio` and `PhyRadioRunner`
+    /// to run the (wrapped) radio in a higher priority executor, where the emulated MAC capabilities can
+    /// meet their timing deadlines.
     pub async fn run<R>(&self, radio: R) -> !
     where
         R: Radio,
     {
-        let mut radio = pin!(self.run_radio(radio, EmbassyTimeTimer));
+        let mut radio = pin!(self.run_radio(radio));
         let mut alarm = pin!(self.run_alarm());
         let mut openthread = pin!(self.run_tasklets());
 
@@ -1296,66 +1301,77 @@ impl<'a> OpenThread<'a> {
     /// Arguments:
     /// - `radio`: The radio to be used by the OpenThread stack.
     /// - `delay`: The delay implementation to be used by the OpenThread stack.
-    async fn run_radio<R, T>(&self, radio: R, timer: T) -> !
+    ///
+    async fn run_radio<R>(&self, mut radio: R) -> !
     where
         R: Radio,
-        T: MacRadioTimer,
     {
-        let mut radio = MacRadio::new(radio, timer);
-
         // Bring the radio up and fetch its runtime capabilities, then cache the
         // PHY set for `otPlatRadioGetCaps`. This runs before the loop below first
         // pumps the OpenThread stack, so the caps are in place before the stack
         // can ask for them. A radio with statically-known caps returns them
         // directly; one that discovers them from hardware (e.g. `SpinelRadio`
-        // querying its RCP) reports the discovered set. (The MAC set is consumed
-        // internally by the `MacRadio` wrapper, not reported to the C stack.) On
-        // failure we advertise no PHY offload (OpenThread then does everything in
-        // software) and let the radio recover lazily on the first request.
-        let (radio_caps, radio_sensitivity) = match radio.init().await {
-            Ok(caps) => (caps.phy, caps.receive_sensitivity),
+        // querying its RCP) reports the discovered set. (The MAC set is not
+        // reported to the C stack; it is checked below.) On failure we advertise
+        // no PHY offload (OpenThread then does everything in software) and let
+        // the radio recover lazily on the first request.
+        let caps = match radio.init().await {
+            Ok(caps) => caps,
             Err(e) => {
                 warn!(
                     "Radio init failed: {:?}; advertising no PHY capabilities",
-                    e
+                    dbg2fmt!(e)
                 );
-                (
-                    Capabilities::empty(),
-                    radio::RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
-                )
+
+                radio::RadioCaps::default()
             }
         };
+
+        // The stack drives the radio expecting a complete MAC underneath it.
+        // A radio that does not offload all of it has to be wrapped by the user
+        // in a `MacRadio`, which emulates the rest in software - this crate no
+        // longer does that silently, because the wrapper needs resources and,
+        // more importantly, the timing headroom of its own executor.
+        caps.mac.assert_required();
 
         {
             let mut activated = self.activate();
             let state = activated.state();
 
-            state.ot.radio_caps = radio_caps.bits();
-            state.ot.radio_sensitivity = radio_sensitivity;
+            state.ot.radio_caps = caps.phy.bits();
+            state.ot.radio_sensitivity = caps.receive_sensitivity;
+            state.ot.radio_cca_threshold = caps.default_cca_threshold;
+            state.ot.radio_tx_power = caps.default_tx_power;
         }
 
         loop {
             self.activate().process_tasklets();
 
-            let rx = {
+            let rx_channel = {
                 let mut activated = self.activate();
                 let state = activated.state();
 
-                state.ot.radio_conf.receive
+                state.ot.radio_receive_channel
             };
 
-            // TODO: Borrow it from the resources
+            // On the stack of this future, rather than in `OtResources`: the
+            // OpenThread C code borrows the latter through the `OtState`
+            // `RefCell`, which this loop re-enters on every frame, while these
+            // are held across its awaits - so they would need a `RefCell` of
+            // their own. Not worth it for 2x128 bytes.
             let mut psdu_buf = [0_u8; OT_RADIO_FRAME_MAX_SIZE as usize];
             let mut ack_psdu_buf = [0_u8; OT_RADIO_FRAME_MAX_SIZE as usize];
 
-            let action = if rx {
+            let action = if let Some(rx_channel) = rx_channel {
                 let mut action = pin!(self.radio_action());
-                let mut rx = pin!(self.run_radio_rx(&mut radio, &mut psdu_buf));
+                let mut rx = pin!(self.run_radio_rx(&mut radio, rx_channel, &mut psdu_buf));
 
                 let Either::First(action) = select(&mut action, &mut rx).await;
 
                 action
             } else {
+                unwrap_dbg!(radio.set_sleep().await);
+
                 self.radio_action().await
             };
 
@@ -1370,7 +1386,7 @@ impl<'a> OpenThread<'a> {
 
                     trace!("Radio configuration changed: {:?}", conf);
 
-                    unwrap!(radio.set_config(&conf).await);
+                    unwrap_dbg!(radio.set_config(&conf).await);
                 }
                 Either3::Second(_) => {
                     let src = {
@@ -1382,7 +1398,7 @@ impl<'a> OpenThread<'a> {
 
                     trace!("Radio source match table changed: {:?}", src);
 
-                    unwrap!(radio.set_src_match(&src).await);
+                    unwrap_dbg!(radio.set_src_match_config(&src).await);
                 }
                 Either3::Third(cmd) => {
                     trace!("Got radio command: {:?}", cmd);
@@ -1405,9 +1421,15 @@ impl<'a> OpenThread<'a> {
 
                             select(&mut new_cmd, &mut tx).await;
                         }
-                        RadioCommand::EnergyScan(duration_millis) => {
-                            let mut scan =
-                                pin!(self.process_radio_energy_scan(&mut radio, duration_millis));
+                        RadioCommand::EnergyScan {
+                            channel,
+                            duration_millis,
+                        } => {
+                            let mut scan = pin!(self.process_radio_energy_scan(
+                                &mut radio,
+                                channel,
+                                duration_millis
+                            ));
 
                             select(&mut new_cmd, &mut scan).await;
                         }
@@ -1420,10 +1442,12 @@ impl<'a> OpenThread<'a> {
     /// Repeatedly receive IEEE 802.15.4 frames from the radio and pass them to the OpenThread C library.
     ///
     /// This loop runs forever, unless cancelled by dropping the future.
-    async fn run_radio_rx<R>(&self, mut radio: R, psdu_buf: &mut [u8]) -> !
+    async fn run_radio_rx<R>(&self, mut radio: R, channel: u8, psdu_buf: &mut [u8]) -> !
     where
         R: Radio,
     {
+        unwrap_dbg!(radio.set_receive(channel).await);
+
         loop {
             self.activate().process_tasklets();
 
@@ -1471,7 +1495,7 @@ impl<'a> OpenThread<'a> {
                     }
                 }
                 Err(err) => {
-                    trace!("Rx failed: {:?}", err);
+                    trace!("Rx failed: {:?}", dbg2fmt!(err));
 
                     // Reporting receive failure because we got a driver error
                     unsafe {
@@ -1491,11 +1515,12 @@ impl<'a> OpenThread<'a> {
     where
         R: Radio,
     {
-        let (cca, psdu_len) = {
+        let (cca_threshold, channel, power, psdu_len) = {
             let mut ot = self.activate();
             let state = ot.state();
 
             let cca = unsafe { state.ot.radio_resources.snd_frame.mInfo.mTxInfo }.mCsmaCaEnabled();
+            let channel = state.ot.radio_resources.snd_frame.mChannel;
 
             let psdu_len = state.ot.radio_resources.snd_frame.mLength as usize;
             psdu_buf[..psdu_len].copy_from_slice(&state.ot.radio_resources.snd_psdu[..psdu_len]);
@@ -1504,7 +1529,12 @@ impl<'a> OpenThread<'a> {
                 otPlatRadioTxStarted(state.ot.instance, &mut state.ot.radio_resources.snd_frame);
             }
 
-            (cca, psdu_len)
+            (
+                cca.then_some(state.ot.radio_cca_threshold),
+                channel,
+                state.ot.radio_tx_power,
+                psdu_len,
+            )
         };
 
         trace!(
@@ -1520,7 +1550,13 @@ impl<'a> OpenThread<'a> {
         });
 
         let result = radio
-            .transmit(&psdu_buf[..psdu_len], cca, Some(ack_psdu_buf))
+            .transmit(
+                &psdu_buf[..psdu_len],
+                channel,
+                power,
+                cca_threshold,
+                Some(ack_psdu_buf),
+            )
             .await;
 
         {
@@ -1565,7 +1601,7 @@ impl<'a> OpenThread<'a> {
                     }
                 }
                 Err(err) => {
-                    trace!("Tx failed: {:?}", err);
+                    trace!("Tx failed: {:?}", dbg2fmt!(err));
 
                     unsafe {
                         otPlatRadioTxDone(
@@ -1583,7 +1619,7 @@ impl<'a> OpenThread<'a> {
     }
 
     /// Perform an energy scan on the radio for the specified duration.
-    async fn process_radio_energy_scan<R>(&self, mut radio: R, duration_millis: u16)
+    async fn process_radio_energy_scan<R>(&self, mut radio: R, channel: u8, duration_millis: u16)
     where
         R: Radio,
     {
@@ -1605,7 +1641,7 @@ impl<'a> OpenThread<'a> {
 
         trace!("Energy scan: {} ms", duration_millis);
 
-        let result = radio.energy_scan(duration_millis).await;
+        let result = radio.energy_scan(channel, duration_millis).await;
 
         {
             let mut ot = self.activate();
@@ -1619,7 +1655,7 @@ impl<'a> OpenThread<'a> {
                         max_rssi
                     }
                     Err(err) => {
-                        warn!("Energy scan failed: {:?}", err);
+                        warn!("Energy scan failed: {:?}", dbg2fmt!(err));
                         OT_RADIO_RSSI_INVALID as i8
                     }
                 };
@@ -1717,7 +1753,7 @@ impl<'a> OpenThread<'a> {
     /// since `PsduMeta` does not carry the radio's actual outcome.
     /// TODO: Radios with RX-ACK offload may decide differently; plumb
     /// the real outcome through `PsduMeta`.
-    fn acked_with_frame_pending(psdu: &[u8], src_match: &radio::SrcMatchEntries) -> bool {
+    fn acked_with_frame_pending(psdu: &[u8], src_match: &radio::SrcMatchConfig) -> bool {
         let mut hdr = radio::MacHeader::new();
 
         hdr.load(psdu).is_some()
@@ -1889,11 +1925,12 @@ impl OtResources {
             changes: Signal::new(),
             radio_conf: Config::new(),
             radio_conf_changed: Signal::new(),
-            radio_conf_src_match: radio::SrcMatchEntries::default(),
+            radio_conf_src_match: radio::SrcMatchConfig::default(),
             radio_conf_src_match_changed: Signal::new(),
             radio_cmd: Signal::new(),
-            last_rssi: OT_RADIO_RSSI_INVALID as i8,
             radio_enabled: false,
+            radio_receive_channel: None,
+            last_rssi: OT_RADIO_RSSI_INVALID as i8,
             // The *initial* radio capabilities, before the actual radio is
             // brought up by `run_radio` and reports its real set.
             //
@@ -1913,6 +1950,8 @@ impl OtResources {
             // which is unimplementable on top of an async radio.
             radio_caps: (OT_RADIO_CAPS_ACK_TIMEOUT | sys::OT_RADIO_CAPS_ENERGY_SCAN) as otRadioCaps,
             radio_sensitivity: radio::RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
+            radio_cca_threshold: radio::RadioCaps::DEFAULT_CCA_THRESHOLD,
+            radio_tx_power: radio::RadioCaps::DEFAULT_TX_POWER,
         }));
 
         info!("OpenThread resources initialized");
@@ -2706,9 +2745,8 @@ impl<'a> OtContext<'a> {
         let state = self.state();
         state.ot.radio_enabled = false;
 
-        if state.ot.radio_conf.receive {
-            state.ot.radio_conf.receive = false;
-            state.ot.radio_conf_changed.signal(());
+        if state.ot.radio_receive_channel.is_some() {
+            state.ot.radio_receive_channel = None;
             state.ot.radio_cmd.signal(RadioCommand::Interrupt);
         }
 
@@ -2744,7 +2782,7 @@ impl<'a> OtContext<'a> {
             return Err(OtError::new(crate::sys::otError_OT_ERROR_INVALID_ARGS));
         };
 
-        *power = self.state().ot.radio_conf.power;
+        *power = self.state().ot.radio_tx_power;
 
         trace!("Plat radio get transmit power callback, power: {}", *power);
 
@@ -2756,23 +2794,42 @@ impl<'a> OtContext<'a> {
 
         let state = self.state();
 
-        if state.ot.radio_conf.power != power {
-            state.ot.radio_conf.power = power;
-            state.ot.radio_conf_changed.signal(());
-        }
+        state.ot.radio_tx_power = power;
 
         Ok(())
     }
 
-    /// The CCA energy-detect threshold is not plumbed through the `Radio`
-    /// trait: its `Cca` config carries a raw device-unit threshold, not the
-    /// dBm value this platform API speaks. Report both accessors unsupported
-    /// (as many radio platforms do); OpenThread and its CLI handle that
-    /// gracefully.
-    fn plat_radio_cca_energy_detect_threshold_unsupported(&mut self) -> Result<(), OtError> {
-        info!("Plat radio get/set CCA energy detect threshold callback: unsupported");
+    fn plat_radio_get_cca_energy_detect_threshold(
+        &mut self,
+        threshold: Option<&mut i8>,
+    ) -> Result<(), OtError> {
+        let Some(threshold) = threshold else {
+            return Err(OtError::new(crate::sys::otError_OT_ERROR_INVALID_ARGS));
+        };
 
-        Err(OtError::new(crate::sys::otError_OT_ERROR_NOT_IMPLEMENTED))
+        let state = self.state();
+
+        *threshold = state.ot.radio_cca_threshold;
+
+        info!(
+            "Plat radio get/set CCA energy detect threshold callback, threshold: {}",
+            *threshold
+        );
+
+        Ok(())
+    }
+
+    fn plat_radio_set_cca_energy_detect_threshold(&mut self, threshold: i8) -> Result<(), OtError> {
+        info!(
+            "Plat radio set CCA energy detect threshold callback, threshold: {}",
+            threshold
+        );
+
+        let state = self.state();
+
+        state.ot.radio_cca_threshold = threshold;
+
+        Ok(())
     }
 
     fn plat_radio_set_extended_address(&mut self, address: u64) {
@@ -2833,10 +2890,10 @@ impl<'a> OtContext<'a> {
         }
     }
 
-    fn plat_radio_energy_scan(&mut self, channel: u8, duration: u16) -> Result<(), OtError> {
+    fn plat_radio_energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<(), OtError> {
         info!(
             "Plat radio energy scan callback, channel {}, duration {}",
-            channel, duration
+            channel, duration_millis
         );
 
         let state = self.state();
@@ -2845,15 +2902,10 @@ impl<'a> OtContext<'a> {
             Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
         }
 
-        if state.ot.radio_conf.channel != channel {
-            state.ot.radio_conf.channel = channel;
-            state.ot.radio_conf_changed.signal(());
-        }
-
-        state
-            .ot
-            .radio_cmd
-            .signal(RadioCommand::EnergyScan(duration));
+        state.ot.radio_cmd.signal(RadioCommand::EnergyScan {
+            channel,
+            duration_millis,
+        });
 
         Ok(())
     }
@@ -2867,9 +2919,8 @@ impl<'a> OtContext<'a> {
             Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
         }
 
-        if state.ot.radio_conf.receive {
-            state.ot.radio_conf.receive = false;
-            state.ot.radio_conf_changed.signal(());
+        if state.ot.radio_receive_channel.is_some() {
+            state.ot.radio_receive_channel = None;
             state.ot.radio_cmd.signal(RadioCommand::Interrupt);
         }
 
@@ -2903,11 +2954,6 @@ impl<'a> OtContext<'a> {
         state.ot.radio_resources.snd_frame.mPsdu =
             addr_of_mut!(state.ot.radio_resources.snd_psdu) as *mut _;
 
-        if state.ot.radio_conf.channel != frame.mChannel {
-            state.ot.radio_conf.channel = frame.mChannel;
-            state.ot.radio_conf_changed.signal(());
-        }
-
         state.ot.radio_cmd.signal(RadioCommand::Tx);
 
         Ok(())
@@ -2922,11 +2968,7 @@ impl<'a> OtContext<'a> {
             Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
         }
 
-        if state.ot.radio_conf.channel != channel || !state.ot.radio_conf.receive {
-            state.ot.radio_conf.channel = channel;
-            state.ot.radio_conf.receive = true;
-            state.ot.radio_conf_changed.signal(());
-        }
+        state.ot.radio_receive_channel = Some(channel);
 
         // OpenThread also uses this callback as a means to cancel an ongoing
         // TX or energy scan operation - hence why we are unconditionally notifying.
@@ -3254,22 +3296,23 @@ struct OtState<'a> {
     /// Raised whenever a standing radio-configuration policy changes; consumed by the radio runner.
     radio_conf_changed: Signal<()>,
     /// The source-address-match table (`otPlatRadio*SrcMatch*`).
-    radio_conf_src_match: radio::SrcMatchEntries,
+    radio_conf_src_match: radio::SrcMatchConfig,
     /// Raised whenever the source-address-match table changes; consumed by the radio runner.
     radio_conf_src_match_changed: Signal<()>,
     /// Raised whenever the radio needs to execute the provided command.
     radio_cmd: Signal<RadioCommand>,
-    /// The RSSI of the most recently received frame (ACKs included) - the
-    /// cheap latch `otPlatRadioGetRssi`'s synchronous query is served from
-    /// (real radio drivers commonly do the same). Invalid until the first
-    /// reception.
-    last_rssi: i8,
     /// Whether the radio is enabled (`otPlatRadioEnable`/`Disable`) - the
     /// Disabled-vs-not axis of the radio state machine, orthogonal to the
     /// commanded Sleep/Receive/Transmit states the runner executes. Radio
     /// operations arriving while disabled answer `INVALID_STATE`, per the
     /// C contract.
     radio_enabled: bool,
+    radio_receive_channel: Option<u8>,
+    /// The RSSI of the most recently received frame (ACKs included) - the
+    /// cheap latch `otPlatRadioGetRssi`'s synchronous query is served from
+    /// (real radio drivers commonly do the same). Invalid until the first
+    /// reception.
+    last_rssi: i8,
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,
@@ -3277,6 +3320,8 @@ struct OtState<'a> {
     /// `otPlatRadioGetReceiveSensitivity` - the noise floor OpenThread grades
     /// neighbor link margins against. Fetched with the capabilities.
     radio_sensitivity: i8,
+    radio_cca_threshold: i8,
+    radio_tx_power: i8,
     /// Resources for the radio (PHY data frames and their descriptors)
     radio_resources: &'a mut RadioResources,
     /// Resources for dealing with the operational dataset
@@ -3298,7 +3343,7 @@ enum RadioCommand {
     ///
     /// Once the scan completes (or an error occurs) OpenThread C will be
     /// signalled by calling `otPlatRadioEnergyScanDone`.
-    EnergyScan(u16),
+    EnergyScan { channel: u8, duration_millis: u16 },
 }
 
 /// Radio-related OpenThread C data carriers

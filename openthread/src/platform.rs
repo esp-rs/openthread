@@ -124,9 +124,8 @@ extern "C" fn otPlatRadioGetCcaEnergyDetectThreshold(
     instance: *const otInstance,
     threshold: *mut i8,
 ) -> otError {
-    let _ = threshold;
     OtContext::callback(instance)
-        .plat_radio_cca_energy_detect_threshold_unsupported()
+        .plat_radio_get_cca_energy_detect_threshold(unsafe { threshold.as_mut() })
         .into_ot_code()
 }
 
@@ -135,9 +134,8 @@ extern "C" fn otPlatRadioSetCcaEnergyDetectThreshold(
     instance: *const otInstance,
     threshold: i8,
 ) -> otError {
-    let _ = threshold;
     OtContext::callback(instance)
-        .plat_radio_cca_energy_detect_threshold_unsupported()
+        .plat_radio_set_cca_energy_detect_threshold(threshold)
         .into_ot_code()
 }
 
@@ -228,9 +226,9 @@ extern "C" fn otPlatRadioReceive(instance: *mut otInstance, channel: u8) -> otEr
 //
 // An FTD parent tells the radio which sleepy children it has pending indirect
 // frames for; whoever sends the ACKs answers each child's data poll with the
-// Frame Pending bit from this table (see `radio::SrcMatchEntries`). The
+// Frame Pending bit from this table (see `radio::SrcMatchConfig`). The
 // callbacks mirror the table into the crate state; the radio runner ships
-// snapshots to the acking layer (`Radio::update_src_match`). Only referenced
+// snapshots to the acking layer (`Radio::set_src_match_config`). Only referenced
 // when an FTD `libopenthread-ftd.a` is linked; on MTD they are never called
 // and are dropped by `--gc-sections`.
 

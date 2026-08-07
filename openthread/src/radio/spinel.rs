@@ -53,7 +53,7 @@ use embassy_time::{Duration, Timer};
 
 use crate::radio::{
     Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
-    SrcMatchEntries, SRC_MATCH_CAPACITY,
+    SrcMatchConfig, SRC_MATCH_CAPACITY,
 };
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 
@@ -159,6 +159,10 @@ const PROP_MAC_ENERGY_SCAN_RESULT: u32 = 0x39;
 const PROP_RADIO_CAPS: u32 = 0x1207;
 const PROP_PHY_CHAN: u32 = 0x21;
 const PROP_PHY_TX_POWER: u32 = 0x25;
+/// `SPINEL_PROP_PHY_CCA_THRESHOLD` — the RCP's CCA energy-detect threshold,
+/// in dBm (int8), the same unit OpenThread's
+/// `otPlatRadioSetCcaEnergyDetectThreshold` speaks.
+const PROP_PHY_CCA_THRESHOLD: u32 = 0x24;
 /// `SPINEL_PROP_PHY_RX_SENSITIVITY` — the RCP's receive sensitivity in dBm.
 const PROP_PHY_RX_SENSITIVITY: u32 = 0x27;
 const PROP_MAC_15_4_LADDR: u32 = 0x34;
@@ -512,6 +516,19 @@ pub struct SpinelRadio<'a, T> {
     /// handshake. Until the handshake runs it holds the fixed baseline
     /// ([`SPINEL_RADIO_CAPS`]); afterwards it is the RCP's reported set.
     caps: Capabilities,
+    /// The channel the RCP is currently tuned to (`PROP_PHY_CHAN`), and the
+    /// CCA threshold it currently has (`PROP_PHY_CCA_THRESHOLD`). Both used
+    /// to arrive inside `Config`; they are now per-operation parameters, so
+    /// the driver tracks what the RCP was last told to avoid re-writing an
+    /// unchanged property on every operation.
+    channel: u8,
+    cca_threshold: i8,
+    /// The RCP's own defaults for the transmit power and the CCA threshold,
+    /// read once during the handshake and reported through [`RadioCaps`], so
+    /// that the crate's stateful `otPlatRadioGet/SetTransmitPower` and
+    /// `…CcaEnergyDetectThreshold` emulation starts from this radio's truth.
+    default_tx_power: i8,
+    default_cca_threshold: i8,
     /// The receive sensitivity read from the RCP's `PHY_RX_SENSITIVITY`
     /// during the handshake; the crate-wide default until then (and for RCP
     /// firmwares that do not implement the property).
@@ -520,7 +537,7 @@ pub struct SpinelRadio<'a, T> {
     /// it not yet pushed to the RCP: the trait's delivery is synchronous, the
     /// spinel writes are not, so the push happens on the next async operation
     /// (see `flush_src_match`).
-    src_match: SrcMatchEntries,
+    src_match: SrcMatchConfig,
     src_match_dirty: bool,
     /// Last-applied config; used to only re-send changed properties.
     config: Option<Config>,
@@ -567,8 +584,12 @@ where
             transport,
             eui64: None,
             caps: SPINEL_RADIO_CAPS,
+            channel: 11,
+            cca_threshold: RadioCaps::DEFAULT_CCA_THRESHOLD,
+            default_tx_power: RadioCaps::DEFAULT_TX_POWER,
+            default_cca_threshold: RadioCaps::DEFAULT_CCA_THRESHOLD,
             sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
-            src_match: SrcMatchEntries::default(),
+            src_match: SrcMatchConfig::default(),
             src_match_dirty: false,
             config: None,
             rx_enabled: false,
@@ -667,7 +688,7 @@ where
     ///
     /// Each address family goes as one whole-array `VALUE_SET` (the shape
     /// upstream `RadioSpinel::RestoreProperties` uses after an RCP reset),
-    /// which matches the snapshot semantics of [`Radio::update_src_match`].
+    /// which matches the snapshot semantics of [`Radio::set_src_match_config`].
     async fn flush_src_match(&mut self) -> Result<(), RadioErrorKind> {
         if !self.src_match_dirty {
             return Ok(());
@@ -1003,6 +1024,41 @@ where
             }
         }
 
+        // The RCP's power-on transmit power and CCA threshold (both dBm, int8)
+        // become this radio's reported defaults, so that the crate's emulation
+        // of the stateful `otPlatRadioGet/SetTransmitPower` and
+        // `…CcaEnergyDetectThreshold` starts from what the hardware actually
+        // has, rather than from a crate-wide guess. Best-effort, like the
+        // sensitivity read above.
+        match self
+            .get_prop(PROP_PHY_TX_POWER, |payload| {
+                payload.first().map(|&p| p as i8)
+            })
+            .await
+        {
+            Ok(Some(power)) => self.default_tx_power = power,
+            _ => info!(
+                "RCP does not report PHY_TX_POWER; using the default {} dBm",
+                self.default_tx_power
+            ),
+        }
+
+        match self
+            .get_prop(PROP_PHY_CCA_THRESHOLD, |payload| {
+                payload.first().map(|&t| t as i8)
+            })
+            .await
+        {
+            Ok(Some(threshold)) => {
+                self.default_cca_threshold = threshold;
+                self.cca_threshold = threshold;
+            }
+            _ => info!(
+                "RCP does not report PHY_CCA_THRESHOLD; using the default {} dBm",
+                self.default_cca_threshold
+            ),
+        }
+
         // Enable the PHY.
         self.set_prop(PROP_PHY_ENABLED, &[1]).await?;
 
@@ -1044,8 +1100,6 @@ where
         // so its slice stays valid for the whole burst, then stage the
         // `(prop, payload)` pairs. At most seven properties, so a fixed array +
         // length avoids any allocation.
-        let chan = [config.channel];
-        let power = [config.power as u8];
         let promisc = [config.promiscuous as u8];
         let rx_on_when_idle = [!config.auto_sleep as u8];
         let pan_id = config.pan_id.unwrap_or(0xffff).to_le_bytes();
@@ -1066,14 +1120,6 @@ where
         let mut batch: [(u32, &[u8]); 8] = [(0, &[]); 8];
         let mut count = 0;
 
-        if changed(|c| c.channel as u64) {
-            batch[count] = (PROP_PHY_CHAN, &chan);
-            count += 1;
-        }
-        if changed(|c| c.power as u8 as u64) {
-            batch[count] = (PROP_PHY_TX_POWER, &power);
-            count += 1;
-        }
         if changed(|c| c.promiscuous as u64) {
             batch[count] = (PROP_MAC_PROMISCUOUS_MODE, &promisc);
             count += 1;
@@ -1115,6 +1161,29 @@ where
     }
 
     /// Ensure raw-stream RX is enabled (so the RCP forwards received frames).
+    /// Tune the RCP to `channel`, skipping the property write when it is
+    /// already there.
+    async fn ensure_channel(&mut self, channel: u8) -> Result<(), RadioErrorKind> {
+        if self.channel != channel {
+            self.set_prop(PROP_PHY_CHAN, &[channel]).await?;
+            self.channel = channel;
+        }
+
+        Ok(())
+    }
+
+    /// Push a CCA threshold (dBm) to the RCP, skipping the write when it is
+    /// already there.
+    async fn ensure_cca_threshold(&mut self, threshold: i8) -> Result<(), RadioErrorKind> {
+        if self.cca_threshold != threshold {
+            self.set_prop(PROP_PHY_CCA_THRESHOLD, &[threshold as u8])
+                .await?;
+            self.cca_threshold = threshold;
+        }
+
+        Ok(())
+    }
+
     async fn ensure_rx_enabled(&mut self, enabled: bool) -> Result<(), RadioErrorKind> {
         if self.rx_enabled != enabled {
             self.set_prop(PROP_MAC_RAW_STREAM_ENABLED, &[enabled as u8])
@@ -1211,6 +1280,8 @@ where
             phy: self.caps,
             mac: SPINEL_RADIO_MAC_CAPS,
             receive_sensitivity: self.sensitivity,
+            default_tx_power: self.default_tx_power,
+            default_cca_threshold: self.default_cca_threshold,
         })
     }
 
@@ -1220,7 +1291,29 @@ where
         self.flush_config(config).await
     }
 
-    async fn set_src_match(&mut self, entries: &SrcMatchEntries) -> Result<(), Self::Error> {
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
+        self.ensure_init().await?;
+        self.flush_src_match().await?;
+
+        // The RCP receives on the channel property; the raw stream is what
+        // makes it forward the frames to us.
+        self.ensure_channel(channel).await?;
+        self.ensure_rx_enabled(true).await
+    }
+
+    async fn set_sleep(&mut self) -> Result<(), Self::Error> {
+        self.ensure_init().await?;
+
+        // Stop the RCP from streaming frames up. This is the closest thing to
+        // "park" the spinel raw-MAC surface offers: `PROP_MAC_RAW_STREAM_ENABLED`
+        // is what the upstream POSIX host toggles too. It is not an RF
+        // power-down - the RCP decides that for itself, and with
+        // `Capabilities::AUTO_SLEEP` it does so autonomously from the
+        // rx-on-when-idle policy in `Config`.
+        self.ensure_rx_enabled(false).await
+    }
+
+    async fn set_src_match_config(&mut self, entries: &SrcMatchConfig) -> Result<(), Self::Error> {
         self.src_match = entries.clone();
         self.src_match_dirty = true;
 
@@ -1299,14 +1392,24 @@ where
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        cca: bool,
+        channel: u8,
+        power: i8,
+        cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         self.ensure_init().await?;
         self.flush_src_match().await?;
 
-        let channel = self.config.as_ref().map(|c| c.channel).unwrap_or(11);
-        let tx_power = self.config.as_ref().map(|c| c.power).unwrap_or(0);
+        // The frame carries its own channel and power below, but the RCP's
+        // channel property is what its receiver returns to afterwards, so keep
+        // the two in step. The CCA threshold has no per-frame slot at all - it
+        // is a property, pushed only when it moves.
+        self.ensure_channel(channel).await?;
+        if let Some(threshold) = cca_threshold {
+            self.ensure_cca_threshold(threshold).await?;
+        }
+
+        let tx_power = power;
 
         // Build the STREAM_RAW transmit payload:
         //   data-with-len(psdu) + channel + maxCsmaBackoffs + maxFrameRetries
@@ -1331,7 +1434,7 @@ where
         n += 1;
         payload[n] = 3; // maxFrameRetries
         n += 1;
-        payload[n] = cca as u8; // csmaCaEnabled
+        payload[n] = cca_threshold.is_some() as u8; // csmaCaEnabled
         n += 1;
         payload[n] = 1; // isHeaderUpdated (OT core secured the frame)
         n += 1;
@@ -1415,13 +1518,16 @@ where
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         self.ensure_init().await?;
         self.flush_src_match().await?;
+        // Normally already done by `set_receive`; re-asserted here because a
+        // `receive` may also follow a transmit, and because it is cheap (the
+        // property is only written when it actually changes).
         self.ensure_rx_enabled(true).await?;
 
         // Fallback for frames whose metadata lacks the PHY-data struct; the
         // parsed per-frame channel is preferred (a stashed frame may have been
-        // received on a different channel than the current config's, e.g.
-        // during an active scan).
-        let cfg_channel = self.config.as_ref().map(|c| c.channel).unwrap_or(0);
+        // received on a different channel than the one the RCP is tuned to
+        // now, e.g. during an active scan).
+        let cfg_channel = self.channel;
 
         // First return any frame that was stashed while we were busy waiting for
         // a command response (see `try_stash_rx`). This is the common case —

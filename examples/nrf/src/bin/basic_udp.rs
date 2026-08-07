@@ -25,8 +25,8 @@ use embassy_nrf::{bind_interrupts, peripherals, radio};
 
 use openthread::nrf::{Ieee802154, NrfRadio};
 use openthread::{
-    BytesFmt, EmbassyTimeTimer, OpenThread, OtResources, OtUdpResources, PhyRadioRunner,
-    ProxyRadio, ProxyRadioResources, SimpleRamSettings, UdpSocket,
+    BytesFmt, EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources,
+    OtUdpResources, PhyRadioRunner, ProxyRadio, ProxyRadioResources, SimpleRamSettings, UdpSocket,
 };
 
 use panic_rtt_target as _;
@@ -167,11 +167,16 @@ async fn run_ot(ot: OpenThread<'static>, radio: ProxyRadio<'static>) -> ! {
 
 #[embassy_executor::task]
 async fn run_radio(mut runner: PhyRadioRunner<'static>, radio: NrfRadio<'static>) -> ! {
+    // The nRF radio is a bare PHY, so the software MAC goes on here - on the
+    // runner's high-priority executor, where its ACK deadlines are meetable.
+    let mac_radio_resources = mk_static!(MacRadioResources, MacRadioResources::new());
+
     runner
-        .run(
+        .run(MacRadio::new(
             radio,
             EmbassyTimeTimer, /*TODO: Likely not precise enough*/
-        )
+            mac_radio_resources,
+        ))
         .await
 }
 

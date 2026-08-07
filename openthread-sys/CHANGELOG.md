@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+* (Breaking) `heap-int-65536` renamed to `heap-int-65528` as this is the ceiling of an internal heap OpenThread can support (#109)
+* Replace the internal `tinyrlibc`-derived `snprintf` implementation with the much more compliant `nanoprintf` one (#109)
+* Added features for enabling even more OpenThread functionality: `cli`, `anycast-locator`, `neighbor-discovery-agent`, `ip6-fragmentation`, `diagnostic`, `netdiag-client`, `reference-device` - necessary for passing functionality and timing E2E tests (#109)
 * Advertise **Thread 1.4** instead of Thread 1.1 (#103)
   * The stack now reports Thread version 1.4. Note that Thread 1.3+ is the floor Matter-over-Thread expects; for a plain node (no Border Router, no TREL) the on-air/radio contract is unchanged past 1.2, so this is effectively a version bump plus a few benign internal behaviors (e.g. a more thorough parent search at attach).
   * CSL is deliberately **not** compiled in: both `OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE` (which otherwise defaults on at >= 1.2) and `OT_CSL_RECEIVER` are forced off. This keeps the radio-platform contract identical to 1.1 — no `EnableCsl` / `ReceiveAt` / `GetCslAccuracy` callbacks are referenced — so every existing `Radio` driver keeps working unchanged. Low-power CSL (SSED) remains a future opt-in.

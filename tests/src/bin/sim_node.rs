@@ -18,7 +18,9 @@ use embassy_executor::Spawner;
 
 use log::info;
 
-use openthread::{OpenThread, OtResources, SimpleRamSettings};
+use openthread::{
+    EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources, SimpleRamSettings,
+};
 
 use openthread_tests::executor::{self, Mode};
 use openthread_tests::sim_radio::SimRadio;
@@ -68,7 +70,7 @@ async fn main_task(spawner: Spawner, node_id: u16) {
 
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
-    // Bare radio: `OpenThread::run` adds the `MacRadio` software MAC itself.
+    // Bare radio: the runner task below adds the `MacRadio` software MAC.
     let radio = SimRadio::new(node_id).expect("create simulation radio");
 
     spawner.spawn(run_ot(ot.clone(), radio).unwrap());
@@ -97,5 +99,9 @@ async fn main_task(spawner: Spawner, node_id: u16) {
 
 #[embassy_executor::task]
 async fn run_ot(ot: OpenThread<'static>, radio: SimRadio) -> ! {
-    ot.run(radio).await
+    static MAC_RADIO_RESOURCES: StaticCell<MacRadioResources> = StaticCell::new();
+    let mac_radio_resources = MAC_RADIO_RESOURCES.init(MacRadioResources::new());
+
+    ot.run(MacRadio::new(radio, EmbassyTimeTimer, mac_radio_resources))
+        .await
 }

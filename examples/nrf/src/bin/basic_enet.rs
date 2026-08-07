@@ -30,8 +30,8 @@ use heapless::Vec;
 use openthread::enet::{self, EnetDriver, EnetRunner};
 use openthread::nrf::{Ieee802154, NrfRadio};
 use openthread::{
-    BytesFmt, EmbassyTimeTimer, OpenThread, OtResources, PhyRadioRunner, ProxyRadio,
-    ProxyRadioResources, SimpleRamSettings,
+    BytesFmt, EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources,
+    PhyRadioRunner, ProxyRadio, ProxyRadioResources, SimpleRamSettings,
 };
 
 use rand_core::RngCore;
@@ -227,11 +227,16 @@ async fn run_enet_driver(
 
 #[embassy_executor::task]
 async fn run_radio(mut runner: PhyRadioRunner<'static>, radio: NrfRadio<'static>) -> ! {
+    // The nRF radio is a bare PHY, so the software MAC goes on here - on the
+    // runner's high-priority executor, where its ACK deadlines are meetable.
+    let mac_radio_resources = mk_static!(MacRadioResources, MacRadioResources::new());
+
     runner
-        .run(
+        .run(MacRadio::new(
             radio,
             EmbassyTimeTimer, /*TODO: Likely not precise enough*/
-        )
+            mac_radio_resources,
+        ))
         .await
 }
 

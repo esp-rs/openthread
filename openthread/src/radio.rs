@@ -76,28 +76,6 @@ impl RadioError for RadioErrorKind {
     }
 }
 
-/// Carrier sense or Energy Detection (ED) mode.
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub enum Cca {
-    /// Carrier sense
-    #[default]
-    Carrier,
-    /// Energy Detection / Energy Above Threshold
-    Ed {
-        /// Energy measurements above this value mean that the channel is assumed to be busy.
-        /// Note the measurement range is 0..0xFF - where 0 means that the received power was
-        /// less than 10 dB above the selected receiver sensitivity. This value is not given in dBm,
-        /// but can be converted. See the nrf52840 Product Specification Section 6.20.12.4
-        /// for details.
-        ed_threshold: u8,
-    },
-    /// Carrier sense or Energy Detection
-    CarrierOrEd { ed_threshold: u8 },
-    /// Carrier sense and Energy Detection
-    CarrierAndEd { ed_threshold: u8 },
-}
-
 bitflags! {
     /// Radio capabilities - a mirror of the C `otRadioCaps` flags, reported
     /// verbatim to the OpenThread stack via `otPlatRadioGetCaps`.
@@ -140,10 +118,11 @@ bitflags! {
     /// the radio driver owns natively - whether in hardware, in driver
     /// software, or a mix is the driver's concern, not this crate's.
     ///
-    /// Any capability *missing* here is emulated in software by wrapping the
-    /// radio in [`MacRadio`]: `MacCapabilities::all()` means a fully
-    /// offloaded MAC (no software emulation needed), `MacCapabilities::none()`
-    /// a bare PHY-like radio that gets the complete soft-MAC.
+    /// `MacCapabilities::all()` means a fully offloaded MAC (no software
+    /// emulation needed), `MacCapabilities::empty()` a bare PHY-like radio that
+    /// needs the complete soft-MAC. Anything short of [`Self::REQUIRED`] has to
+    /// be wrapped by the user in a [`MacRadio`], which emulates the difference
+    /// in software.
     #[repr(transparent)]
     #[derive(Default)]
     #[cfg_attr(not(feature = "defmt"), derive(Debug, Copy, Clone, Eq, PartialEq, Hash))]
@@ -161,7 +140,7 @@ bitflags! {
         /// Radio supports filtering of PHY frames by their extended address in the MAC payload.
         const FILTER_EXT_ADDR = 0x20;
         /// The radio's own ACK engine honors the source-address-match table
-        /// ([`Radio::update_src_match`] reaches whatever decides the ACKs'
+        /// ([`Radio::set_src_match_config`] reaches whatever decides the ACKs'
         /// Frame Pending bit - a hardware pending table, RCP firmware, etc).
         ///
         /// Only meaningful together with [`RX_ACK`](Self::RX_ACK): the table
@@ -170,6 +149,34 @@ bitflags! {
         /// (protocol-safe over-promising) - and nothing above it can do
         /// better, since the ACKs are out of software's hands.
         const SRC_MATCH = 0x40;
+    }
+}
+
+impl MacCapabilities {
+    /// The MAC-offload set a radio must provide to be driven by the OpenThread
+    /// stack - whether directly ([`crate::OpenThread::run`]) or from a
+    /// [`PhyRadioRunner`](crate::PhyRadioRunner). Both panic on a radio that
+    /// reports less.
+    ///
+    /// This is everything except [`SRC_MATCH`](Self::SRC_MATCH), which is the
+    /// one capability nothing can polyfill: the source-match table only matters
+    /// to whoever sends the ACKs, so a radio doing its own RX ACKs without one
+    /// answers every data poll with Frame Pending set - protocol-safe
+    /// over-promising that no software layer above it can improve on.
+    ///
+    /// A radio reporting less than this - a bare PHY, typically - must be
+    /// wrapped by the user in a [`MacRadio`], which emulates the missing pieces
+    /// in software.
+    pub const REQUIRED: Self = Self::all().difference(Self::SRC_MATCH);
+
+    /// Panic unless these capabilities cover [`Self::REQUIRED`].
+    pub(crate) fn assert_required(&self) {
+        assert!(
+            self.contains(Self::REQUIRED),
+            "Radio is missing MAC capabilities required by OpenThread: {:?}. \
+             Wrap it in a `MacRadio` to have them emulated in software.",
+            Self::REQUIRED.difference(*self)
+        );
     }
 }
 
@@ -196,61 +203,33 @@ pub struct RadioCaps {
     /// Reported to OpenThread via `otPlatRadioGetReceiveSensitivity`, which
     /// uses it as the noise floor for grading neighbor links.
     pub receive_sensitivity: i8,
+    /// The radio's default transmit power, in dBm.
+    pub default_tx_power: i8,
+    /// The radio's default CCA threshold, in dBm.
+    pub default_cca_threshold: i8,
 }
 
 impl RadioCaps {
     /// The OpenThread core's own default receive sensitivity (dBm), for
     /// drivers that do not (yet) report a hardware-specific figure.
     pub const DEFAULT_RECEIVE_SENSITIVITY: i8 = -110;
+
+    /// A default CCA threshold used when constructing default `RadioCaps`.
+    pub const DEFAULT_CCA_THRESHOLD: i8 = -60;
+
+    /// A default transmit power used when constructing default `RadioCaps`.
+    pub const DEFAULT_TX_POWER: i8 = 12;
 }
 
 impl Default for RadioCaps {
     fn default() -> Self {
         Self {
-            phy: Capabilities::default(),
-            mac: MacCapabilities::default(),
+            phy: Capabilities::empty(),
+            mac: MacCapabilities::empty(),
             receive_sensitivity: Self::DEFAULT_RECEIVE_SENSITIVITY,
+            default_tx_power: Self::DEFAULT_TX_POWER,
+            default_cca_threshold: Self::DEFAULT_CCA_THRESHOLD,
         }
-    }
-}
-
-/// Capacity of each address family's table in [`SrcMatchEntries`]: sized
-/// after OpenThread's default max-children count (10) with headroom. On
-/// overflow the glue answers `OT_ERROR_NO_BUFS`, which OpenThread handles by
-/// falling back to frame-pending-on-every-ack for the un-tracked children.
-pub const SRC_MATCH_CAPACITY: usize = 16;
-
-/// The source-address-match table (the `otPlatRadio*SrcMatch*` platform
-/// surface): the set of sleepy children the stack currently has pending
-/// indirect frames for.
-///
-/// The MAC-level contract it serves: the ACK answering a child's data poll
-/// carries the Frame Pending bit iff data is queued for that child - that bit
-/// is what tells the child to keep its receiver on for the delivery. With
-/// matching `enabled` and the poll's source absent from the table, the ACK
-/// answers FP = 0 and the child returns to sleep immediately; with matching
-/// disabled, every poll is answered FP = 1 (the conservative default the C
-/// contract prescribes).
-///
-/// Whoever sends the ACKs consults this table: [`MacRadio`] for the software
-/// MAC, the hardware/co-processor tables for radios with native RX-ACK
-/// offload (see [`Radio::update_src_match`]).
-#[derive(Debug, Clone, Eq, PartialEq, Default)]
-pub struct SrcMatchEntries {
-    /// Whether source matching is active. When `false`, polls are answered
-    /// FP = 1 regardless of the tables.
-    pub enabled: bool,
-    /// The short (RLOC16) entries.
-    pub short_addrs: heapless::Vec<u16, SRC_MATCH_CAPACITY>,
-    /// The extended (EUI-64) entries.
-    pub ext_addrs: heapless::Vec<u64, SRC_MATCH_CAPACITY>,
-}
-
-impl SrcMatchEntries {
-    /// The Frame Pending answer for an ack-requesting MAC command frame
-    /// arriving from `src_short` / `src_ext`.
-    pub fn ack_frame_pending(&self, src_short: u16, src_ext: u64) -> bool {
-        !self.enabled || self.short_addrs.contains(&src_short) || self.ext_addrs.contains(&src_ext)
     }
 }
 
@@ -258,32 +237,6 @@ impl SrcMatchEntries {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Config {
-    /// Channel number
-    pub channel: u8,
-    /// Transmit power in dBm
-    pub power: i8,
-    /// Clear channel assessment (CCA) mode
-    pub cca: Cca,
-    /// TBD
-    pub sfd: u8,
-    /// Whether the radio is in receive mode.
-    ///
-    /// This is the radio's Receive-vs-Sleep state (`otPlatRadioReceive` /
-    /// `otPlatRadioSleep`), and therefore also the driver's power-management
-    /// hook: a driver that can power its receiver down should do so when this
-    /// turns `false`, and bring it back up when it turns `true`.
-    ///
-    /// Frames arriving while it is `false` MUST be dropped, not buffered: the
-    /// stack relies on a parked radio genuinely missing traffic (a sleepy
-    /// child's parent buffers for it on exactly that assumption - see
-    /// `docs/radio-contract.md`, C6). A driver whose RX path keeps filling
-    /// autonomously while parked (hardware FIFOs, IRQ handlers, simulation
-    /// event pumps) must therefore discard whatever accumulated, at the
-    /// latest when this turns `true` again.
-    ///
-    /// Disregarded if the radio does not have any MAC offloading capabilities
-    /// and therefore is not capable of receiving frames autonomously, and emulated by [`MacRadio`].
-    pub receive: bool,
     /// Allow the radio to autonomously power its receiver down during idle
     /// periods, instead of keeping it in RX.
     /// Disregarded unless the radio advertises [`Capabilities::AUTO_SLEEP`],
@@ -328,13 +281,6 @@ impl Config {
     /// Create a new default configuration.
     pub const fn new() -> Self {
         Self {
-            channel: 11,
-            // Run with max power by default
-            // TODO: Figure out how to have this specified by the user
-            power: 20,
-            cca: Cca::Carrier,
-            sfd: 0,
-            receive: false,
             auto_sleep: false,
             promiscuous: false,
             pan_id: None,
@@ -346,6 +292,61 @@ impl Config {
 }
 
 impl Default for Config {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// Capacity of each address family's table in [`SrcMatchConfig`]: sized
+/// after OpenThread's default max-children count (10) with headroom. On
+/// overflow the glue answers `OT_ERROR_NO_BUFS`, which OpenThread handles by
+/// falling back to frame-pending-on-every-ack for the un-tracked children.
+pub const SRC_MATCH_CAPACITY: usize = 16;
+
+/// The source-address-match table (the `otPlatRadio*SrcMatch*` platform
+/// surface): the set of sleepy children the stack currently has pending
+/// indirect frames for.
+///
+/// The MAC-level contract it serves: the ACK answering a child's data poll
+/// carries the Frame Pending bit iff data is queued for that child - that bit
+/// is what tells the child to keep its receiver on for the delivery. With
+/// matching `enabled` and the poll's source absent from the table, the ACK
+/// answers FP = 0 and the child returns to sleep immediately; with matching
+/// disabled, every poll is answered FP = 1 (the conservative default the C
+/// contract prescribes).
+///
+/// Whoever sends the ACKs consults this table: [`MacRadio`] for the software
+/// MAC, the hardware/co-processor tables for radios with native RX-ACK
+/// offload (see [`Radio::set_src_match_config`]).
+#[derive(Debug, Clone, Eq, PartialEq)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct SrcMatchConfig {
+    /// Whether source matching is active. When `false`, polls are answered
+    /// FP = 1 regardless of the tables.
+    pub enabled: bool,
+    /// The short (RLOC16) entries.
+    pub short_addrs: heapless::Vec<u16, SRC_MATCH_CAPACITY>,
+    /// The extended (EUI-64) entries.
+    pub ext_addrs: heapless::Vec<u64, SRC_MATCH_CAPACITY>,
+}
+
+impl SrcMatchConfig {
+    pub const fn new() -> Self {
+        Self {
+            enabled: false,
+            short_addrs: heapless::Vec::new(),
+            ext_addrs: heapless::Vec::new(),
+        }
+    }
+
+    /// The Frame Pending answer for an ack-requesting MAC command frame
+    /// arriving from `src_short` / `src_ext`.
+    pub fn ack_frame_pending(&self, src_short: u16, src_ext: u64) -> bool {
+        !self.enabled || self.short_addrs.contains(&src_short) || self.ext_addrs.contains(&src_ext)
+    }
+}
+
+impl Default for SrcMatchConfig {
     fn default() -> Self {
         Self::new()
     }
@@ -370,15 +371,18 @@ pub struct PsduMeta {
 /// capabilities as well - namely - the ability to automatically send and receive ACK frames,
 /// the ability to filter received frames by PAN ID, short address, and extended address and others.
 ///
-/// If some of these capabilities are not available, this crate emulates them in
-/// software (via the [`MacRadio`] wrapper).
+/// The stack requires all of [`MacCapabilities::REQUIRED`] from the radio it is
+/// handed. An implementation offering less must be wrapped by the user in a
+/// [`MacRadio`], which emulates the missing capabilities in software; the notes
+/// below on what an implementation "can be a no-op for" are written from that
+/// standpoint.
 ///
 /// # Contract
 ///
 /// OpenThread drives the radio as a small state machine - Sleep, Receive,
-/// Energy Scan, and the transmit sequence as an excursion out of Receive -
-/// and holds the platform to semantics that are easy to violate from the
-/// signatures alone (see `docs/radio-contract.md`).
+/// and then Energy Scan and the transmit sequence as an excursion out of
+/// Receive - and holds the platform to semantics that are easy to violate
+/// from the signatures alone (see `docs/radio-contract.md`).
 ///
 /// An implementation MUST uphold:
 /// 1. **`transmit` is the complete transmit sequence** per the declared
@@ -388,10 +392,9 @@ pub struct PsduMeta {
 ///    its result; it must never surface via `receive`.
 ///
 ///    `transmit` is only allowed to be a pure "send this frame" without waiting
-///    for an ACK when `MacCapabilities::TX_ACK` is NOT set. In that case, the
-///    full semantics of "`transmit` is the complete transmit sequence" are
-///    automatically polyfilled by this crate, via the [`MacRadio`] software
-///    emulation.
+///    for an ACK when `MacCapabilities::TX_ACK` is NOT set - such a radio must
+///    be wrapped in a [`MacRadio`], which polyfills the full semantics of
+///    "`transmit` is the complete transmit sequence".
 ///
 /// 2. **Reception outlives the calls**: frames arriving while no `receive`
 ///    is pending - including during `transmit`'s listening phases - are
@@ -404,16 +407,15 @@ pub struct PsduMeta {
 ///    `receive` method ONLY when BOTH `MacCapabilities::RX_ACK` and
 ///    `MacCapabilities::TX_ACK` are NOT set. After all, it is `transmit`'s
 ///    ACK wait that forces accumulation of RX frames outside of `receive`
-///    in the first place. In case when `MacCapabilities::RX_ACK` is not set,
-///    the full semantics of "Reception outlives the calls" are automatically
-///    polyfilled by this crate, via the [`MacRadio`] software emulation.
+///    in the first place. Such a radio must be wrapped in a [`MacRadio`],
+///    which polyfills the full semantics of "Reception outlives the calls".
 ///
 /// 3. **Cancellation is a sanctioned abort**: the `transmit` future may be
 ///    dropped mid-sequence (OpenThread aborts an ACK wait this way). The
 ///    frame may already be on the air; the radio must simply return to
 ///    receiving.
 ///
-/// 4. **A sleeping radio misses frames** ([`Radio::sleep`]): frames arriving
+/// 4. **A sleeping radio misses frames** ([`Radio::set_sleep`]): frames arriving
 ///    while asleep are dropped, not buffered for later - a sleepy child
 ///    provably missing traffic is protocol behavior, not lost data.
 ///
@@ -444,28 +446,40 @@ pub trait Radio {
     async fn init(&mut self) -> Result<RadioCaps, Self::Error>;
 
     /// Set the radio configuration.
+    ///
+    /// NOTE:
+    /// Can be a no-op or partial application for radios which are supporting only a subset of `MacCapabilities`,
+    /// but such radios must be wrapped by the user in a [`MacRadio`] then.
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error>;
 
-    /// Update the radio's source-address-match table (see
-    /// [`SrcMatchEntries`] for the contract it serves).
+    /// Set the radio source match configuration.
     ///
-    /// Called by the crate whenever the stack mutates the table, with the
-    /// complete new table each time (never incrementally). Synchronous by
-    /// design - it is pure bookkeeping; a radio that must push the table to
-    /// distant hardware (e.g. an RCP's source-match properties) should stash
-    /// the snapshot and flush it on its next async operation.
-    ///
-    /// The default does nothing, which is correct for a bare radio whose
-    /// ACKs are emulated above it (`MacRadio` keeps and consults its own
-    /// copy). A radio doing its own RX ACKs should apply the table to
-    /// whatever decides its ACKs' Frame Pending bit; ignoring it means every
-    /// data poll is answered FP = 1, which is protocol-safe but keeps sleepy
-    /// children listening needlessly after each poll.
-    async fn set_src_match(&mut self, entries: &SrcMatchEntries) -> Result<(), Self::Error> {
-        let _ = entries;
+    /// NOTE:
+    /// Can be a no-op for radios which are not supporting `MacCapabilities::SRC_MATCH`,
+    /// but such radios must be wrapped by the user in a [`MacRadio`] then.
+    async fn set_src_match_config(&mut self, config: &SrcMatchConfig) -> Result<(), Self::Error>;
 
-        Ok(())
-    }
+    /// Set the radio to receive mode on `channel`.
+    ///
+    /// Arguments
+    /// - `channel`: The channel to set the radio to receive on.
+    ///
+    /// NOTE:
+    /// Can be a no-op for radios which are not supporting `MacCapabilities::TX_ACK` and `MacCapabilities::RX_ACK`,
+    /// and are therefore not able to receive frames while waiting for an ACK frame in `transmit`.
+    /// These radios naturally don't have an internal queue of received frames, so they don't need to be set to
+    /// receive mode to receive frames, as they only do so when the `receive` method is called anyway.
+    /// Can be a no-op for such radios, but they must be wrapped by the user in a [`MacRadio`] then.
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error>;
+
+    /// Set the radio to sleep mode.
+    ///
+    /// NOTE:
+    /// Can be a no-op for radios which are not supporting `MacCapabilities::TX_ACK` and `MacCapabilities::RX_ACK`,
+    /// and are therefore not able to receive frames while waiting for an ACK frame in `transmit`.
+    /// These radios naturally don't have an internal queue of received frames, so they don't need to be set to sleep
+    /// mode to save power, as they only receive when the `receive` method is called anyway.
+    async fn set_sleep(&mut self) -> Result<(), Self::Error>;
 
     /// Perform an energy scan on `channel`: measure the energy observed over
     /// `duration_millis` and return the maximum RSSI, in dBm.
@@ -476,14 +490,18 @@ pub trait Radio {
     /// channels from the energy scan results, so a scan on such a radio
     /// cleanly yields *no* results rather than fake readings.
     ///
+    /// Arguments
+    /// - `channel`: The channel to perform the energy scan on.
+    /// - `duration_millis`: The duration of the energy scan in milliseconds.
+    ///
     /// NOTE: OpenThread's energy scan requests are always routed here,
     /// regardless of whether the radio reports [`Capabilities::ENERGY_SCAN`]
     /// (see the initial-`radio_caps` discussion in `lib.rs`: OpenThread
     /// snapshots the radio capabilities before the actual `Radio` instance is
     /// known, and its software-sampling fallback needs a synchronous RSSI
     /// read, which is unimplementable on top of this async trait).
-    async fn energy_scan(&mut self, duration_millis: u16) -> Result<i8, Self::Error> {
-        let _ = duration_millis;
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        let _ = (channel, duration_millis);
 
         Ok(crate::sys::OT_RADIO_RSSI_INVALID as i8)
     }
@@ -499,7 +517,8 @@ pub trait Radio {
     ///
     /// Arguments:
     /// - `psdu`: The PSDU to transmit as part of the frame.
-    /// - `cca`: Whether to perform clear channel assessment (CCA) before transmitting the frame.
+    /// - `channel`: The channel to transmit the frame on.
+    /// - `cca_threshold`: The CCA threshold to use before transmitting the frame. If `None`, CCA is not performed.
     /// - `ack_psdu_buf`: The buffer to store the received ACK PSDU if the radio is capable of reporting received ACKs.
     ///
     /// Returns:
@@ -508,16 +527,21 @@ pub trait Radio {
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        cca: bool,
+        channel: u8,
+        power: i8,
+        cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error>;
 
     /// Retrieve an already received radio frame, or wait for one to arrive.
     ///
-    /// A frame might already be received and waiting in the radio's internal queue when the radio implementation declares
-    /// `MacCapabilities::TX_ACK` and the `transmit` method did get one or multiple RX frames while waiting for an ACK frame
-    /// to be received. In that case, the implementation of this method might return such an already received frame instead
-    /// of waiting for a new one to arrive.
+    /// A frame might already be received and waiting in the radio's internal RX queue when the radio implementation has MAC
+    /// offloading capabilities (`MacCapabilities`) and therefore maintains an internal queue of received frames filled on IRQ.
+    ///
+    /// If the radio is sleeping, and the radio's internal RX queue (if any) is empty, the method will wait indefinitely.
+    ///
+    /// This method _must_ be cancellation-safe in that if the future returned by `receive` is dropped, the radio should _not_ drop
+    /// already received frames. Dropping a frame which is still in the process of being received is allowed.
     ///
     /// Arguments:
     /// - `psdu_buf`: The buffer to store the received PSDU.
@@ -541,21 +565,31 @@ where
         T::set_config(self, config).await
     }
 
-    async fn set_src_match(&mut self, entries: &SrcMatchEntries) -> Result<(), Self::Error> {
-        T::set_src_match(self, entries).await
+    async fn set_src_match_config(&mut self, entries: &SrcMatchConfig) -> Result<(), Self::Error> {
+        T::set_src_match_config(self, entries).await
     }
 
-    async fn energy_scan(&mut self, duration_millis: u16) -> Result<i8, Self::Error> {
-        T::energy_scan(self, duration_millis).await
+    async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
+        T::energy_scan(self, channel, duration_millis).await
+    }
+
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
+        T::set_receive(self, channel).await
+    }
+
+    async fn set_sleep(&mut self) -> Result<(), Self::Error> {
+        T::set_sleep(self).await
     }
 
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        cca: bool,
+        channel: u8,
+        power: i8,
+        cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
-        T::transmit(self, psdu, cca, ack_psdu_buf).await
+        T::transmit(self, psdu, channel, power, cca_threshold, ack_psdu_buf).await
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {

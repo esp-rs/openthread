@@ -34,7 +34,7 @@ use embassy_sync::channel::Channel;
 
 use log::info;
 
-use openthread::{OpenThread, OtResources};
+use openthread::{EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources};
 
 use openthread_tests::executor::{self, Mode};
 use openthread_tests::settings::FileSettings;
@@ -255,10 +255,9 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
 
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
-    // The bare radios go in as-is: `OpenThread::run` wraps whatever it is
-    // given in a `MacRadio`, which emulates exactly the MAC duties the
-    // radio's reported capabilities lack - for these PHY-only simulation
-    // radios, all of them.
+    // These simulation radios are PHY-only, so the runner tasks below wrap
+    // them in a `MacRadio` - which emulates every MAC duty their reported
+    // capabilities lack, i.e. all of them.
     match radio_link {
         Some(link) => {
             let radio = VtRadio::new(link);
@@ -319,10 +318,18 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
 
 #[embassy_executor::task]
 async fn run_ot_rt(ot: OpenThread<'static>, radio: SimRadio) -> ! {
-    ot.run(radio).await
+    static MAC_RADIO_RESOURCES_RT: StaticCell<MacRadioResources> = StaticCell::new();
+    let mac_radio_resources = MAC_RADIO_RESOURCES_RT.init(MacRadioResources::new());
+
+    ot.run(MacRadio::new(radio, EmbassyTimeTimer, mac_radio_resources))
+        .await
 }
 
 #[embassy_executor::task]
 async fn run_ot_vt(ot: OpenThread<'static>, radio: VtRadio) -> ! {
-    ot.run(radio).await
+    static MAC_RADIO_RESOURCES_VT: StaticCell<MacRadioResources> = StaticCell::new();
+    let mac_radio_resources = MAC_RADIO_RESOURCES_VT.init(MacRadioResources::new());
+
+    ot.run(MacRadio::new(radio, EmbassyTimeTimer, mac_radio_resources))
+        .await
 }

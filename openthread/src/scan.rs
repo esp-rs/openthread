@@ -245,7 +245,7 @@ impl<'a> OpenThread<'a> {
     /// of the specified channels for the specified duration (`otLinkEnergyScan`).
     ///
     /// Useful e.g. for picking the quietest channel before forming a new
-    /// network (see [`OpenThread::create_new_network_dataset`], `ftd` only).
+    /// network (see `OpenThread::create_new_network_dataset`, `ftd` only).
     ///
     /// Arguments:
     /// - `channels`: The channel mask to scan.
