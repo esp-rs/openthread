@@ -117,6 +117,12 @@ fn main() {
 
     let mut stdin = std::io::stdin();
     let mut buf = [0; 512];
+    // Assembled from the stdin stream to spot the `exit` command - the only
+    // line the bridge answers itself. The upstream simulation binaries
+    // terminate on it (the harness sends it at teardown and waits for EOF);
+    // firmware has no process to exit, so the BRIDGE is what must go away.
+    // The board keeps running - the next run's startup reset renews it.
+    let mut line: Vec<u8> = Vec::new();
 
     loop {
         match stdin.read(&mut buf) {
@@ -124,6 +130,17 @@ fn main() {
             Ok(n) => {
                 if to_device.write_all(&buf[..n]).is_err() || to_device.flush().is_err() {
                     break;
+                }
+
+                for byte in &buf[..n] {
+                    if *byte == b'\n' {
+                        if line.trim_ascii() == b"exit" {
+                            return;
+                        }
+                        line.clear();
+                    } else {
+                        line.push(*byte);
+                    }
                 }
             }
             Err(err) if err.kind() == ErrorKind::Interrupted => (),
