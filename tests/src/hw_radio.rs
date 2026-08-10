@@ -12,6 +12,11 @@
 //!   stdin/stdout to the device's console. The only tier that exercises the
 //!   crate's own radio drivers, `MacRadio`'s real ACK deadlines and
 //!   `ProxyRadio`'s executor split.
+//! - **C posix host** ([`NodeKind::CPosix`]): the *upstream* OpenThread posix
+//!   host (`ot-cli`) drives the co-processor instead of this crate - a golden
+//!   reference node on real RF. Pairing the DUT against one isolates any
+//!   interop failure to the DUT, the same role `--peers c` plays in
+//!   simulation.
 //!
 //! # The port map
 //!
@@ -28,6 +33,12 @@
 //!
 //! ```text
 //! OT_HW_PORTS=/dev/ttyACM0=mcu,/dev/ttyACM1=rcp
+//! ```
+//!
+//! or, DUT against the upstream posix host on the second dongle:
+//!
+//! ```text
+//! OT_HW_PORTS=/dev/ttyACM0=rcp,/dev/ttyACM1=cposix
 //! ```
 //!
 //! The kind defaults to `rcp`. The baud defaults to `OT_HW_BAUD`, and that to
@@ -69,6 +80,9 @@ pub enum NodeKind {
     /// A board running the whole stack as firmware; the node process only
     /// bridges the harness to its console.
     Mcu,
+    /// A co-processor driven by the *upstream* OpenThread posix host
+    /// (`ot-cli`) rather than this crate - a golden reference node.
+    CPosix,
 }
 
 /// One node's board: its device, link speed, and what runs on it.
@@ -124,7 +138,10 @@ fn parse_entry(entry: &str) -> Node {
             match kind {
                 "rcp" => NodeKind::Rcp,
                 "mcu" => NodeKind::Mcu,
-                other => panic!("{PORTS_VAR}: `{other}` in `{entry}` is not `rcp` or `mcu`"),
+                "cposix" => NodeKind::CPosix,
+                other => {
+                    panic!("{PORTS_VAR}: `{other}` in `{entry}` is not `rcp`, `mcu` or `cposix`")
+                }
             },
         ),
         None => (entry, NodeKind::Rcp),
@@ -133,8 +150,9 @@ fn parse_entry(entry: &str) -> Node {
     let (device, baud) = match rest.rsplit_once('@') {
         Some((device, baud)) => (
             device,
-            baud.parse()
-                .unwrap_or_else(|_| panic!("{PORTS_VAR}: `{baud}` in `{entry}` is not a baud rate")),
+            baud.parse().unwrap_or_else(|_| {
+                panic!("{PORTS_VAR}: `{baud}` in `{entry}` is not a baud rate")
+            }),
         ),
         None => (rest, default_baud()),
     };

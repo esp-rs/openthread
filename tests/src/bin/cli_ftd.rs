@@ -57,16 +57,31 @@ static INPUT: Channel<CriticalSectionRawMutex, String, 8> = Channel::new();
 fn main() {
     let args = NodeArgs::parse();
 
-    // An MCU node runs the stack as firmware; this process would only be in
-    // the way. Hand the harness's pipes straight to `serial_bridge`, which
-    // pumps them to the board's console.
+    // The harness spawns ONE `OT_CLI_PATH` binary for every node, while a rig
+    // may well be mixed - so this binary is also the dispatcher that looks at
+    // the maps and picks the flavor each node needs:
     //
-    // The dispatch lives here because the harness spawns ONE `OT_CLI_PATH`
-    // binary for every node, while a rig may well be mixed - so something has
-    // to look at the port map and pick the flavor this node needs.
+    // - an MCU node runs the stack as firmware, so hand the harness's pipes
+    //   straight to `serial_bridge`, which pumps them to the board's console;
+    // - with `OT_C_CLI_PATH` set (the xtask's `--peers c`), every node but
+    //   the DUT execs the *upstream* C simulation binary - the DUT-vs-golden-
+    //   devices shape, where any interop failure is the DUT's by definition.
     if let Some(node) = openthread_tests::hw_radio::node_for(args.node_id) {
-        if node.kind == openthread_tests::hw_radio::NodeKind::Mcu {
-            exec_serial_bridge();
+        match node.kind {
+            openthread_tests::hw_radio::NodeKind::Mcu => exec_serial_bridge(),
+            openthread_tests::hw_radio::NodeKind::CPosix => exec_posix_host(&node),
+            openthread_tests::hw_radio::NodeKind::Rcp => (),
+        }
+    }
+
+    if let Ok(c_cli) = std::env::var("OT_C_CLI_PATH") {
+        let dut: u16 = std::env::var("OT_DUT_NODE")
+            .ok()
+            .and_then(|node| node.parse().ok())
+            .unwrap_or(1);
+
+        if args.node_id != dut {
+            exec_replacement(c_cli.as_ref());
         }
     }
 
@@ -202,11 +217,40 @@ fn exec_serial_bridge() -> ! {
         .and_then(|exe| Some(exe.parent()?.join("serial_bridge")))
         .expect("locating `serial_bridge` next to this binary");
 
-    let err = std::process::Command::new(&bridge)
+    exec_replacement(&bridge)
+}
+
+/// Replace this process with the *upstream* posix host (`ot-cli`) driving
+/// this node's co-processor: a golden reference node on real RF.
+///
+/// Unlike every other node flavor, the posix host takes a radio URL rather
+/// than a node id, so the argv is rebuilt rather than passed through. The
+/// binary comes from `OT_POSIX_CLI_PATH` (the xtask builds and exports it);
+/// failing loudly beats quietly running the wrong implementation.
+fn exec_posix_host(node: &openthread_tests::hw_radio::Node) -> ! {
+    let posix_cli = std::env::var("OT_POSIX_CLI_PATH").expect(
+        "OT_POSIX_CLI_PATH is not set, but this node's board is `cposix` \
+         (run through `cargo xtask itest`, which builds and exports it)",
+    );
+
+    let url = format!(
+        "spinel+hdlc+uart://{}?uart-baudrate={}",
+        node.device, node.baud
+    );
+
+    let err = std::process::Command::new(&posix_cli).arg(url).exec();
+
+    panic!("exec {posix_cli}: {err}");
+}
+
+/// Replace this process with `binary`, keeping the harness's pipes and our
+/// command line (every node flavor takes the same `[-L<addr>] <node id>`).
+fn exec_replacement(binary: &std::path::Path) -> ! {
+    let err = std::process::Command::new(binary)
         .args(std::env::args_os().skip(1))
         .exec();
 
-    panic!("exec {}: {err}", bridge.display());
+    panic!("exec {}: {err}", binary.display());
 }
 
 /// Re-execute this process with its original command line: the `reset` /

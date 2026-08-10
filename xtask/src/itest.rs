@@ -505,6 +505,16 @@ pub struct ItestArgs {
     #[arg(long, requires = "hw_port")]
     hw_extended: bool,
 
+    /// Who the DUT's peer nodes are. `rust` (default): every node is this
+    /// crate's DUT - the broad sweep, our platform exercised in every
+    /// topology role. `c`: node 1 stays the DUT and every other node runs
+    /// the *upstream* OpenThread simulation binary (`ot-cli-ftd`, built from
+    /// the vendored submodule on first use) - the interop gate, our node
+    /// against reference peers, which is also the Thread-certification
+    /// shape (DUT vs golden devices). `cert` suite only.
+    #[arg(long, value_enum, default_value_t = Peers::Rust)]
+    peers: Peers,
+
     /// Skip (re)building the DUT binaries.
     #[arg(long)]
     skip_build: bool,
@@ -519,6 +529,14 @@ pub struct ItestArgs {
     /// Test names (file name, extension optional); defaults to the suite's
     /// curated allowlist.
     tests: Vec<String>,
+}
+
+#[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
+enum Peers {
+    /// All nodes are this crate's DUT.
+    Rust,
+    /// Node 1 is the DUT; the rest run upstream's C `ot-cli-ftd`.
+    C,
 }
 
 #[derive(clap::ValueEnum, Debug, Clone, Copy, PartialEq, Eq)]
@@ -560,17 +578,41 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
         );
     }
 
-    // `hw` is only needed for the spinel radio, i.e. for RCP nodes. An
-    // all-MCU rig needs none of it: those nodes are bridged to firmware.
+    // `hw` is only needed for the spinel radio, i.e. for RCP nodes driven by
+    // THIS crate. MCU nodes are bridged to firmware, and `cposix` nodes hand
+    // their co-processor to the upstream posix host.
     let needs_spinel = hw_ports
         .iter()
-        .any(|port| !port.ends_with("=mcu"));
+        .any(|port| !port.ends_with("=mcu") && !port.ends_with("=cposix"));
 
     let cli_ftd = build_dut(
         workspace,
         args.skip_build,
         !hw_ports.is_empty() && needs_spinel,
     )?;
+
+    let posix_cli = if hw_ports.iter().any(|port| port.ends_with("=cposix")) {
+        Some(build_posix_host(workspace, &build_dir)?)
+    } else {
+        None
+    };
+
+    let c_peer = match args.peers {
+        Peers::Rust => None,
+        Peers::C => {
+            if args.suite != Suite::Cert {
+                bail!("--peers c is only meaningful for the `cert` suite");
+            }
+            if !hw_ports.is_empty() {
+                bail!(
+                    "--peers c and --hw-port are mutually exclusive: the C \
+                     simulation binary has no radio hardware behind it"
+                );
+            }
+
+            Some(build_c_peer(workspace, &build_dir, args.virtual_time)?)
+        }
+    };
 
     let runner = Runner {
         ot_root,
@@ -579,7 +621,9 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
         hw: Hw {
             ports: hw_ports.clone(),
             baud: args.hw_baud,
+            posix_cli,
         },
+        c_peer,
         virtual_time: args.virtual_time,
         timeout_secs: args.timeout,
     };
@@ -734,6 +778,8 @@ struct Hw {
     ports: Vec<String>,
     /// The link speed, if overridden.
     baud: Option<u32>,
+    /// The upstream posix host, when some node is `=cposix`.
+    posix_cli: Option<PathBuf>,
 }
 
 impl Hw {
@@ -754,6 +800,10 @@ impl Hw {
         if let Some(baud) = self.baud {
             command.env("OT_HW_BAUD", baud.to_string());
         }
+
+        if let Some(posix_cli) = &self.posix_cli {
+            command.env("OT_POSIX_CLI_PATH", posix_cli);
+        }
     }
 }
 
@@ -773,10 +823,137 @@ struct Runner {
     cli_ftd: PathBuf,
     /// The radio configuration (simulated, or the hardware tier's port map).
     hw: Hw,
+    /// The upstream C peer binary for non-DUT nodes (`--peers c`), if any.
+    c_peer: Option<PathBuf>,
     /// Virtual-time mode, for the `cert` suite.
     virtual_time: bool,
     /// Per-test wall-clock budget override.
     timeout_secs: Option<u64>,
+}
+
+/// Build (once, cached) the upstream C simulation `ot-cli-ftd` the mixed-peer
+/// mode spawns for non-DUT nodes, and return its path.
+///
+/// Built from the vendored submodule with the same feature set upstream's own
+/// test runs use (`script/test build_simulation` + `script/cmake-build
+/// simulation`'s common options). Virtual time is a *compile-time* choice for
+/// the C simulation platform (`OT_SIMULATION_VIRTUAL_TIME`), so the two
+/// pacing modes get separate build trees.
+fn build_c_peer(workspace: &Path, build_dir: &Path, virtual_time: bool) -> Result<PathBuf> {
+    let ot_root = workspace.join("openthread-sys").join("openthread");
+    let tree = build_dir.join(if virtual_time { "ot-c-vt" } else { "ot-c-rt" });
+    let binary = tree
+        .join("examples")
+        .join("apps")
+        .join("cli")
+        .join("ot-cli-ftd");
+
+    if binary.is_file() {
+        return Ok(binary);
+    }
+
+    info!(
+        "Building the upstream C peer binary ({} time; one-time, cached)",
+        if virtual_time { "virtual" } else { "real" },
+    );
+
+    let mut command = Command::new(ot_root.join("script").join("cmake-build"));
+    command
+        .arg("simulation")
+        .args(C_PEER_FEATURES)
+        .env("OT_CMAKE_BUILD_DIR", &tree)
+        .current_dir(&ot_root);
+
+    if virtual_time {
+        command.arg("-DOT_SIMULATION_VIRTUAL_TIME=ON");
+    }
+
+    let status = command
+        .status()
+        .context("spawning `script/cmake-build` for the C peer binary")?;
+    if !status.success() {
+        bail!("building the upstream C peer binary failed");
+    }
+
+    binary
+        .canonicalize()
+        .context("locating the C peer `ot-cli-ftd` after a successful build")
+}
+
+/// The feature set the upstream reference binaries (sim peer + posix host)
+/// are built with: the union of upstream's `script/test build_simulation()`
+/// options and the parts of `script/cmake-build`'s posix/sim common set the
+/// suites drive on peers (`prefix add` needs the border router, the 8.x
+/// tests the commissioner/joiner, and so on). `cmake-build` does NOT apply
+/// its common set on its own - an omission here surfaces as
+/// `Error 35: InvalidCommand` from a peer mid-scenario.
+const C_PEER_FEATURES: &[&str] = &[
+    "-DOT_THREAD_VERSION=1.4",
+    "-DOT_REFERENCE_DEVICE=ON",
+    "-DOT_ANYCAST_LOCATOR=ON",
+    "-DOT_BORDER_ROUTER=ON",
+    "-DOT_CHANNEL_MANAGER=ON",
+    "-DOT_CHANNEL_MONITOR=ON",
+    "-DOT_COAP=ON",
+    "-DOT_COAPS=ON",
+    "-DOT_COAP_BLOCK=ON",
+    "-DOT_COAP_OBSERVE=ON",
+    "-DOT_COMMISSIONER=ON",
+    "-DOT_DATASET_UPDATER=ON",
+    "-DOT_DHCP6_CLIENT=ON",
+    "-DOT_DHCP6_SERVER=ON",
+    "-DOT_DIAGNOSTIC=ON",
+    "-DOT_DNS_CLIENT=ON",
+    "-DOT_DNSSD_SERVER=ON",
+    "-DOT_ECDSA=ON",
+    "-DOT_HISTORY_TRACKER=ON",
+    "-DOT_IP6_FRAGM=ON",
+    "-DOT_JOINER=ON",
+    "-DOT_LOG_LEVEL_DYNAMIC=ON",
+    "-DOT_MAC_FILTER=ON",
+    "-DOT_NEIGHBOR_DISCOVERY_AGENT=ON",
+    "-DOT_NETDATA_PUBLISHER=ON",
+    "-DOT_NETDIAG_CLIENT=ON",
+    "-DOT_PING_SENDER=ON",
+    "-DOT_SERVICE=ON",
+    "-DOT_SLAAC=ON",
+    "-DOT_SRP_CLIENT=ON",
+    "-DOT_SRP_SERVER=ON",
+    "-DOT_UPTIME=ON",
+    "-DOT_COVERAGE=OFF",
+];
+
+/// Build (once, cached) the upstream posix host (`ot-cli`) that `cposix`
+/// nodes run against their co-processor, and return its path.
+///
+/// The golden-reference counterpart of [`build_c_peer`] for the hardware
+/// tier: same vendored submodule, same feature set, but the posix platform
+/// (real time by nature - it drives real hardware).
+fn build_posix_host(workspace: &Path, build_dir: &Path) -> Result<PathBuf> {
+    let ot_root = workspace.join("openthread-sys").join("openthread");
+    let tree = build_dir.join("ot-c-posix");
+    let binary = tree.join("src").join("posix").join("ot-cli");
+
+    if binary.is_file() {
+        return Ok(binary);
+    }
+
+    info!("Building the upstream posix host binary (one-time, cached)");
+
+    let status = Command::new(ot_root.join("script").join("cmake-build"))
+        .arg("posix")
+        .args(C_PEER_FEATURES)
+        .env("OT_CMAKE_BUILD_DIR", &tree)
+        .current_dir(&ot_root)
+        .status()
+        .context("spawning `script/cmake-build` for the posix host binary")?;
+    if !status.success() {
+        bail!("building the upstream posix host binary failed");
+    }
+
+    binary
+        .canonicalize()
+        .context("locating the posix `ot-cli` after a successful build")
 }
 
 /// Build the DUT binaries (the `openthread-tests` crate is intentionally
@@ -869,6 +1046,7 @@ impl Runner {
             build_dir,
             cli_ftd,
             hw,
+            c_peer: _,
             virtual_time,
             timeout_secs,
         } = self;
@@ -911,6 +1089,12 @@ impl Runner {
             .env("CLI_FTD_LOG", run_dir.join("node"))
             // Per-node persisted settings land in the run dir (fresh per run).
             .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
+
+        // Mixed peers: the DUT (node 1) stays this crate's node; every other
+        // node execs the upstream C binary (see `cli_ftd`'s dispatch).
+        if let Some(c_peer) = &self.c_peer {
+            command.env("OT_C_CLI_PATH", c_peer);
+        }
 
         // Real radios, if this is a hardware run (`PORT_OFFSET` above then means
         // nothing - there is only one air).
