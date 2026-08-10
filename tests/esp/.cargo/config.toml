@@ -1,0 +1,23 @@
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --monitor"
+
+[build]
+rustflags = [
+  # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
+  "-C", "force-frame-pointers",
+  # esp-hal's linker scripts (memory layout + the ROM/PHY symbol tables).
+  "-C", "link-arg=-Tlinkall.x",
+]
+
+target = "riscv32imac-unknown-none-elf"
+
+[unstable]
+build-std = ["core", "alloc"]
+
+[env]
+# The CLI console and the log output share the USB-Serial-JTAG channel, and
+# the harness PARSES the console - so logs stay off in test builds (panics
+# still print, via `esp-backtrace`, which is where a dying node's last words
+# belong). For interactive debugging rebuild with e.g. `ESP_LOG=debug`; the
+# level is compiled in.
+ESP_LOG = "off"

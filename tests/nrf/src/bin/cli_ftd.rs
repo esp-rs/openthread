@@ -72,7 +72,7 @@ use openthread::{
 
 use tinyrlibc as _;
 
-#[path = "../console.rs"]
+#[path = "../../../shared/console.rs"]
 mod console;
 
 use panic_rtt_target as _;
