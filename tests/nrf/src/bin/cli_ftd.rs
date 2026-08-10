@@ -219,6 +219,10 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
             if reader.push(*byte) {
                 let _ = ot.cli_input_line(reader.line());
                 reader.clear();
+
+                // Let the response drain fully before accepting the next
+                // command - see `console::drained`.
+                console::drained().await;
             }
         }
     }
@@ -230,9 +234,9 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
 /// callback is synchronous while the console is not - see `console`.
 #[embassy_executor::task]
 async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
-    // A CDC packet's worth: the largest a full-speed bulk endpoint carries, so
-    // output leaves in as few transfers as the pipe can fill.
-    let mut buf = [0; 64];
+    // The UART writes take whatever length; the USB binding splits into
+    // packets itself. Fewer task round-trips keeps the drain ahead of the CLI.
+    let mut buf = [0; 512];
 
     loop {
         #[cfg(feature = "console-usb")]

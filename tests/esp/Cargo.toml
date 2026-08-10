@@ -122,6 +122,24 @@ openthread = { path = "../../openthread", default-features = false, features = [
     "border-router",
     "netdiag-client",
     "reference-device",
+    # The functional pool drives these on whichever node the script picks -
+    # often node 1, i.e. this DUT. Their absence fails tests with
+    # `Error 35: InvalidCommand` (found the hard way on the first extended
+    # MCU sweep: the whole SRP family plus CoAP/DHCP6/fragmentation).
+    "srp-server",
+    "dnssd-server",
+    "service",
+    "netdata-publisher",
+    "coap",
+    "coaps",
+    "dataset-updater",
+    "child-supervision",
+    "history-tracker",
+    "anycast-locator",
+    "neighbor-discovery-agent",
+    "ip6-fragmentation",
+    "dhcp6-client",
+    "dhcp6-server",
 ] }
 
 [[bin]]

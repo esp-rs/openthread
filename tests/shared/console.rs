@@ -36,10 +36,16 @@ use embassy_sync::pipe::Pipe;
 /// CLI output on its way from the stack's synchronous callback to whichever
 /// console task is draining it.
 ///
-/// Sized for the largest burst a single command produces - `netdata show` and
-/// the diagnostic dumps are the ones that matter - so that a reply lands in one
-/// piece even if the console is momentarily behind.
-static OUT: Pipe<CriticalSectionRawMutex, 2048> = Pipe::new();
+/// Sized for the largest burst a single command produces in ONE synchronous
+/// sweep - and that is much bigger than intuition suggests: `srp server
+/// service` on the upstream `test_srp_many_services_mtu_check` scenario emits
+/// several KB (many services, 63-char instance names, six subtypes each) in a
+/// single `cli_input_line` call, during which the drain task cannot run at
+/// all. A burst that does not fit is silently truncated (see [`out`]), which
+/// the harness sees as garbled or missing lines - so this buys headroom with
+/// plain RAM, and [`drained`] keeps the *steady state* empty between
+/// commands.
+static OUT: Pipe<CriticalSectionRawMutex, 16384> = Pipe::new();
 
 /// Longest CLI line the harness can send us. The upstream node driver sends
 /// dataset TLVs as hex, which is what sets this.
@@ -58,6 +64,22 @@ pub fn out(bytes: &[u8]) {
 /// Take the next chunk of pending output, waiting if there is none.
 pub async fn read_out(buf: &mut [u8]) -> usize {
     OUT.read(buf).await
+}
+
+/// Wait until every byte queued so far has been taken by the console task.
+///
+/// The command loop awaits this after each CLI command, BEFORE reading the
+/// next one: the harness is strictly command-response paced, so parking here
+/// hands the executor to the drain task until the response is fully on the
+/// wire - cooperative backpressure that makes command/response traffic
+/// lossless without ever blocking the (synchronous) output callback.
+pub async fn drained() {
+    while !OUT.is_empty() {
+        // The drain task is the one emptying the pipe; yielding is what lets
+        // it run. `yield_now` alone can spin ahead of a slow wire, so pace it
+        // with the smallest real delay.
+        embassy_time::Timer::after(embassy_time::Duration::from_millis(1)).await;
+    }
 }
 
 /// Assembles CLI lines from console input, echoing as it goes.
