@@ -490,6 +490,22 @@ const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
 /// arrive while a command round-trip is in flight (see
 /// [`DEFAULT_RX_QUEUE_DEPTH`] for how to size it). It is erased from the
 /// `SpinelRadio` borrowing these resources.
+/// The driver's larger-than-a-register state, kept in the resources rather
+/// than in [`SpinelRadio`] itself so the radio value - held across `await`
+/// points by the radio loop's futures - stays small: the two source-match
+/// tables (~170 bytes each) and the last-applied [`Config`].
+struct SpinelRadioState {
+    /// The latest source-match table from the stack; `src_match_dirty` in the
+    /// radio marks it not yet pushed to the RCP.
+    src_match: SrcMatchConfig,
+    /// The source-match table as the RCP currently has it: what the
+    /// per-entry INSERT/REMOVE flush has successfully applied so far. The
+    /// diff between this and `src_match` is what a flush sends.
+    src_match_flushed: SrcMatchConfig,
+    /// Last-applied config; used to only re-send changed properties.
+    config: Option<Config>,
+}
+
 pub struct SpinelRadioResources<const RX_QUEUE_DEPTH: usize = DEFAULT_RX_QUEUE_DEPTH> {
     /// Scratch buffer for the raw spinel frame being built for transmission.
     tx_frame: MaybeUninit<[u8; MAX_SPINEL_FRAME]>,
@@ -497,6 +513,7 @@ pub struct SpinelRadioResources<const RX_QUEUE_DEPTH: usize = DEFAULT_RX_QUEUE_D
     rx_frame: MaybeUninit<[u8; MAX_SPINEL_FRAME]>,
     /// Received-frame bodies stashed while a command response is awaited.
     rx_queue: MaybeUninit<heapless::Deque<RxFrame, RX_QUEUE_DEPTH>>,
+    state: MaybeUninit<SpinelRadioState>,
 }
 
 impl<const RX_QUEUE_DEPTH: usize> SpinelRadioResources<RX_QUEUE_DEPTH> {
@@ -506,6 +523,7 @@ impl<const RX_QUEUE_DEPTH: usize> SpinelRadioResources<RX_QUEUE_DEPTH> {
             tx_frame: MaybeUninit::uninit(),
             rx_frame: MaybeUninit::uninit(),
             rx_queue: MaybeUninit::uninit(),
+            state: MaybeUninit::uninit(),
         }
     }
 
@@ -518,11 +536,17 @@ impl<const RX_QUEUE_DEPTH: usize> SpinelRadioResources<RX_QUEUE_DEPTH> {
         &mut [u8; MAX_SPINEL_FRAME],
         &mut [u8; MAX_SPINEL_FRAME],
         &mut heapless::deque::DequeView<RxFrame>,
+        &mut SpinelRadioState,
     ) {
         (
             self.tx_frame.write([0; MAX_SPINEL_FRAME]),
             self.rx_frame.write([0; MAX_SPINEL_FRAME]),
             self.rx_queue.write(heapless::Deque::new()).as_mut_view(),
+            self.state.write(SpinelRadioState {
+                src_match: SrcMatchConfig::new(),
+                src_match_flushed: SrcMatchConfig::new(),
+                config: None,
+            }),
         )
     }
 }
@@ -575,18 +599,10 @@ pub struct SpinelRadio<'a, T> {
     /// during the handshake; the crate-wide default until then (and for RCP
     /// firmwares that do not implement the property).
     sensitivity: i8,
-    /// The source-match table as the RCP currently has it: what the
-    /// per-entry INSERT/REMOVE flush has successfully applied so far. The
-    /// diff between this and `src_match` is what a flush sends.
-    src_match_flushed: SrcMatchConfig,
-    /// The latest source-match table from the stack. `src_match_dirty` marks
-    /// it not yet pushed to the RCP: the trait's delivery is synchronous, the
-    /// spinel writes are not, so the push happens on the next async operation
-    /// (see `flush_src_match`).
-    src_match: SrcMatchConfig,
+    /// The source-match table in `state` is not yet pushed to the RCP: the
+    /// trait's delivery is synchronous, the spinel writes are not, so the
+    /// push happens on the next async operation (see `flush_src_match`).
     src_match_dirty: bool,
-    /// Last-applied config; used to only re-send changed properties.
-    config: Option<Config>,
     /// Whether raw-stream (RX) is currently enabled on the RCP.
     rx_enabled: bool,
     /// Next transaction id (1..=15, 0 is reserved for unsolicited notifications).
@@ -610,6 +626,9 @@ pub struct SpinelRadio<'a, T> {
     /// A `DequeView`, so the queue depth chosen via [`SpinelRadioResources`]
     /// does not generify this type.
     rx_queue: &'a mut heapless::deque::DequeView<RxFrame>,
+    /// The source-match tables and config shadow, borrowed from the
+    /// resources - see [`SpinelRadioState`].
+    state: &'a mut SpinelRadioState,
 }
 
 impl<'a, T> SpinelRadio<'a, T>
@@ -624,7 +643,7 @@ where
         transport: T,
         resources: &'a mut SpinelRadioResources<RX_QUEUE_DEPTH>,
     ) -> Self {
-        let (tx_frame, rx_frame, rx_queue) = resources.init();
+        let (tx_frame, rx_frame, rx_queue, state) = resources.init();
 
         Self {
             transport,
@@ -635,16 +654,14 @@ where
             default_tx_power: RadioCaps::DEFAULT_TX_POWER,
             default_cca_threshold: RadioCaps::DEFAULT_CCA_THRESHOLD,
             sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
-            src_match: SrcMatchConfig::default(),
-            src_match_flushed: SrcMatchConfig::default(),
             src_match_dirty: false,
-            config: None,
             rx_enabled: false,
             next_tid: 1,
             tx_frame,
             rx_frame,
             rx_len: 0,
             rx_queue,
+            state,
         }
     }
 
@@ -768,16 +785,16 @@ where
         // failed op leaves the mirror truthful and the dirty flag makes the
         // next operation prologue retry the remainder.
 
-        let target = self.src_match.clone();
+        let target = self.state.src_match.clone();
 
         // Removals first, freeing table slots for the additions.
-        if target.short_addrs.is_empty() && !self.src_match_flushed.short_addrs.is_empty() {
+        if target.short_addrs.is_empty() && !self.state.src_match_flushed.short_addrs.is_empty() {
             self.set_prop(PROP_MAC_SRC_MATCH_SHORT_ADDRESSES, &[])
                 .await?;
-            self.src_match_flushed.short_addrs.clear();
+            self.state.src_match_flushed.short_addrs.clear();
         } else {
-            for index in (0..self.src_match_flushed.short_addrs.len()).rev() {
-                let addr = self.src_match_flushed.short_addrs[index];
+            for index in (0..self.state.src_match_flushed.short_addrs.len()).rev() {
+                let addr = self.state.src_match_flushed.short_addrs[index];
                 if !target.short_addrs.contains(&addr) {
                     self.modify_prop(
                         CMD_PROP_VALUE_REMOVE,
@@ -785,18 +802,18 @@ where
                         &addr.to_le_bytes(),
                     )
                     .await?;
-                    self.src_match_flushed.short_addrs.swap_remove(index);
+                    self.state.src_match_flushed.short_addrs.swap_remove(index);
                 }
             }
         }
 
-        if target.ext_addrs.is_empty() && !self.src_match_flushed.ext_addrs.is_empty() {
+        if target.ext_addrs.is_empty() && !self.state.src_match_flushed.ext_addrs.is_empty() {
             self.set_prop(PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES, &[])
                 .await?;
-            self.src_match_flushed.ext_addrs.clear();
+            self.state.src_match_flushed.ext_addrs.clear();
         } else {
-            for index in (0..self.src_match_flushed.ext_addrs.len()).rev() {
-                let addr = self.src_match_flushed.ext_addrs[index];
+            for index in (0..self.state.src_match_flushed.ext_addrs.len()).rev() {
+                let addr = self.state.src_match_flushed.ext_addrs[index];
                 if !target.ext_addrs.contains(&addr) {
                     self.modify_prop(
                         CMD_PROP_VALUE_REMOVE,
@@ -804,39 +821,39 @@ where
                         &addr.to_be_bytes(),
                     )
                     .await?;
-                    self.src_match_flushed.ext_addrs.swap_remove(index);
+                    self.state.src_match_flushed.ext_addrs.swap_remove(index);
                 }
             }
         }
 
         for addr in &target.short_addrs {
-            if !self.src_match_flushed.short_addrs.contains(addr) {
+            if !self.state.src_match_flushed.short_addrs.contains(addr) {
                 self.modify_prop(
                     CMD_PROP_VALUE_INSERT,
                     PROP_MAC_SRC_MATCH_SHORT_ADDRESSES,
                     &addr.to_le_bytes(),
                 )
                 .await?;
-                let _ = self.src_match_flushed.short_addrs.push(*addr);
+                let _ = self.state.src_match_flushed.short_addrs.push(*addr);
             }
         }
 
         for addr in &target.ext_addrs {
-            if !self.src_match_flushed.ext_addrs.contains(addr) {
+            if !self.state.src_match_flushed.ext_addrs.contains(addr) {
                 self.modify_prop(
                     CMD_PROP_VALUE_INSERT,
                     PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES,
                     &addr.to_be_bytes(),
                 )
                 .await?;
-                let _ = self.src_match_flushed.ext_addrs.push(*addr);
+                let _ = self.state.src_match_flushed.ext_addrs.push(*addr);
             }
         }
 
-        if target.enabled != self.src_match_flushed.enabled {
+        if target.enabled != self.state.src_match_flushed.enabled {
             self.set_prop(PROP_MAC_SRC_MATCH_ENABLED, &[target.enabled as u8])
                 .await?;
-            self.src_match_flushed.enabled = target.enabled;
+            self.state.src_match_flushed.enabled = target.enabled;
         }
 
         self.src_match_dirty = false;
@@ -1318,7 +1335,7 @@ where
     /// the last flush, pipelined as a single burst (one round-trip regardless of
     /// how many properties changed — see [`Self::set_props`]).
     async fn flush_config(&mut self, config: &Config) -> Result<(), RadioErrorKind> {
-        let prev = self.config.clone();
+        let prev = self.state.config.clone();
         let changed = |get: fn(&Config) -> u64| prev.as_ref().map(get) != Some(get(config));
 
         // Materialize each changed property's little-endian payload into a local
@@ -1381,7 +1398,7 @@ where
 
         self.set_props(batch[..count].iter().copied()).await?;
 
-        self.config = Some(config.clone());
+        self.state.config = Some(config.clone());
         Ok(())
     }
 
@@ -1539,7 +1556,7 @@ where
     }
 
     async fn set_src_match_config(&mut self, entries: &SrcMatchConfig) -> Result<(), Self::Error> {
-        self.src_match = entries.clone();
+        self.state.src_match = entries.clone();
         self.src_match_dirty = true;
 
         // Push right away when the link is already up; before the handshake
