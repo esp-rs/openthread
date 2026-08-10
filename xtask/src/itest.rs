@@ -328,14 +328,17 @@ const HW_TESTS: &[(&str, usize)] = &[
 /// failure here is about the radio path - the spinel link, the co-processor's
 /// MAC, real over-the-air timing - and not about the scenario.
 ///
-/// Unlike every other allowlist in this file, these are **candidates**: they
-/// have not been run against hardware. Promote entries into [`HW_TESTS`] as
-/// they go green, the same per-test rule the simulation lists use.
+/// The two-node entries are **verified green on real hardware** (2026-08-09,
+/// nRF52840 + ESP32-C6 `ot-rcp`, one full sweep) - the sweep that shook out
+/// the serial `O_CLOEXEC`-on-reset and source-match byte-order bugs. The
+/// three-node entries remain candidates until a third radio joins the rig;
+/// the node-count gate keeps them out until then. (The sniffer-dependent and
+/// sleeps-out-days scenarios live in [`HW_TESTS_NEED_SNIFFER`] /
+/// [`HW_TESTS_TOO_SLOW`].)
 ///
-/// Expect this to take a while. Real radios serve every scripted delay at 1x
-/// and some scenarios sleep out protocol timers, so the full set is hours
-/// rather than minutes - name individual tests on the command line to work
-/// through it in batches.
+/// Expect a full run to take a while: real radios serve every scripted delay
+/// at 1x, so the set is over an hour - name individual tests on the command
+/// line to work through it in batches.
 const HW_TESTS_EXTRA: &[(&str, usize)] = &[
     ("test_set_mliid", 1),
     ("Cert_5_1_05_RouterAddressTimeout", 2),
@@ -351,25 +354,19 @@ const HW_TESTS_EXTRA: &[(&str, usize)] = &[
     ("Cert_6_5_03_ChildResetSynchronize", 2),
     ("Cert_6_6_01_KeyIncrement", 2),
     ("Cert_6_6_02_KeyIncrementRollOver", 2),
-    ("Cert_8_1_01_Commissioning", 2),
     ("Cert_8_1_02_Commissioning", 2),
-    ("Cert_8_1_06_Commissioning", 2),
     ("Cert_8_3_01_CommissionerPetition", 2),
     ("Cert_9_2_01_MGMTCommissionerGet", 2),
-    ("Cert_9_2_02_MGMTCommissionerSet", 2),
     ("Cert_9_2_03_ActiveDatasetGet", 2),
     ("Cert_9_2_04_ActiveDataset", 2),
     ("Cert_9_2_05_ActiveDataset", 2),
-    ("Cert_9_2_19_PendingDatasetGet", 2),
     ("test_child_supervision", 2),
     ("test_coap_block", 2),
     ("test_coap_observe", 2),
     ("test_coaps", 2),
     ("test_dns_client_config_auto_start", 2),
     ("test_dnssd_name_with_special_chars", 2),
-    ("test_history_tracker", 2),
     ("test_ipv6_fragmentation", 2),
-    ("test_ipv6_source_selection", 2),
     ("test_leader_reboot_multiple_link_request", 2),
     ("test_reed_address_solicit_rejected", 2),
     ("test_router_downgrade_on_sec_policy_change", 2),
@@ -397,7 +394,6 @@ const HW_TESTS_EXTRA: &[(&str, usize)] = &[
     ("Cert_7_1_08_BorderRouterAsFED", 3),
     ("Cert_8_2_01_JoinerRouter", 3),
     ("Cert_8_2_02_JoinerRouter", 3),
-    ("Cert_8_2_05_JoinerRouter", 3),
     ("Cert_9_2_07_DelayTimer", 3),
     ("Cert_9_2_08_PersistentDatasets", 3),
     ("Cert_9_2_17_Orphan", 3),
@@ -414,6 +410,33 @@ const HW_TESTS_EXTRA: &[(&str, usize)] = &[
     ("test_zero_len_external_route", 3),
 ];
 
+/// Scenarios whose scripted sleeps make them un-runnable at 1x pacing: the
+/// upstream scripts advance simulated time by *days* (`go(ONE_DAY)` and the
+/// like), which virtual time serves instantly and real time serves literally.
+/// No budget fixes that; they stay virtual-time-only.
+#[allow(unused)]
+const HW_TESTS_TOO_SLOW: &[(&str, usize)] = &[
+    // Ages `netinfo` history entries across five simulated days.
+    ("test_history_tracker", 2),
+];
+
+/// Scenarios that assert on frames observed by the harness's *simulator
+/// sniffer* (`simulator.get_messages_sent_by(...)`): on the simulated
+/// UDP-multicast medium that sniffer sees every frame, on real RF it sees
+/// nothing, so these fail structurally regardless of the radio ("Could not
+/// find CoapMessage..."). Excluded from [`HW_TESTS_EXTRA`]; they become
+/// runnable only if the rig ever grows a real 802.15.4 sniffer feeding the
+/// harness (a third radio in promiscuous mode - a plausible future tier).
+#[allow(unused)]
+const HW_TESTS_NEED_SNIFFER: &[(&str, usize)] = &[
+    ("Cert_8_1_01_Commissioning", 2),
+    ("Cert_8_1_06_Commissioning", 2),
+    ("Cert_8_2_05_JoinerRouter", 3),
+    ("Cert_9_2_02_MGMTCommissionerSet", 2),
+    ("Cert_9_2_19_PendingDatasetGet", 2),
+    ("test_ipv6_source_selection", 2),
+];
+
 /// Wall-clock budget for a test; exceeding it kills and fails the test.
 ///
 /// Sized for real-time mode, where every `simulator.go(N)` in a script is a
@@ -424,6 +447,21 @@ fn test_timeout(test: &str) -> Duration {
     match test {
         // Sleeps out a 700s router-id expiry.
         "Cert_5_3_03_AddressQuery" => Duration::from_secs(1200),
+        // Long scripted sleeps served at 1x (summed `simulator.go(N)`):
+        // 847s of lease/key-lease expiries.
+        "test_srp_client_change_lease" => Duration::from_secs(1500),
+        // 697s across two security-policy rotations.
+        "test_router_downgrade_on_sec_policy_change" => Duration::from_secs(1200),
+        // 591s of staggered lease expiries.
+        "test_srp_register_services_diff_lease" => Duration::from_secs(1200),
+        // 500s of scripted waits leaves no headroom in the default budget.
+        "Cert_5_1_05_RouterAddressTimeout" => Duration::from_secs(900),
+        // 4 x 240s key-lease expiries.
+        "test_srp_ttl" => Duration::from_secs(1800),
+        // Two ~300s address-deprecation waits on top of ~190s of small steps.
+        "test_srp_auto_host_address" => Duration::from_secs(1500),
+        // 1559s of scripted waits (router-id mask lifetimes; 3-node).
+        "Cert_5_3_06_RouterIdMask" => Duration::from_secs(2400),
         _ => Duration::from_secs(600),
     }
 }

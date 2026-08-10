@@ -53,7 +53,7 @@ use nix::sys::stat::Mode;
 use nix::sys::termios::{
     cfmakeraw, cfsetspeed, tcsetattr, BaudRate, ControlFlags, InputFlags, SetArg,
 };
-use nix::unistd::pipe;
+use nix::unistd::pipe2;
 
 /// The drain-pipe capacity requested from the kernel (Linux; rounded up to
 /// pages). Sized for a couple of seconds of a saturated 250 kbps 802.15.4
@@ -88,9 +88,15 @@ impl SerialPort {
     /// unusual rate the platform cannot set surfaces as an error.
     pub fn open(path: impl AsRef<Path>, baud: u32) -> io::Result<Self> {
         // Non-blocking so `async-io` can drive readiness; no controlling tty.
+        //
+        // `O_CLOEXEC` because this open bypasses Rust's std (which sets it on
+        // everything): in a process that `exec`s - a host node implementing
+        // reset by re-executing itself, say - an inherited tty fd would
+        // otherwise survive into the new image and, combined with the
+        // `TIOCEXCL` below, make the port unopenable (`EBUSY`) for it.
         let fd = open(
             path.as_ref(),
-            OFlag::O_RDWR | OFlag::O_NOCTTY | OFlag::O_NONBLOCK,
+            OFlag::O_RDWR | OFlag::O_NOCTTY | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,
             Mode::empty(),
         )
         .map_err(io::Error::from)?;
@@ -128,8 +134,9 @@ impl SerialPort {
         tcsetattr(&fd, SetArg::TCSANOW, &termios).map_err(io::Error::from)?;
 
         // The drain pipe: the thread reads the tty and writes here; `read`
-        // consumes the read end via `async-io`.
-        let (pipe_rd, pipe_wr) = pipe().map_err(io::Error::from)?;
+        // consumes the read end via `async-io`. `CLOEXEC` for the same reason
+        // as the tty fd above.
+        let (pipe_rd, pipe_wr) = pipe2(OFlag::O_CLOEXEC).map_err(io::Error::from)?;
 
         // Cap the pipe: it only needs to bridge the driver's short read gaps
         // (a few radio-seconds of inbound), and a deep pipe just adds standing

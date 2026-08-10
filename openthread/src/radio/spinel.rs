@@ -53,7 +53,7 @@ use embassy_time::{Duration, Timer};
 
 use crate::radio::{
     Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
-    SrcMatchConfig, SRC_MATCH_CAPACITY,
+    SrcMatchConfig,
 };
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 
@@ -207,6 +207,10 @@ const CMD_RESET: u32 = crate::sys::SPINEL_CMD_RESET as u32;
 const CMD_PROP_VALUE_GET: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_GET as u32;
 const CMD_PROP_VALUE_SET: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_SET as u32;
 const CMD_PROP_VALUE_IS: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_IS as u32;
+const CMD_PROP_VALUE_INSERT: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_INSERT as u32;
+const CMD_PROP_VALUE_REMOVE: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_REMOVE as u32;
+const CMD_PROP_VALUE_INSERTED: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_INSERTED as u32;
+const CMD_PROP_VALUE_REMOVED: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_REMOVED as u32;
 const RESET_STACK: u32 = crate::sys::SPINEL_RESET_STACK as u32;
 const STATUS_RESET_BEGIN: u32 = crate::sys::SPINEL_STATUS_RESET__BEGIN as u32;
 const STATUS_RESET_END: u32 = crate::sys::SPINEL_STATUS_RESET__END as u32;
@@ -301,6 +305,21 @@ fn spinel_frame_prefix(out: &mut [u8], tid: u8, cmd: u32, prop: u32) -> Option<u
 /// the conversation in radio traffic.
 fn trace_frame(direction: &str, frame: &[u8]) {
     match spinel_parse_header(frame) {
+        Some((tid, cmd, prop, off)) if prop == PROP_LAST_STATUS => {
+            // The status value is the whole story of a `LAST_STATUS` frame -
+            // "1 byte" without it hides exactly the failures worth seeing.
+            let status = spinel_uint_decode(&frame[off..])
+                .map(|(status, _)| status)
+                .unwrap_or(u32::MAX);
+
+            trace!(
+                "{} tid {} cmd 0x{:x} LAST_STATUS {}",
+                direction,
+                tid,
+                cmd,
+                status,
+            );
+        }
         Some((tid, cmd, prop, off)) => trace!(
             "{} tid {} cmd 0x{:x} prop 0x{:x} ({} bytes)",
             direction,
@@ -556,6 +575,10 @@ pub struct SpinelRadio<'a, T> {
     /// during the handshake; the crate-wide default until then (and for RCP
     /// firmwares that do not implement the property).
     sensitivity: i8,
+    /// The source-match table as the RCP currently has it: what the
+    /// per-entry INSERT/REMOVE flush has successfully applied so far. The
+    /// diff between this and `src_match` is what a flush sends.
+    src_match_flushed: SrcMatchConfig,
     /// The latest source-match table from the stack. `src_match_dirty` marks
     /// it not yet pushed to the RCP: the trait's delivery is synchronous, the
     /// spinel writes are not, so the push happens on the next async operation
@@ -613,6 +636,7 @@ where
             default_cca_threshold: RadioCaps::DEFAULT_CCA_THRESHOLD,
             sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
             src_match: SrcMatchConfig::default(),
+            src_match_flushed: SrcMatchConfig::default(),
             src_match_dirty: false,
             config: None,
             rx_enabled: false,
@@ -722,32 +746,154 @@ where
             return Ok(());
         }
 
-        // Short entries: a packed array of `u16` LE.
-        let mut short = [0; SRC_MATCH_CAPACITY * 2];
-        let mut short_len = 0;
-        for addr in &self.src_match.short_addrs {
-            short[short_len..short_len + 2].copy_from_slice(&addr.to_le_bytes());
-            short_len += 2;
+        // Per-entry INSERT/REMOVE, with an empty whole-table SET only for
+        // clear-all: exactly the wire shapes OpenThread's own hosts use
+        // (`RadioSpinel::{Add,Clear}SrcMatch*Entry`), and therefore the only
+        // ones every RCP firmware actually exercises.
+        //
+        // Byte order of the extended entries: the wire wants the EUI-64 in
+        // DISPLAY order (`16 6e ...` for `166e...`), i.e. the REVERSE of what
+        // `otPlatRadioAddSrcMatchExtEntry` hands this driver. The chain on the
+        // RCP dictates it: its NCP layer decodes the wire bytes as a core
+        // `ExtAddress` and `Radio::AddSrcMatchExtEntry` (`radio.cpp`) reverses
+        // them into over-the-air order for the radio driver's pending table -
+        // so what goes ON the wire must be the pre-reversal (display) form.
+        // Verified against both an nRF52840 and an ESP32-C6 `ot-rcp`: with
+        // OTA-order entries both answer every data poll FP=0 (the table never
+        // matches), which silently breaks indirect delivery to
+        // not-yet-attached SEDs - the child never wakes for its Child ID
+        // Response, and attach fails.
+        //
+        // `src_match_flushed` mirrors what the RCP has, entry by entry, so a
+        // failed op leaves the mirror truthful and the dirty flag makes the
+        // next operation prologue retry the remainder.
+
+        let target = self.src_match.clone();
+
+        // Removals first, freeing table slots for the additions.
+        if target.short_addrs.is_empty() && !self.src_match_flushed.short_addrs.is_empty() {
+            self.set_prop(PROP_MAC_SRC_MATCH_SHORT_ADDRESSES, &[])
+                .await?;
+            self.src_match_flushed.short_addrs.clear();
+        } else {
+            for index in (0..self.src_match_flushed.short_addrs.len()).rev() {
+                let addr = self.src_match_flushed.short_addrs[index];
+                if !target.short_addrs.contains(&addr) {
+                    self.modify_prop(
+                        CMD_PROP_VALUE_REMOVE,
+                        PROP_MAC_SRC_MATCH_SHORT_ADDRESSES,
+                        &addr.to_le_bytes(),
+                    )
+                    .await?;
+                    self.src_match_flushed.short_addrs.swap_remove(index);
+                }
+            }
         }
 
-        // Extended entries: packed EUI-64s, in the byte order of
-        // `otPlatRadioSetExtendedAddress` (see `platform.rs`).
-        let mut ext = [0; SRC_MATCH_CAPACITY * 8];
-        let mut ext_len = 0;
-        for addr in &self.src_match.ext_addrs {
-            ext[ext_len..ext_len + 8].copy_from_slice(&addr.to_le_bytes());
-            ext_len += 8;
+        if target.ext_addrs.is_empty() && !self.src_match_flushed.ext_addrs.is_empty() {
+            self.set_prop(PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES, &[])
+                .await?;
+            self.src_match_flushed.ext_addrs.clear();
+        } else {
+            for index in (0..self.src_match_flushed.ext_addrs.len()).rev() {
+                let addr = self.src_match_flushed.ext_addrs[index];
+                if !target.ext_addrs.contains(&addr) {
+                    self.modify_prop(
+                        CMD_PROP_VALUE_REMOVE,
+                        PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES,
+                        &addr.to_be_bytes(),
+                    )
+                    .await?;
+                    self.src_match_flushed.ext_addrs.swap_remove(index);
+                }
+            }
         }
 
-        let enabled = [self.src_match.enabled as u8];
+        for addr in &target.short_addrs {
+            if !self.src_match_flushed.short_addrs.contains(addr) {
+                self.modify_prop(
+                    CMD_PROP_VALUE_INSERT,
+                    PROP_MAC_SRC_MATCH_SHORT_ADDRESSES,
+                    &addr.to_le_bytes(),
+                )
+                .await?;
+                let _ = self.src_match_flushed.short_addrs.push(*addr);
+            }
+        }
 
-        self.set_prop(PROP_MAC_SRC_MATCH_SHORT_ADDRESSES, &short[..short_len])
-            .await?;
-        self.set_prop(PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES, &ext[..ext_len])
-            .await?;
-        self.set_prop(PROP_MAC_SRC_MATCH_ENABLED, &enabled).await?;
+        for addr in &target.ext_addrs {
+            if !self.src_match_flushed.ext_addrs.contains(addr) {
+                self.modify_prop(
+                    CMD_PROP_VALUE_INSERT,
+                    PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES,
+                    &addr.to_be_bytes(),
+                )
+                .await?;
+                let _ = self.src_match_flushed.ext_addrs.push(*addr);
+            }
+        }
+
+        if target.enabled != self.src_match_flushed.enabled {
+            self.set_prop(PROP_MAC_SRC_MATCH_ENABLED, &[target.enabled as u8])
+                .await?;
+            self.src_match_flushed.enabled = target.enabled;
+        }
 
         self.src_match_dirty = false;
+
+        Ok(())
+    }
+
+    /// Send a `PROP_VALUE_INSERT`/`PROP_VALUE_REMOVE` for a single table entry
+    /// and await its acknowledgement (`PROP_VALUE_INSERTED`/`REMOVED`; a
+    /// `LAST_STATUS` reply carries the failure).
+    async fn modify_prop(
+        &mut self,
+        cmd: u32,
+        prop: u32,
+        payload: &[u8],
+    ) -> Result<(), RadioErrorKind> {
+        let tid = self.alloc_tid();
+
+        let frame_len = {
+            let mut n = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
+                .ok_or(RadioErrorKind::TxFailed)?;
+            if n + payload.len() > self.tx_frame.len() {
+                return Err(RadioErrorKind::TxFailed);
+            }
+            self.tx_frame[n..n + payload.len()].copy_from_slice(payload);
+            n += payload.len();
+            n
+        };
+
+        trace_frame("RCP <-", &self.tx_frame[..frame_len]);
+        self.transport
+            .send(&self.tx_frame[..frame_len])
+            .await
+            .map_err(|_| RadioErrorKind::TxFailed)?;
+
+        let (rprop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
+
+        if rprop == PROP_LAST_STATUS {
+            let status = spinel_uint_decode(&self.rx_frame[off..self.rx_len])
+                .map(|(status, _)| status)
+                .unwrap_or(0);
+
+            if status != 0 {
+                debug!(
+                    "RCP: {} of prop 0x{:x} refused, LAST_STATUS {}",
+                    if cmd == CMD_PROP_VALUE_INSERT {
+                        "INSERT"
+                    } else {
+                        "REMOVE"
+                    },
+                    prop,
+                    status
+                );
+
+                return Err(RadioErrorKind::Other);
+            }
+        }
 
         Ok(())
     }
@@ -784,6 +930,7 @@ where
 
         // Send straight out of `self.tx_frame`: the transport borrow and the
         // frame borrow are disjoint fields.
+        trace_frame("RCP <-", &self.tx_frame[..frame_len]);
         self.transport
             .send(&self.tx_frame[..frame_len])
             .await
@@ -853,6 +1000,7 @@ where
 
         let frame_len = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
             .ok_or(RadioErrorKind::TxFailed)?;
+        trace_frame("RCP <-", &self.tx_frame[..frame_len]);
         self.transport
             .send(&self.tx_frame[..frame_len])
             .await
@@ -914,8 +1062,6 @@ where
         tid: u8,
         timeout: Duration,
     ) -> Result<(u32, usize), RadioErrorKind> {
-        let cmd_is = CMD_PROP_VALUE_IS;
-
         loop {
             let frame_len = self.recv_frame(timeout).await?;
 
@@ -930,7 +1076,14 @@ where
                 continue;
             };
 
-            if rtid == tid && rcmd == cmd_is {
+            // `PROP_VALUE_IS` answers GET/SET (and carries `LAST_STATUS`
+            // errors); `INSERTED`/`REMOVED` answer the per-entry table
+            // modifications.
+            if rtid == tid
+                && (rcmd == CMD_PROP_VALUE_IS
+                    || rcmd == CMD_PROP_VALUE_INSERTED
+                    || rcmd == CMD_PROP_VALUE_REMOVED)
+            {
                 return Ok((rprop, off));
             }
             // A mismatched command response — ignore.
@@ -986,6 +1139,7 @@ where
             // kind as a packed-uint argument.
             let n = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, reset_arg)
                 .ok_or(RadioErrorKind::Other)?;
+            trace_frame("RCP <-", &self.tx_frame[..n]);
             self.transport
                 .send(&self.tx_frame[..n])
                 .await

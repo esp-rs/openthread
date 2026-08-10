@@ -1571,7 +1571,11 @@ impl<'a> OpenThread<'a> {
 
             match result {
                 Ok(maybe_ack_psdu_meta) => {
-                    trace!("Tx done, ack frame: {:?}", maybe_ack_psdu_meta);
+                    trace!(
+                        "Tx done, ack frame: {:?} {}",
+                        maybe_ack_psdu_meta,
+                        Bytes(&ack_psdu_buf[..maybe_ack_psdu_meta.map(|m| m.len).unwrap_or(0)]),
+                    );
 
                     let ack_frame_ptr = if let Some(ack_psdu_meta) = maybe_ack_psdu_meta {
                         let ack_psdu = &ack_psdu_buf[..ack_psdu_meta.len];
