@@ -31,8 +31,6 @@
 //! node, losing settings is a visible failure, while trusting corrupt ones
 //! is a debugging session.
 
-use embedded_storage::{ReadStorage, Storage};
-
 use esp_storage::FlashStorage;
 
 use log::warn;

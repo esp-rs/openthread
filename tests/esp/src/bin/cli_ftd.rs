@@ -55,7 +55,7 @@ use embassy_executor::Spawner;
 
 use esp_hal::rng::Rng;
 use esp_hal::timer::timg::TimerGroup;
-use esp_hal::usb_serial_jtag::{UsbSerialJtag, UsbSerialJtagRx, UsbSerialJtagTx};
+use esp_hal::usb::usb_serial_jtag::{UsbSerialJtag, UsbSerialJtagRx, UsbSerialJtagTx};
 use esp_hal::Async;
 use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};

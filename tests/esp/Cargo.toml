@@ -65,7 +65,6 @@ esp-radio = { version = "1.0.0-beta.0", features = ["unstable", "ieee802154"] }
 esp-bootloader-esp-idf = { version = "0.5", features = ["log-04"] }
 # Settings persistence - see `src/flash_settings.rs`.
 esp-storage = "0.9"
-embedded-storage = "0.3"
 log = "0.4"
 heapless = "0.9"
 critical-section = "1.2"
@@ -152,30 +151,15 @@ path = "./src/bin/cli_ftd.rs"
 name = "cli_ftd"
 harness = false
 
-# esp-hal 1.1.2 with one local fix: the USB-Serial-JTAG async interrupt
-# handler clears BOTH interrupt latches unconditionally, so an RX interrupt
-# can consume a just-latched TX "fifo empty" event (and vice versa) before
-# the future waiting on it has armed its enable bit - the write future then
-# waits forever and the console freezes until unrelated USB traffic shakes
-# it loose. Under this harness's command-response load that surfaces as
-# command echoes and ping results arriving seconds late, failing tests.
-# The patched tree clears only the events the handler actually serviced.
-# Machine-local path, until the fix is upstreamed to esp-hal.
-# The siblings ride along so the patched `esp-hal` and the crates-io
-# `esp-radio`/`esp-rtos` keep sharing one copy of each (esp-sync's mutex
-# types cross those crate boundaries).
+# The released esp family lacks two fixes we need:
+# - https://github.com/esp-rs/esp-hal/pull/6090
+# - https://github.com/esp-rs/esp-hal/pull/6089
 [patch.crates-io]
-# esp-radio 1.0.0-beta.0 with one local fix: the 802.15.4 RX interrupt
-# handler never supplies the hardware with the frame-pending bit for its
-# automatic ACKs (the C driver's `ieee802154_ll_set_pending_bit`, written
-# per received frame). The hardware withholds the ACK to a *data-request*
-# frame until that value is provided, so every SED data poll went
-# permanently unacknowledged - confirmed by an air capture: 320 polls,
-# zero ACKs, while data-frame ACKs flowed normally. That broke SED attach
-# (Child ID Response is delivered on a poll) and first-contact exchanges.
-esp-radio = { path = "/home/ivan/dev/esp-radio-1.0.0-beta.0-pendingfix" }
-esp-hal = { path = "/home/ivan/dev/esp-hal-v1.1.2-usbfix/esp-hal" }
-esp-metadata-generated = { path = "/home/ivan/dev/esp-hal-v1.1.2-usbfix/esp-metadata-generated" }
-esp-sync = { path = "/home/ivan/dev/esp-hal-v1.1.2-usbfix/esp-sync" }
-esp-rom-sys = { path = "/home/ivan/dev/esp-hal-v1.1.2-usbfix/esp-rom-sys" }
-esp-config = { path = "/home/ivan/dev/esp-hal-v1.1.2-usbfix/esp-config" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
+esp-storage = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
