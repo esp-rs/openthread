@@ -43,7 +43,7 @@ esp-rtos = { version = "0.3", features = ["esp-radio", "embassy"] }
 esp-alloc = { version = "0.10" }
 esp-backtrace = { version = "0.19", features = ["panic-handler", "println"] }
 esp-println = { version = "0.17", features = ["log-04"] }
-esp-radio = { version = "0.18", features = ["unstable", "ieee802154"] }
+esp-radio = { version = "1.0.0-beta.0", features = ["unstable", "ieee802154"] }
 esp-bootloader-esp-idf = { version = "0.5", features = ["log-04"] }
 log = "0.4"
 heapless = "0.9"

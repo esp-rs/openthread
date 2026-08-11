@@ -46,6 +46,7 @@
 use std::io::{ErrorKind, Read, Write};
 use std::os::fd::OwnedFd;
 use std::process::exit;
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use nix::fcntl::{open, OFlag};
@@ -56,6 +57,29 @@ use nix::sys::termios::{
 
 /// The environment variable overriding the startup reset command.
 const RESET_VAR: &str = "OT_HW_RESET_CMD";
+
+/// If set, a directory where the bridge tees the raw device traffic, one
+/// timestamped line per chunk, both directions - the ground truth for "when
+/// did the device actually say/hear that" when a harness timeout needs to be
+/// attributed to the device or to the host side.
+const CAPTURE_VAR: &str = "OT_BRIDGE_CAPTURE";
+
+/// The capture sink, when [`CAPTURE_VAR`] requests one.
+static CAPTURE: Mutex<Option<(std::fs::File, Instant)>> = Mutex::new(None);
+
+/// Append a `[+seconds] <dir> <printable-chunk>` line to the capture.
+fn capture(dir: char, chunk: &[u8]) {
+    let mut guard = CAPTURE.lock().unwrap();
+
+    if let Some((file, start)) = guard.as_mut() {
+        let _ = writeln!(
+            file,
+            "[{:10.3}] {dir} {}",
+            start.elapsed().as_secs_f64(),
+            String::from_utf8_lossy(chunk).escape_debug(),
+        );
+    }
+}
 
 /// What to send at startup to get a factory-fresh node.
 const DEFAULT_RESET_CMD: &str = "factoryreset";
@@ -89,6 +113,14 @@ fn main() {
     );
     let mut from_device = std::fs::File::from(tty);
 
+    if let Ok(dir) = std::env::var(CAPTURE_VAR) {
+        let path = format!("{dir}/bridge-{node_id}.log");
+        match std::fs::File::create(&path) {
+            Ok(file) => *CAPTURE.lock().unwrap() = Some((file, Instant::now())),
+            Err(err) => eprintln!("serial_bridge: cannot create {path}: {err}"),
+        }
+    }
+
     reset_device(&mut to_device, &mut from_device);
 
     // Device -> stdout on its own thread; the main thread pumps the other way.
@@ -103,6 +135,8 @@ fn main() {
             match from_device.read(&mut buf) {
                 Ok(0) => break,
                 Ok(n) => {
+                    capture('<', &buf[..n]);
+
                     if stdout.write_all(&buf[..n]).is_err() || stdout.flush().is_err() {
                         break;
                     }
@@ -128,6 +162,8 @@ fn main() {
         match stdin.read(&mut buf) {
             Ok(0) => break,
             Ok(n) => {
+                capture('>', &buf[..n]);
+
                 if to_device.write_all(&buf[..n]).is_err() || to_device.flush().is_err() {
                     break;
                 }

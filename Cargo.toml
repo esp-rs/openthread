@@ -27,7 +27,7 @@ embedded-hal-async = { version = "1", default-features = false }
 # addition (its serial handles need a different, overlapped-I/O path).
 async-io = { version = "2", default-features = false }
 nix = { version = "0.30", default-features = false }
-esp-radio = { version = "0.18", default-features = false }
+esp-radio = { version = "1.0.0-beta.0", default-features = false }
 embassy-nrf = { version = "0.10", default-features = false }
 portable-atomic = { version = "1", default-features = false }
 
