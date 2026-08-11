@@ -66,6 +66,11 @@ pub async fn read_out(buf: &mut [u8]) -> usize {
     OUT.read(buf).await
 }
 
+/// How many bytes sit in the output pipe right now (diagnostic).
+pub fn pending() -> usize {
+    OUT.len()
+}
+
 /// Wait until every byte queued so far has been taken by the console task.
 ///
 /// The command loop awaits this after each CLI command, BEFORE reading the

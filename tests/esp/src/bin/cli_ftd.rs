@@ -60,8 +60,6 @@ use esp_hal::Async;
 use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
 
-use embassy_futures::select::{select, Either};
-
 use embedded_io_async::{Read, Write};
 
 /// The console's two ends: the USB-Serial-JTAG serial side.
@@ -159,7 +157,6 @@ async fn main(spawner: Spawner) {
         .split();
 
     spawner.spawn(run_console_out(console_tx).unwrap());
-    spawner.spawn(heartbeat().unwrap());
 
     ot.cli_init(console::out);
 
@@ -178,21 +175,8 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
     let mut buf = [0; 64];
 
     loop {
-        // Watchdogged for the same lost-event race as the output task: bytes
-        // can sit in the RX FIFO with their wakeup gone. Re-entering `read`
-        // drains the FIFO before waiting, so a periodic re-poll recovers
-        // them; the read itself cannot fail (its error type is uninhabited).
-        let len = loop {
-            match select(
-                console_rx.read(&mut buf),
-                embassy_time::Timer::after(embassy_time::Duration::from_millis(200)),
-            )
-            .await
-            {
-                Either::First(Ok(len)) => break len,
-                Either::Second(()) => continue,
-            }
-        };
+        // Irrefutable: the USB-Serial-JTAG read cannot fail.
+        let Ok(len) = console_rx.read(&mut buf).await;
 
         for byte in &buf[..len] {
             if reader.push(*byte) {
@@ -227,47 +211,16 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
 ///
 /// A task rather than a direct write from the output callback, because that
 /// callback is synchronous while the console is not - see `console`.
-///
-/// The writes are watchdogged: the USB-Serial-JTAG driver's async TX waits
-/// on an edge-latched "endpoint empty" event, and that event can be lost to
-/// an interrupt race, leaving a write future parked forever on bytes that
-/// long since reached the host - the console then freezes until the next
-/// *incoming* byte's interrupt shakes it loose (observed as command output
-/// arriving in one burst seconds late, exactly when the harness gives up
-/// and sends its next command). Re-polling on a timeout re-reads the FIFO
-/// state and completes; the chunk size stays within one 64-byte endpoint
-/// fill so a stranded wait never leaves part of a chunk unsent.
 #[embassy_executor::task]
 async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
-    // One endpoint fill per write: a chunk this size is committed to the
-    // hardware in one go, so a timed-out wait below can only ever mean
-    // "completion lost or host slow", never "partially unsent".
-    let mut buf = [0; 64];
+    // Big chunks: the driver splits into USB packets itself, and fewer
+    // task round-trips is what keeps the drain ahead of the CLI.
+    let mut buf = [0; 512];
 
     loop {
         let len = console::read_out(&mut buf).await;
-
-        // A timeout here does NOT warrant re-sending: the bytes are already
-        // in the endpoint. Recovery happens in the flush loop below, whose
-        // entry re-reads the endpoint state instead of trusting the (lost)
-        // event.
-        let _ = select(
-            console_tx.write_all(&buf[..len]),
-            embassy_time::Timer::after(embassy_time::Duration::from_millis(50)),
-        )
-        .await;
-
-        // Wait until the endpoint has actually drained - re-polling on a
-        // timeout so a lost completion costs 50ms, not a frozen console.
-        // The next write may only start against an empty endpoint.
-        while matches!(
-            select(
-                console_tx.flush(),
-                embassy_time::Timer::after(embassy_time::Duration::from_millis(50)),
-            )
-            .await,
-            Either::Second(())
-        ) {}
+        let _ = console_tx.write_all(&buf[..len]).await;
+        let _ = console_tx.flush().await;
     }
 }
 
@@ -282,24 +235,4 @@ fn ieee_eui64() -> [u8; 8] {
 #[embassy_executor::task]
 async fn run_ot(ot: OpenThread<'static>, radio: EspRadio<'static>) -> ! {
     ot.run(radio).await
-}
-
-/// Console keep-alive: a blank line every 2s.
-///
-/// The USB-Serial-JTAG driver's async TX waits on an edge-latched "endpoint
-/// empty" event that an interrupt race can lose, parking the output task on
-/// bytes the host long since read - the console then freezes until the next
-/// write cycles fresh events through the endpoint. This heartbeat IS that
-/// next write: it bounds any such freeze at one period, well inside every
-/// harness timeout, and an empty line is invisible to the harness's line
-/// matchers. (A watchdog inside `run_console_out` is not enough on its own:
-/// its recovery path can park on the same lost event class it guards
-/// against - traffic through the endpoint is what reliably clears it.)
-#[embassy_executor::task]
-async fn heartbeat() -> ! {
-    loop {
-        embassy_time::Timer::after(embassy_time::Duration::from_secs(2)).await;
-
-        console::out(b"\r\n");
-    }
 }
