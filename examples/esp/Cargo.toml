@@ -78,14 +78,16 @@ name = "dns"
 #required-features=["dns-client"]
 harness = false
 
-# The released esp family lacks two fixes we need:
+# The released esp family lacks four fixes we need, all merged upstream:
 # - https://github.com/esp-rs/esp-hal/pull/6090
 # - https://github.com/esp-rs/esp-hal/pull/6089
+# - https://github.com/esp-rs/esp-hal/pull/6097
+# - https://github.com/esp-rs/esp-hal/pull/6104
 [patch.crates-io]
-esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
-esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
-esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
-esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
-esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
-esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
-esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "78c5852a762a26042bac59ccd57f941b85319bec" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
