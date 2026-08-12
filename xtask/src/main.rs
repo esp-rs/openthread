@@ -85,7 +85,7 @@ enum Commands {
 
     /// Run upstream OpenThread e2e suites (`thread-cert`, `expect` - taken
     /// verbatim from the OpenThread submodule) against the Rust-platform
-    /// simulation DUT (`openthread-tests`' `cli_ftd`).
+    /// simulation DUT (`openthread-tests`' `cli_node`).
     ///
     /// See `xtask/src/itest.rs` for the mechanics and the curated test
     /// allowlists.

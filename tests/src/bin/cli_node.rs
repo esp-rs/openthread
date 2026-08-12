@@ -8,7 +8,7 @@
 //! DUT shape the upstream test harness spawns (`OT_CLI_PATH`, a pty via
 //! pexpect), making this binary its drop-in node.
 //!
-//! Invocation: `cli_ftd [-L<addr>] <node id>` - the upstream simulation
+//! Invocation: `cli_node [-L<addr>] <node id>` - the upstream simulation
 //! binaries' shape (`-L` selects the local interface address; the expect
 //! suite always passes it). The port base of the simulated radio medium
 //! comes from `PORT_BASE`/`PORT_OFFSET` (harness convention). Exits on stdin
@@ -19,7 +19,7 @@
 //! `otPlatReset`), while a re-exec keeps the pty/stdio fds - so the
 //! harness's session survives - and starts a genuinely fresh stack. Settings
 //! persist in a per-node file (see [`openthread_tests::settings`]) under
-//! `$CLI_FTD_SETTINGS_DIR` (default: `tmp/` beneath the cwd, mirroring the
+//! `$CLI_NODE_SETTINGS_DIR` (default: `tmp/` beneath the cwd, mirroring the
 //! upstream simulation platform's flash files) - so `reset` keeps the
 //! dataset, while `factoryreset` deletes the file before re-executing.
 
@@ -88,7 +88,7 @@ fn main() {
     // Logs MUST NOT go where the CLI conversation runs: under thread-cert's
     // `PopenSpawn` even stderr is merged into the stream the harness parses,
     // so a stray log line can derail its line matching. With
-    // `CLI_FTD_LOG=<path>` set, logs go to `<path>.<node id>` (one file per
+    // `CLI_NODE_LOG=<path>` set, logs go to `<path>.<node id>` (one file per
     // node; level via `RUST_LOG` as usual); without it, when driven by a
     // harness (stdin is not a tty), logs are discarded outright. Only an
     // interactive (tty) session logs to stderr.
@@ -97,9 +97,9 @@ fn main() {
         .filter_level(log::LevelFilter::Warn)
         .parse_default_env();
 
-    if let Ok(path) = std::env::var("CLI_FTD_LOG") {
+    if let Ok(path) = std::env::var("CLI_NODE_LOG") {
         let file = std::fs::File::create(format!("{path}.{}", args.node_id))
-            .expect("create CLI_FTD_LOG file");
+            .expect("create CLI_NODE_LOG file");
         builder.target(env_logger::Target::Pipe(Box::new(file)));
     } else if !std::io::stdin().is_terminal() {
         builder.target(env_logger::Target::Pipe(Box::new(std::io::sink())));
@@ -196,14 +196,14 @@ impl NodeArgs {
             } else if arg.starts_with('-') {
                 // Tolerate harness-passed options this node does not model,
                 // so a harness update doesn't silently kill every node.
-                eprintln!("cli_ftd: ignoring unsupported option `{arg}`");
+                eprintln!("cli_node: ignoring unsupported option `{arg}`");
             } else {
                 node_id = Some(arg.parse().expect("node id: not a number"));
             }
         }
 
         Self {
-            node_id: node_id.expect("usage: cli_ftd [-L<addr>] <node id>"),
+            node_id: node_id.expect("usage: cli_node [-L<addr>] <node id>"),
             local,
         }
     }
@@ -266,7 +266,7 @@ fn reexec() -> ! {
 
     let err = std::process::Command::new(argv0)
         .args(args)
-        .env("CLI_FTD_PSEUDO_RESET", "1")
+        .env("CLI_NODE_PSEUDO_RESET", "1")
         .exec();
 
     panic!("re-exec for reset failed: {err}");
@@ -322,7 +322,7 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
     // Per-node settings file: `reset` re-execs and the fresh process loads it
     // back; `factoryreset` deletes it below before re-executing.
     let settings_dir = std::path::PathBuf::from(
-        std::env::var("CLI_FTD_SETTINGS_DIR").unwrap_or_else(|_| "tmp".into()),
+        std::env::var("CLI_NODE_SETTINGS_DIR").unwrap_or_else(|_| "tmp".into()),
     );
     std::fs::create_dir_all(&settings_dir).expect("create settings dir");
     let settings_path = settings_dir.join(format!("ot-settings-{node_id}.bin"));
@@ -332,7 +332,7 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
     // harness script) must not leak into this one. Settings survive only a
     // `reset` re-exec, which marks itself via the env var (the same
     // semantics as the upstream simulation platform's pseudo-reset).
-    if std::env::var_os("CLI_FTD_PSEUDO_RESET").is_none() {
+    if std::env::var_os("CLI_NODE_PSEUDO_RESET").is_none() {
         let _ = std::fs::remove_file(&settings_path);
     }
 

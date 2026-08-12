@@ -1,5 +1,5 @@
 //! The ESP32-C6/H2 firmware node of the hardware-in-the-loop tier: the same
-//! DUT shape as the host `cli_ftd`, but running on the MCU with its own radio.
+//! DUT shape as the host `cli_node`, but running on the MCU with its own radio.
 //!
 //! The upstream harness drives this exactly as it drives every other node -
 //! CLI lines in, CLI output back - except the pipe is the chip's

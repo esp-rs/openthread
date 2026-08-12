@@ -1,5 +1,5 @@
 //! The nRF firmware node of the hardware-in-the-loop tier: the same DUT shape
-//! as the host `cli_ftd`, but running on an nRF52840 with its own radio.
+//! as the host `cli_node`, but running on an nRF52840 with its own radio.
 //!
 //! The upstream harness drives this exactly as it drives every other node -
 //! CLI lines in, CLI output back - except the pipe is the board's serial

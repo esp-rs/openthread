@@ -64,7 +64,7 @@ embedded-alloc = "0.7.0"
 # whatever goes unused.
 tinyrlibc = { version = "0.5", default-features = false, features = ["alloc", "all"] }
 
-# The same feature set the host DUT (`openthread-tests`' `cli_ftd`) is built
+# The same feature set the host DUT (`openthread-tests`' `cli_node`) is built
 # with, so the harness meets the same CLI surface on either tier - minus the
 # host-only ones. `embassy-nrf` is what brings in `NrfRadio`.
 openthread = { path = "../../openthread", default-features = false, features = [
@@ -88,6 +88,6 @@ openthread = { path = "../../openthread", default-features = false, features = [
 ] }
 
 [[bin]]
-path = "./src/bin/cli_ftd.rs"
-name = "cli_ftd"
+path = "./src/bin/cli_node.rs"
+name = "cli_node"
 harness = false

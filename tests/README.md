@@ -27,7 +27,7 @@ radio medium as upstream `ot-cli-ftd` / `ot-rcp` simulation binaries, and its fr
   (wrapped in `MacRadio`, i.e. ACKs/filtering in software, like on PHY-only real
   radios). Spawned as `sim_node <node id>`, mirroring `ot-cli-ftd <node id>`;
   driven via the crate API, reports `role: <role>` lines on stdout.
-- [`cli_ftd`](src/bin/cli_ftd.rs) — the same stack driven exclusively through
+- [`cli_node`](src/bin/cli_node.rs) — the same stack driven exclusively through
   OpenThread's **C CLI** (the `cli` feature of `openthread`/`openthread-sys`):
   stdin lines to the interpreter, its output to stdout. This is the DUT shape
   the upstream harness spawns over a pty (`OT_CLI_PATH`), verified to hold up
@@ -42,7 +42,7 @@ cargo test
 - [`formation`](tests/formation.rs) — two `sim_node` processes must form a Thread
   network on localhost (Leader + attached Child), proving the whole radio/alarm/
   tasklet path end-to-end.
-- [`cli`](tests/cli.rs) — a `cli_ftd` node is driven harness-style
+- [`cli`](tests/cli.rs) — a `cli_node` node is driven harness-style
   (`dataset set active` / `ifconfig up` / `thread start` / `state` polling) to
   Leader, and an API-driven `sim_node` attaches to it — the mixed
   CLI-node/API-node topology.
@@ -53,7 +53,7 @@ media.
 ## Upstream suites (`cargo xtask itest`)
 
 The repository `xtask` runs *unmodified* upstream OpenThread e2e suites against
-`cli_ftd`:
+`cli_node`:
 
 ```
 cargo xtask itest                      # curated thread-cert allowlist, real time
@@ -62,7 +62,7 @@ cargo xtask itest --suite expect       # expect suite (needs the `expect` binary
 ```
 
 `thread-cert` scenarios (incl. Thread certification test plan derivatives) run
-with `OT_CLI_PATH` pointing at `cli_ftd`, in real-time mode, with the harness's
+with `OT_CLI_PATH` pointing at `cli_node`, in real-time mode, with the harness's
 own multicast sniffer verifying MLE exchanges on the wire. Python deps are
 provisioned automatically into `.build/itest/venv` from the suite's pinned
 requirements. See the allowlists in [itest.rs](../xtask/src/itest.rs) for
@@ -88,7 +88,7 @@ differential debugging lives in `.build/itest/ot-c-vt` (cmake with
 
 1. ~~`SimRadio` + multi-process network-formation smoke test~~
 2. ~~A `cli` feature in `openthread-sys`/`openthread` linking the upstream C CLI,
-   plus the `cli_ftd` drop-in DUT binary~~
+   plus the `cli_node` drop-in DUT binary~~
 3. ~~Real-time-mode `thread-cert` subset via `cargo xtask itest`~~ — expand the
    allowlist over time; run in CI; verify the `expect` suite where the binary
    is available; mixed Rust/C-node topologies.

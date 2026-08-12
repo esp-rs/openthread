@@ -1,7 +1,7 @@
 //! `itest`: run upstream OpenThread e2e suites against the Rust-platform
 //! simulation DUT.
 //!
-//! The DUT is `openthread-tests`' `cli_ftd`: the full `openthread` stack on
+//! The DUT is `openthread-tests`' `cli_node`: the full `openthread` stack on
 //! the Rust platform (embassy alarm, tasklet pumping, software MAC, the
 //! UDP-multicast `SimRadio`), driven through OpenThread's C CLI - the exact
 //! process shape the upstream harness spawns for its own `ot-cli-ftd`
@@ -585,7 +585,7 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
         .iter()
         .any(|port| !port.ends_with("=mcu") && !port.ends_with("=cposix"));
 
-    let cli_ftd = build_dut(
+    let cli_node = build_dut(
         workspace,
         args.skip_build,
         !hw_ports.is_empty() && needs_spinel,
@@ -617,7 +617,7 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
     let runner = Runner {
         ot_root,
         build_dir: build_dir.clone(),
-        cli_ftd,
+        cli_node,
         hw: Hw {
             ports: hw_ports.clone(),
             baud: args.hw_baud,
@@ -820,7 +820,7 @@ struct Runner {
     /// Where logs, the venv and per-test run dirs go.
     build_dir: PathBuf,
     /// The DUT the harness spawns per node.
-    cli_ftd: PathBuf,
+    cli_node: PathBuf,
     /// The radio configuration (simulated, or the hardware tier's port map).
     hw: Hw,
     /// The upstream C peer binary for non-DUT nodes (`--peers c`), if any.
@@ -957,7 +957,7 @@ fn build_posix_host(workspace: &Path, build_dir: &Path) -> Result<PathBuf> {
 }
 
 /// Build the DUT binaries (the `openthread-tests` crate is intentionally
-/// outside the workspace, like `examples`) and return the `cli_ftd` path.
+/// outside the workspace, like `examples`) and return the `cli_node` path.
 ///
 /// `hw` additionally enables the RCP-over-serial radio; the node binary
 /// refuses to start with a port map it cannot read, so a stale non-`hw`
@@ -985,14 +985,14 @@ fn build_dut(workspace: &Path, skip_build: bool, hw: bool) -> Result<PathBuf> {
         }
     }
 
-    let cli_ftd = tests_crate
+    let cli_node = tests_crate
         .join("target")
         .join("debug")
-        .join("cli_ftd")
+        .join("cli_node")
         .canonicalize()
-        .context("locating the `cli_ftd` DUT binary (build it first or drop --skip-build)")?;
+        .context("locating the `cli_node` DUT binary (build it first or drop --skip-build)")?;
 
-    Ok(cli_ftd)
+    Ok(cli_node)
 }
 
 /// Provision (once) and return the python of the harness venv, with the
@@ -1044,7 +1044,7 @@ impl Runner {
         let Self {
             ot_root,
             build_dir,
-            cli_ftd,
+            cli_node,
             hw,
             c_peer: _,
             virtual_time,
@@ -1073,7 +1073,7 @@ impl Runner {
             .current_dir(&run_dir)
             .env("PYTHONPATH", &thread_cert)
             // The DUT: node.py spawns `$OT_CLI_PATH <node id>` under a pexpect pty.
-            .env("OT_CLI_PATH", cli_ftd)
+            .env("OT_CLI_PATH", cli_node)
             // Real or virtual time - for the harness AND, via inheritance, the
             // spawned DUT nodes (which switch their clock/radio accordingly).
             .env("VIRTUAL_TIME", if virtual_time { "1" } else { "0" })
@@ -1086,12 +1086,12 @@ impl Runner {
             // Per-node DUT log files in the run dir (`node.<id>`); the level
             // comes from `RUST_LOG`, so `RUST_LOG=openthread=debug cargo xtask
             // itest <test>` captures a failing node's stack-side view.
-            .env("CLI_FTD_LOG", run_dir.join("node"))
+            .env("CLI_NODE_LOG", run_dir.join("node"))
             // Per-node persisted settings land in the run dir (fresh per run).
-            .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
+            .env("CLI_NODE_SETTINGS_DIR", run_dir.join("settings"));
 
         // Mixed peers: the DUT (node 1) stays this crate's node; every other
-        // node execs the upstream C binary (see `cli_ftd`'s dispatch).
+        // node execs the upstream C binary (see `cli_node`'s dispatch).
         if let Some(c_peer) = &self.c_peer {
             command.env("OT_C_CLI_PATH", c_peer);
         }
@@ -1107,7 +1107,7 @@ impl Runner {
         let Self {
             ot_root,
             build_dir,
-            cli_ftd,
+            cli_node,
             hw,
             timeout_secs,
             ..
@@ -1141,7 +1141,7 @@ impl Runner {
         if fs::symlink_metadata(&link).is_ok() {
             fs::remove_file(&link)?;
         }
-        std::os::unix::fs::symlink(cli_ftd, &link)
+        std::os::unix::fs::symlink(cli_node, &link)
             .with_context(|| format!("symlinking {}", link.display()))?;
 
         let run_dir = build_dir.join("run").join(test);
@@ -1162,7 +1162,7 @@ impl Runner {
             .env("OT_SIMULATION_APPS", &apps)
             // The DUT nodes run with the repo root as cwd (see above); point
             // their persisted settings at the run dir instead.
-            .env("CLI_FTD_SETTINGS_DIR", run_dir.join("settings"));
+            .env("CLI_NODE_SETTINGS_DIR", run_dir.join("settings"));
 
         hw.apply(&mut command);
 

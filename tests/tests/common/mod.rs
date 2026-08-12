@@ -1,9 +1,4 @@
-//! Helpers shared by the integration tests: spawning and driving the
-//! simulation-node binaries.
-
-// Each test binary compiles its own copy of this module and uses only part
-// of it.
-#![allow(dead_code)]
+//! Helpers for the smoke test: spawning and driving `cli_node` processes.
 
 use std::io::{BufRead, BufReader, Write};
 use std::process::{Child, ChildStdin, Command, Stdio};
@@ -15,9 +10,8 @@ use std::time::{Duration, Instant};
 pub const DATASET: &str = "000300001901020fd80208b566147d38e384200e080000639c5d67a3bd0510c490f58d4be0d5eaeb0f09b395d1ae17030d4e4553542d50414e2d304644380708fd7d4f8232cb00000410a7e08419ae47c177fb91bcfcec789aa50c0402a0f77835060004001fffe0";
 
 /// A port base for an isolated instance of the simulated radio medium: away
-/// from the harness default 9000, inside the caller's `range`, varied per test
-/// process so concurrent invocations use disjoint media. Each test file passes
-/// its own `range` (test binaries may run concurrently).
+/// from the harness default 9000, inside the caller's `range`, varied per
+/// test process so concurrent invocations use disjoint media.
 pub fn port_base(range: u16) -> u16 {
     range + (std::process::id() % 4000) as u16
 }
@@ -42,79 +36,7 @@ fn drain_stdout(child: &mut Child) -> mpsc::Receiver<String> {
     lines
 }
 
-/// A spawned `sim_node` process (API-driven; reports `role: <role>` lines).
-pub struct SimNode {
-    node_id: u16,
-    child: Child,
-    lines: mpsc::Receiver<String>,
-}
-
-impl SimNode {
-    pub fn spawn(node_id: u16, port_base: u16) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_sim_node"))
-            .arg(node_id.to_string())
-            .env("PORT_BASE", port_base.to_string())
-            .env("SIM_NODE_DATASET", DATASET)
-            .stdout(Stdio::piped())
-            .spawn()
-            .expect("spawn sim_node");
-
-        let lines = drain_stdout(&mut child);
-
-        Self {
-            node_id,
-            child,
-            lines,
-        }
-    }
-
-    /// Wait until the node reports one of `roles`; any role outside both
-    /// `roles` and `interim` fails immediately (wrong-partition detection).
-    pub fn wait_role(&self, roles: &[&str], interim: &[&str], timeout: Duration) -> String {
-        let deadline = Instant::now() + timeout;
-
-        loop {
-            let remaining = deadline
-                .checked_duration_since(Instant::now())
-                .unwrap_or_else(|| {
-                    panic!(
-                        "node {}: timed out waiting for role {roles:?}",
-                        self.node_id
-                    )
-                });
-
-            let line = self.lines.recv_timeout(remaining).unwrap_or_else(|_| {
-                panic!(
-                    "node {}: timed out waiting for role {roles:?}",
-                    self.node_id
-                )
-            });
-
-            let Some(role) = line.strip_prefix("role: ") else {
-                continue;
-            };
-
-            if roles.contains(&role) {
-                break role.to_string();
-            }
-
-            assert!(
-                interim.contains(&role),
-                "node {}: unexpected role {role:?} while waiting for {roles:?}",
-                self.node_id
-            );
-        }
-    }
-}
-
-impl Drop for SimNode {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-    }
-}
-
-/// A spawned `cli_ftd` process, driven the way the upstream harness drives a
+/// A spawned `cli_node` process, driven the way the upstream harness drives a
 /// DUT: command lines in, textual replies out.
 pub struct CliNode {
     node_id: u16,
@@ -125,13 +47,13 @@ pub struct CliNode {
 
 impl CliNode {
     pub fn spawn(node_id: u16, port_base: u16) -> Self {
-        let mut child = Command::new(env!("CARGO_BIN_EXE_cli_ftd"))
+        let mut child = Command::new(env!("CARGO_BIN_EXE_cli_node"))
             .arg(node_id.to_string())
             .env("PORT_BASE", port_base.to_string())
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .spawn()
-            .expect("spawn cli_ftd");
+            .expect("spawn cli_node");
 
         let stdin = child.stdin.take().unwrap();
         let lines = drain_stdout(&mut child);
@@ -194,6 +116,37 @@ impl CliNode {
             );
 
             output.push(line.to_string());
+        }
+    }
+
+    /// Poll `state` until one of `states` is reported; any state outside
+    /// both `states` and `interim` fails immediately (e.g. a joiner becoming
+    /// `leader` means a second partition: the nodes cannot hear each other).
+    pub fn wait_states(&mut self, states: &[&str], interim: &[&str], timeout: Duration) {
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            let output = self.cmd("state", Duration::from_secs(10));
+
+            if output.iter().any(|line| states.contains(&line.as_str())) {
+                break;
+            }
+
+            for line in &output {
+                assert!(
+                    interim.contains(&line.as_str()) || line == "disabled",
+                    "node {}: unexpected state {line:?} while waiting for {states:?}",
+                    self.node_id
+                );
+            }
+
+            assert!(
+                Instant::now() < deadline,
+                "node {}: timed out waiting for state {states:?} (last: {output:?})",
+                self.node_id
+            );
+
+            std::thread::sleep(Duration::from_millis(500));
         }
     }
 

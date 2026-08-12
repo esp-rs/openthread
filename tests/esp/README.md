@@ -39,7 +39,7 @@ cargo run --release
 # Or flash without a monitor - the shape the automated loop uses:
 cargo build --release
 espflash flash --chip esp32c6 --port /dev/ttyACM0 \
-  target/riscv32imac-unknown-none-elf/release/cli_ftd
+  target/riscv32imac-unknown-none-elf/release/cli_node
 ```
 
 For an ESP32-H2: `cargo build --release --no-default-features --features esp32h2`.

@@ -50,7 +50,7 @@ cargo run --release
 
 # Or just build, then download the ELF.
 cargo build --release
-probe-rs download --chip nRF52840_xxAA target/thumbv7em-none-eabi/release/cli_ftd
+probe-rs download --chip nRF52840_xxAA target/thumbv7em-none-eabi/release/cli_node
 ```
 
 The DK has its debugger on board. A XIAO does not: SWDIO/SWCLK come out on test
@@ -69,12 +69,12 @@ Cargo produces an ELF, so convert it:
 cargo build --release --features console-usb,uf2
 
 # ELF -> hex (cargo-binutils, or arm-none-eabi-objcopy)
-cargo objcopy --release -- -O ihex cli_ftd.hex
+cargo objcopy --release -- -O ihex cli_node.hex
 
 # hex -> uf2, with the nRF52840 family id
-uf2conv cli_ftd.hex --family 0xADA52840 --output cli_ftd.uf2
+uf2conv cli_node.hex --family 0xADA52840 --output cli_node.uf2
 
-cp cli_ftd.uf2 /media/$USER/XIAO-SENSE/
+cp cli_node.uf2 /media/$USER/XIAO-SENSE/
 ```
 
 `uf2conv` is `pip install uf2utils` or the `uf2conv.py` script from Microsoft's
@@ -106,7 +106,7 @@ cargo xtask itest \
   --hw-port /dev/ttyACM1=rcp
 ```
 
-The harness spawns one binary for every node; `cli_ftd` looks at the port map
+The harness spawns one binary for every node; `cli_node` looks at the port map
 and hands the `mcu` nodes over to `serial_bridge`, which pipes the harness's
 stdin/stdout to the board's console. Nothing above notices the difference.
 

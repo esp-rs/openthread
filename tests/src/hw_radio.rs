@@ -4,7 +4,7 @@
 //! in where the `openthread` stack runs, and therefore in what a "node" is:
 //!
 //! - **RCP** ([`NodeKind::Rcp`]): the stack runs on the host, in the ordinary
-//!   `cli_ftd` node process, and its radio is a [`SpinelRadio`] driving an
+//!   `cli_node` node process, and its radio is a [`SpinelRadio`] driving an
 //!   802.15.4 co-processor over serial. Exercises the spinel driver and its
 //!   transport.
 //! - **MCU** ([`NodeKind::Mcu`]): the stack runs as *firmware* on the board,

@@ -52,7 +52,7 @@ critical-section = { version = "1.2", features = ["std"] }
 
 # `ftd` because the test topologies need router-capable nodes (a network is
 # formed by its first router, the Leader). `cli` for the harness-driveable DUT
-# binary (`cli_ftd`). `mac-filter` is how the upstream harness builds
+# binary (`cli_node`). `mac-filter` is how the upstream harness builds
 # multi-hop topologies (`macfilter` allowlists); `ping-sender` backs the CLI
 # `ping` command many of its tests use; the rest widen the CLI surface toward
 # what the upstream simulation build offers. No `std`: that feature is the
@@ -111,12 +111,8 @@ openthread = { path = "../openthread", default-features = false, features = [
 embassy-sync = "0.8"
 
 [[bin]]
-path = "./src/bin/sim_node.rs"
-name = "sim_node"
-
-[[bin]]
-path = "./src/bin/cli_ftd.rs"
-name = "cli_ftd"
+path = "./src/bin/cli_node.rs"
+name = "cli_node"
 
 # The hardware tier's bring-up probe; pointless without a radio to probe.
 [[bin]]

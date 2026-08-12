@@ -104,7 +104,7 @@ tinyrlibc = { version = "0.5", default-features = false, features = [
     "strtoul",
 ] }
 
-# The same feature set the host DUT (`openthread-tests`' `cli_ftd`) is built
+# The same feature set the host DUT (`openthread-tests`' `cli_node`) is built
 # with, so the harness meets the same CLI surface on either tier - minus the
 # host-only ones. `esp-radio` is what brings in `EspRadio`; `log` (rather than
 # the nRF node's `defmt`) so the two MCU nodes exercise both logging backends.
@@ -147,8 +147,8 @@ openthread = { path = "../../openthread", default-features = false, features = [
 ] }
 
 [[bin]]
-path = "./src/bin/cli_ftd.rs"
-name = "cli_ftd"
+path = "./src/bin/cli_node.rs"
+name = "cli_node"
 harness = false
 
 # The released esp family lacks four fixes we need, all merged upstream:
