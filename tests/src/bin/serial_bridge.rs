@@ -18,7 +18,7 @@
 //!
 //! # Why this tier exists
 //!
-//! The RCP tier (see [`openthread_tests::hw_radio`]) puts real RF under the
+//! The RCP tier (see [`openthread_tests::hw`]) puts real RF under the
 //! stack, but the radio it drives is a co-processor running someone else's
 //! firmware, and the stack still runs on a host. This tier is the only one
 //! where the crate's own radio drivers (`NrfRadio`, `EspRadio`, or any
@@ -92,10 +92,10 @@ const PROMPT_TIMEOUT: Duration = Duration::from_secs(10);
 fn main() {
     let node_id = node_id();
 
-    let node = openthread_tests::hw_radio::node_for(node_id).unwrap_or_else(|| {
+    let node = openthread_tests::hw::node_for(node_id).unwrap_or_else(|| {
         eprintln!(
             "serial_bridge: {} is not set; there is no board to bridge to",
-            openthread_tests::hw_radio::PORTS_VAR,
+            openthread_tests::hw::PORTS_VAR,
         );
         exit(2);
     });

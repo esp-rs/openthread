@@ -18,7 +18,7 @@ force-generate-bindings = ["openthread/force-generate-bindings"]
 # can drive a real 802.15.4 co-processor instead of the simulated medium
 # (`openthread/std` = the `rcp` spinel host plus the host `SerialPort`).
 # Purely additive - a `hw`-enabled binary still runs the simulation radios
-# when `OT_HW_PORTS` is unset. See `src/hw_radio.rs`.
+# when `OT_HW_PORTS` is unset. See `src/hw.rs`.
 hw = ["openthread/std"]
 
 [dependencies]

@@ -23,7 +23,7 @@ use std::sync::Arc;
 
 use openthread::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig};
 
-use crate::sim_radio::{patch_fcs, port_base_from_env, PSDU_MAX, SIM_RSSI};
+use crate::sim::{patch_fcs, port_base_from_env, PSDU_MAX, SIM_RSSI};
 
 /// Simulator event types (the subset a CLI node exchanges).
 const EVENT_ALARM_FIRED: u8 = 0;
@@ -237,7 +237,7 @@ impl fmt::Display for VtRadioError {
 
 /// A [`Radio`] on the virtual-time simulated medium.
 ///
-/// Like [`SimRadio`](crate::sim_radio::SimRadio), a bare PHY meant to be
+/// Like [`SimRadio`](crate::sim::SimRadio), a bare PHY meant to be
 /// wrapped in `MacRadio` - ACKs and filtering happen in software, and their
 /// timing (ACK waits, retries) runs on virtual time like everything else.
 pub struct VtRadio {
@@ -322,7 +322,7 @@ impl Radio for VtRadio {
         // radio's idle-channel sample.
         embassy_time::Timer::after(embassy_time::Duration::from_millis(duration_millis as _)).await;
 
-        Ok(crate::sim_radio::SIM_LOW_RSSI)
+        Ok(crate::sim::SIM_LOW_RSSI)
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {

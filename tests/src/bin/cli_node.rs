@@ -38,7 +38,7 @@ use openthread::{EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtRe
 
 use openthread_tests::executor::{self, Mode};
 use openthread_tests::settings::FileSettings;
-use openthread_tests::sim_radio::SimRadio;
+use openthread_tests::sim::SimRadio;
 use openthread_tests::vt::{VtLink, VtRadio};
 
 use rand::rngs::StdRng;
@@ -66,11 +66,11 @@ fn main() {
     // - with `OT_C_CLI_PATH` set (the xtask's `--peers c`), every node but
     //   the DUT execs the *upstream* C simulation binary - the DUT-vs-golden-
     //   devices shape, where any interop failure is the DUT's by definition.
-    if let Some(node) = openthread_tests::hw_radio::node_for(args.node_id) {
+    if let Some(node) = openthread_tests::hw::node_for(args.node_id) {
         match node.kind {
-            openthread_tests::hw_radio::NodeKind::Mcu => exec_serial_bridge(),
-            openthread_tests::hw_radio::NodeKind::CPosix => exec_posix_host(&node),
-            openthread_tests::hw_radio::NodeKind::Rcp => (),
+            openthread_tests::hw::NodeKind::Mcu => exec_serial_bridge(),
+            openthread_tests::hw::NodeKind::CPosix => exec_posix_host(&node),
+            openthread_tests::hw::NodeKind::Rcp => (),
         }
     }
 
@@ -227,7 +227,7 @@ fn exec_serial_bridge() -> ! {
 /// than a node id, so the argv is rebuilt rather than passed through. The
 /// binary comes from `OT_POSIX_CLI_PATH` (the xtask builds and exports it);
 /// failing loudly beats quietly running the wrong implementation.
-fn exec_posix_host(node: &openthread_tests::hw_radio::Node) -> ! {
+fn exec_posix_host(node: &openthread_tests::hw::Node) -> ! {
     let posix_cli = std::env::var("OT_POSIX_CLI_PATH").expect(
         "OT_POSIX_CLI_PATH is not set, but this node's board is `cposix` \
          (run through `cargo xtask itest`, which builds and exports it)",
@@ -342,10 +342,10 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
     // A hardware run takes precedence over both simulated media: it must never
-    // quietly degrade into a simulated one (see `openthread_tests::hw_radio`).
+    // quietly degrade into a simulated one (see `openthread_tests::hw`).
     // An MCU node has already been handed off to `serial_bridge` in `main`, so
     // anything left here is an RCP node.
-    let hw_node = openthread_tests::hw_radio::node_for(node_id);
+    let hw_node = openthread_tests::hw::node_for(node_id);
 
     #[cfg(not(feature = "hw"))]
     assert!(
@@ -359,7 +359,7 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
         (Some(node), _) => {
             // A real co-processor owns the RF and the whole MAC, so - unlike
             // the simulation radios below - no `MacRadio` goes on top.
-            let radio = openthread_tests::hw_radio::radio(&node.device, node.baud);
+            let radio = openthread_tests::hw::radio(&node.device, node.baud);
             spawner.spawn(run_ot_hw(ot.clone(), radio).unwrap());
         }
         #[cfg(not(feature = "hw"))]
@@ -374,7 +374,7 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
         (None, None) => {
             let radio = SimRadio::new_with(
                 node_id,
-                openthread_tests::sim_radio::port_base_from_env(),
+                openthread_tests::sim::port_base_from_env(),
                 args.local,
             )
             .expect("create simulation radio");
@@ -437,7 +437,7 @@ async fn run_ot_rt(ot: OpenThread<'static>, radio: SimRadio) -> ! {
 /// offload, so the radio goes to `OpenThread::run` as-is.
 #[cfg(feature = "hw")]
 #[embassy_executor::task]
-async fn run_ot_hw(ot: OpenThread<'static>, radio: openthread_tests::hw_radio::HwRadio) -> ! {
+async fn run_ot_hw(ot: OpenThread<'static>, radio: openthread_tests::hw::HwRadio) -> ! {
     ot.run(radio).await
 }
 

@@ -26,7 +26,7 @@
 //!
 //! With `--hw-port` the simulated medium is dropped for real RF: each node
 //! drives its own 802.15.4 co-processor over a serial link (the DUT's
-//! `SpinelRadio`, see `openthread_tests::hw_radio`). Nothing else changes -
+//! `SpinelRadio`, see `openthread_tests::hw`). Nothing else changes -
 //! the harness still spawns `$OT_CLI_PATH <node id>` and still talks to it
 //! over a pty - so the same unmodified upstream scenarios run, which is the
 //! whole point: it is the only tier where the spinel radio, the serial
@@ -758,7 +758,7 @@ fn hw_ports(args: &ItestArgs) -> Result<Vec<String>> {
 
     // A missing device is worth catching here rather than as an opaque node
     // failure ten seconds into a test. The optional `@baud` / `=kind` suffixes
-    // are the node's business (see `openthread_tests::hw_radio`), not part of
+    // are the node's business (see `openthread_tests::hw`), not part of
     // the path.
     for port in &ports {
         let device = port.rsplit_once('=').map_or(&**port, |(device, _)| device);

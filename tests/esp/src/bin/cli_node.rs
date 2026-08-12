@@ -35,7 +35,7 @@
 //! The CLI `reset`/`factoryreset` commands are intercepted (the C stack
 //! cannot re-create itself in place - see the crate's `otPlatReset`) and
 //! honored with a chip `software_reset`. The settings persist in flash (see
-//! `flash_settings`), so a `reset` node comes back with its dataset and
+//! `settings`), so a `reset` node comes back with its dataset and
 //! network state intact and rejoins on its own. `factoryreset` is first
 //! forwarded to the stack, whose factory-reset path clears the settings -
 //! durably, thanks to the write-through - before the chip reboots.
@@ -79,10 +79,10 @@ use tinyrlibc as _;
 #[path = "../../../shared/console.rs"]
 mod console;
 
-#[path = "../flash_settings.rs"]
-mod flash_settings;
+#[path = "../settings.rs"]
+mod settings;
 
-use flash_settings::FlashSettings;
+use settings::FlashSettings;
 
 macro_rules! mk_static {
     ($t:ty,$val:expr) => {{

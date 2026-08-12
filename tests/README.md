@@ -16,7 +16,7 @@ loopback interface: one datagram per frame (a channel byte + the PSDU), group
 `224.0.0.116`, RX bound to `(group, PORT_BASE)` with `SO_REUSEPORT`, TX bound to
 `(127.0.0.1, PORT_BASE + node id)` so the source port identifies the sender.
 
-[`sim_radio::SimRadio`](src/sim_radio.rs) implements this crate's `Radio` trait over
+[`sim::SimRadio`](src/sim.rs) implements this crate's `Radio` trait over
 that exact wire protocol. A node built on it participates in the same simulated
 radio medium as upstream `ot-cli-ftd` / `ot-rcp` simulation binaries, and its frames
 (with a real FCS) are visible to the upstream harness sniffer.

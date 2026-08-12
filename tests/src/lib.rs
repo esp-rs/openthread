@@ -6,16 +6,16 @@
 //! simulation platform in both of its flavors:
 //!
 //! - real time: UDP multicast frames on the loopback interface
-//!   ([`sim_radio`]);
+//!   ([`sim`]);
 //! - virtual time: frames and time as events of the upstream Python
 //!   simulator's lockstep protocol ([`vt`], [`executor`]).
 //!
 //! With the `hw` feature they can also drop the simulated medium entirely and
-//! drive a real 802.15.4 co-processor over a serial link ([`hw_radio`]) -
+//! drive a real 802.15.4 co-processor over a serial link ([`hw`]) -
 //! same binary, same harness, real RF.
 
 pub mod executor;
-pub mod hw_radio;
+pub mod hw;
 pub mod settings;
-pub mod sim_radio;
+pub mod sim;
 pub mod vt;

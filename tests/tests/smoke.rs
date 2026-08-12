@@ -48,7 +48,11 @@ fn two_cli_nodes_form_network() {
     joiner.cmd("ifconfig up", CMD);
     joiner.cmd("thread start", CMD);
 
-    joiner.wait_states(&["child", "router"], &["detached"], Duration::from_secs(120));
+    joiner.wait_states(
+        &["child", "router"],
+        &["detached"],
+        Duration::from_secs(120),
+    );
 
     // The leader's own view agrees.
     leader.wait_state("leader", Duration::from_secs(10));

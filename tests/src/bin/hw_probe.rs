@@ -35,7 +35,7 @@ use openthread::spinel::{
 use openthread::{Radio, RadioCaps};
 
 use openthread_tests::executor::{self, Mode};
-use openthread_tests::hw_radio;
+use openthread_tests::hw;
 
 // Linked for its `utoa`/`strtoul` C symbols, which OpenThread's C references.
 use tinyrlibc as _;
@@ -65,7 +65,7 @@ async fn probe_all() -> ! {
     if ports.is_empty() {
         eprintln!(
             "usage: hw_probe <device>[@<baud>]...   (or set {})",
-            hw_radio::PORTS_VAR,
+            hw::PORTS_VAR,
         );
         exit(2);
     }
@@ -102,7 +102,7 @@ async fn probe(port: &str) -> bool {
     };
 
     // The given rate first, then whatever else is in common use.
-    let first = given.unwrap_or(hw_radio::DEFAULT_BAUD);
+    let first = given.unwrap_or(hw::DEFAULT_BAUD);
     let bauds: Vec<u32> = core::iter::once(first)
         .chain(COMMON_BAUDS.into_iter().filter(|baud| *baud != first))
         .collect();
@@ -175,7 +175,7 @@ fn ports() -> Vec<String> {
         return args;
     }
 
-    std::env::var(hw_radio::PORTS_VAR)
+    std::env::var(hw::PORTS_VAR)
         .unwrap_or_default()
         .split(',')
         .map(str::trim)
