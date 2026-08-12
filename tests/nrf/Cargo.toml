@@ -53,6 +53,8 @@ embassy-time = { version = "0.5", features = ["defmt"] }
 embassy-usb = { version = "0.5", features = ["defmt"], optional = true }
 embassy-nrf = { version = "0.10", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time"] }
 defmt = "0.3"
+# Settings persistence - see `src/settings.rs`.
+embedded-storage = "0.3"
 heapless = "0.9"
 critical-section = "1.2"
 rand_core = "0.9"
@@ -85,6 +87,24 @@ openthread = { path = "../../openthread", default-features = false, features = [
     "border-router",
     "netdiag-client",
     "reference-device",
+    # The functional pool drives these on whichever node the script picks -
+    # often node 1, i.e. this DUT. Their absence fails tests with
+    # `Error 35: InvalidCommand` (found the hard way on the first extended
+    # MCU sweep: the whole SRP family plus CoAP/DHCP6/fragmentation).
+    "srp-server",
+    "dnssd-server",
+    "service",
+    "netdata-publisher",
+    "coap",
+    "coaps",
+    "dataset-updater",
+    "child-supervision",
+    "history-tracker",
+    "anycast-locator",
+    "neighbor-discovery-agent",
+    "ip6-fragmentation",
+    "dhcp6-client",
+    "dhcp6-server",
 ] }
 
 [[bin]]

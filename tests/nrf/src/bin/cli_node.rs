@@ -34,6 +34,16 @@
 //! USB CDC console instead; that is a different console binding, not a
 //! different node.
 //!
+//! # Reset
+//!
+//! The CLI `reset`/`factoryreset` commands are intercepted (the C stack
+//! cannot re-create itself in place - see the crate's `otPlatReset`) and
+//! honored with a chip reset. The settings persist in flash (see
+//! `settings`), so a `reset` node comes back with its dataset and network
+//! state intact and rejoins on its own. `factoryreset` is first forwarded to
+//! the stack, whose factory-reset path clears the settings - durably, thanks
+//! to the write-through - before the chip reboots.
+//!
 //! # Node identity
 //!
 //! Flashed firmware cannot be told which node it is - the harness passes that
@@ -51,6 +61,7 @@ use embassy_executor::{Executor, InterruptExecutor, Spawner};
 
 use embassy_nrf::interrupt::{InterruptExt, Priority};
 use embassy_nrf::mode::Blocking;
+use embassy_nrf::nvmc::Nvmc;
 use embassy_nrf::radio::ieee802154::Radio as Ieee802154;
 use embassy_nrf::rng::Rng;
 #[cfg(not(feature = "console-usb"))]
@@ -67,13 +78,18 @@ use embassy_usb::UsbDevice;
 use openthread::nrf::NrfRadio;
 use openthread::{
     EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources, PhyRadioRunner,
-    ProxyRadio, ProxyRadioResources, SimpleRamSettings,
+    ProxyRadio, ProxyRadioResources,
 };
 
 use tinyrlibc as _;
 
 #[path = "../../../shared/console.rs"]
 mod console;
+
+#[path = "../settings.rs"]
+mod settings;
+
+use settings::FlashSettings;
 
 use panic_rtt_target as _;
 
@@ -129,7 +145,15 @@ static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
 fn main() -> ! {
     rtt_target::rtt_init_defmt!();
 
-    let p = embassy_nrf::init(Default::default());
+    defmt::info!("boot");
+
+    // The external crystal, not the default internal RC: the USB peripheral
+    // requires it outright, and the radio's timing is better served by it -
+    // and every nRF52840 board has one.
+    let mut config = embassy_nrf::config::Config::default();
+    config.hfclk_source = embassy_nrf::config::HfclkSource::ExternalXtal;
+
+    let p = embassy_nrf::init(config);
 
     #[cfg(not(feature = "console-usb"))]
     let (console_tx, console_rx) = {
@@ -158,6 +182,17 @@ fn main() -> ! {
 
     let rng = mk_static!(Rng<'static, Blocking>, Rng::new_blocking(p.RNG));
 
+    // The settings image lives in the flash page both `memory*.x` layouts
+    // carve off the top of the application region - out of the linker's
+    // FLASH, so the firmware can never grow into it.
+    let ot_settings_buf = mk_static!([u8; 1024], [0; 1024]);
+    let ot_settings = mk_static!(
+        FlashSettings,
+        FlashSettings::new(Nvmc::new(p.NVMC), 0x000f_f000, ot_settings_buf)
+    );
+
+    defmt::info!("peripherals up, starting executor");
+
     let executor = mk_static!(Executor, Executor::new());
 
     executor.run(|spawner| {
@@ -165,7 +200,7 @@ fn main() -> ! {
         spawner.spawn(run_usb(usb).unwrap());
 
         spawner.spawn(run_console_out(console_tx).unwrap());
-        spawner.spawn(run_node(spawner, proxy_radio, console_rx, rng).unwrap());
+        spawner.spawn(run_node(spawner, proxy_radio, console_rx, rng, ot_settings).unwrap());
     })
 }
 
@@ -175,6 +210,7 @@ async fn run_node(
     radio: ProxyRadio<'static>,
     console_rx: ConsoleRx,
     rng: &'static mut Rng<'static, Blocking>,
+    ot_settings: &'static mut FlashSettings,
 ) -> ! {
     // The chip's factory device address: unique per board, stable across
     // resets - the closest thing firmware has to the node id the host DUT
@@ -182,10 +218,12 @@ async fn run_node(
     let ieee_eui64 = ieee_eui64();
 
     let ot_resources = mk_static!(OtResources, OtResources::new());
-    let ot_settings_buf = mk_static!([u8; 1024], [0; 1024]);
-    let ot_settings = mk_static!(SimpleRamSettings, SimpleRamSettings::new(ot_settings_buf));
+
+    defmt::info!("ot init");
 
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
+
+    defmt::info!("ot up");
 
     spawner.spawn(run_ot(ot.clone(), radio).unwrap());
 
@@ -194,10 +232,15 @@ async fn run_node(
     // The prompt the harness waits for on connect.
     console::out(b"\r\n> ");
 
+    defmt::info!("cli ready");
+
     run_cli(ot, console_rx).await
 }
 
 /// Read CLI lines off the console and hand them to the interpreter.
+///
+/// `reset`/`factoryreset` are handled here with a chip reset - see the module
+/// docs.
 async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
     let mut reader = console::LineReader::new();
     let mut buf = [0; 64];
@@ -217,7 +260,23 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
 
         for byte in &buf[..len] {
             if reader.push(*byte) {
-                let _ = ot.cli_input_line(reader.line());
+                let line = reader.line().trim();
+
+                match line {
+                    // The chip reset both need happens here - see the module
+                    // docs. `factoryreset` goes through the stack first: its
+                    // factory-reset path is what wipes the settings store.
+                    "reset" => cortex_m::peripheral::SCB::sys_reset(),
+                    "factoryreset" => {
+                        let _ = ot.cli_input_line(line);
+                        cortex_m::peripheral::SCB::sys_reset();
+                    }
+                    "" => (),
+                    _ => {
+                        let _ = ot.cli_input_line(line);
+                    }
+                }
+
                 reader.clear();
 
                 // Let the response drain fully before accepting the next
@@ -234,8 +293,8 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
 /// callback is synchronous while the console is not - see `console`.
 #[embassy_executor::task]
 async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
-    // The UART writes take whatever length; the USB binding splits into
-    // packets itself. Fewer task round-trips keeps the drain ahead of the CLI.
+    // Big chunks off the pipe: fewer task round-trips keeps the drain ahead
+    // of the CLI. The UART takes whatever length; USB is packetized below.
     let mut buf = [0; 512];
 
     loop {
@@ -246,8 +305,44 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
 
         #[cfg(not(feature = "console-usb"))]
         let _ = console_tx.write(&buf[..len]).await;
+
         #[cfg(feature = "console-usb")]
-        let _ = console_tx.write_packet(&buf[..len]).await;
+        {
+            // How long a packet write may sit unaccepted before the output
+            // is dropped. Generous next to USB speeds, so it only fires
+            // when nobody is reading at all.
+            const TX_STALL: embassy_time::Duration = embassy_time::Duration::from_millis(500);
+
+            // One packet per `write_packet` - it does not split - and a
+            // zero-length packet after a final full-size one: a bulk
+            // transfer only ends on a *short* packet, so without the ZLP a
+            // host reading in multi-packet units sits on the data until
+            // more output happens to push it out.
+            //
+            // The writes are bounded because the host may not be reading at
+            // all (no process has the port open - or worse, ModemManager
+            // opened it, probed, and left). Blocking here forever would
+            // back up `drained`, and with it the command loop - which then
+            // stops reading the OUT endpoint, NAKing every host write, all
+            // the way up to a `tcsetattr` that never returns. Dropping
+            // output with nobody listening is the console's documented
+            // contract anyway.
+            let mps = console_tx.max_packet_size() as usize;
+
+            let mut sent = 0;
+            while sent < len {
+                let chunk = &buf[sent..(sent + mps).min(len)];
+
+                match embassy_time::with_timeout(TX_STALL, console_tx.write_packet(chunk)).await {
+                    Ok(Ok(())) => sent += chunk.len(),
+                    _ => break,
+                }
+            }
+
+            if sent == len && sent % mps == 0 {
+                let _ = embassy_time::with_timeout(TX_STALL, console_tx.write_packet(&[])).await;
+            }
+        }
     }
 }
 

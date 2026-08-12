@@ -10,6 +10,10 @@
 MEMORY
 {
   /* NOTE 1 K = 1 KiBi = 1024 bytes */
-  FLASH : ORIGIN = 0x00027000, LENGTH = 868K
+  /* 4K short of the top of flash: the last page (0x000FF000) holds the
+     OpenThread settings image - see `src/settings.rs`. Same page as the
+     probe-flashed layout, so a board keeps its settings across a switch
+     between the two. */
+  FLASH : ORIGIN = 0x00027000, LENGTH = 864K
   RAM : ORIGIN = 0x20000000, LENGTH = 256K
 }
