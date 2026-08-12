@@ -1,4 +1,10 @@
-//! `Radio` trait implementation for the `embassy-nrf` ESP IEEE 802.15.4 radio.
+//! `Radio` trait implementation for the `embassy-nrf` IEEE 802.15.4 radio.
+//!
+//! A bare PHY with a software MAC on top (`MacRadio`) - a combination that
+//! cannot meet the 802.15.4 immediate-ACK deadlines on the air against
+//! strictly-timed peers, and is therefore scheduled for replacement by an
+//! `nrf-802154`-based driver. See `docs/nrf-radio-architecture.md` for the
+//! measurements, the constraint, and the plan.
 
 pub use embassy_nrf::radio::ieee802154::{Cca as RadioCca, Packet};
 

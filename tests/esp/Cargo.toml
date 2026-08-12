@@ -144,6 +144,7 @@ openthread = { path = "../../openthread", default-features = false, features = [
     "ip6-fragmentation",
     "dhcp6-client",
     "dhcp6-server",
+    "diagnostic",
 ] }
 
 [[bin]]
