@@ -3,9 +3,11 @@ resolver = "2"
 members = [
     "openthread",
     "openthread-sys",
+    "examples/std",
+    "tests",
 ]
 
-exclude = ["examples", "xtask", "tests"]
+exclude = ["examples/esp", "examples/nrf", "xtask", "tests/esp", "tests/nrf"]
 
 [workspace.dependencies]
 log = { version = "0.4", default-features = false }

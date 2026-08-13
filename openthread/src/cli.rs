@@ -18,6 +18,7 @@ use crate::{OpenThread, OtError};
 const INPUT_MAX: usize = 640;
 
 /// The CLI output sink registered via [`OpenThread::cli_init`].
+#[allow(clippy::type_complexity)]
 static OUTPUT: Mutex<CriticalSectionRawMutex, Cell<Option<fn(&[u8])>>> =
     Mutex::new(Cell::new(None));
 

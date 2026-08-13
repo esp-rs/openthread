@@ -1,5 +1,5 @@
 [package]
-name = "nrf-openthread-examples"
+name = "openthread-examples-nrf"
 version = "0.1.0"
 edition = "2021"
 authors = ["bjoernQ <bjoern.quentin@mobile-j.de>"]

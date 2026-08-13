@@ -1,6 +1,6 @@
 //! The `cargo test` smoke layer:
 //! Two `cli_node` processes must form a Thread network over the UDP-multicast simulated medium,
-//! driven exactly the way the upstream OpenThread harness drives its nodes - 
+//! driven exactly the way the upstream OpenThread harness drives its nodes -
 //! CLI command lines in, textual replies out.
 //!
 //! This exercises the whole Rust platform stack end-to-end in seconds, with
