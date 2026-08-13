@@ -7,7 +7,7 @@ OpenThread's CLI API.
 
 Executing the upstream E2E suites against `cli_node` allows us to validate the correctness of the **platform** (`otPlat*`) 
 plumbing the `openthread` crate provides on top of the wrapped OpenThread C library. 
-As in the alarms' callbacks, the tasklets execution, the drivers'  callbacks which are wired to the Radio trait
+As in the alarms' callbacks, the tasklets' execution, the drivers' callbacks which are wired to the Radio trait
 and **the concrete Radio implementation itself**.
 
 ## Tiers

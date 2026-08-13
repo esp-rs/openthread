@@ -1,8 +1,8 @@
 //! `itest`: run upstream OpenThread E2E suites against an `openthread`-derived binary.
 //!
-//! The binary - `cli_node` - is in the `tests/`' directory and is the full `openthread` stack
-//! on the Rust platform  (embassy alarm, tasklet pumping, potentially a software MAC,
-//! and a `Radio` instance, driven through OpenThread's CLI - the exact
+//! The binary - `cli_node` - is in the `tests/` directory and is the full `openthread` stack
+//! on the Rust platform (embassy alarm, tasklet pumping, potentially a software MAC,
+//! and a `Radio` instance), driven through OpenThread's CLI - the exact
 //! process shape the upstream harness spawns for its own `ot-cli-ftd`
 //! simulation binary.
 //!
@@ -442,7 +442,7 @@ const HW_TESTS_NEED_SNIFFER: &[(&str, usize)] = &[
 /// with its hardware ACK engine). All exercise sleepy-child data-poll timing
 /// - or, for the REED one, ride on netdata propagation that the same defect
 /// makes probabilistic - and the current soft-MAC cannot meet the 802.15.4
-/// immediate-ACK deadlines on the air: see `docs/nrf-radio-architecture.md`
+/// immediate-ACK deadlines on the air: see `docs/the-case-with-nrf-radio.md`
 /// for the measurements and the plan (an `nrf-802154`-backed radio). Until
 /// that lands, expect exactly these failures in an `--hw-extended` run
 /// against the nRF MCU DUT.

@@ -1,23 +1,23 @@
 # The nRF radio: why wrapping the PHY-only `NrfRadio` in the soft-MAC `MacRadio` and executing in a high priority executor is not enough
 
-The `NrfRadio`, which models the NRF52 radio modem is currently a very simple PHY-only radio. In other words, it can:
+The `NrfRadio`, which models the NRF52 radio modem, is currently a very simple PHY-only radio. In other words, it can:
 - Transmit a frame, when `NrfRadio::transmit` is called
 - Receive a frame, when `NrfRadio::receive` is called
 
 Notably, it cannot (**and this is crucial**), auto-ACK, i.e.:
-- Automatically receive the ACK frame for the just transmitted one via NrfRadio::transmit
-- Automatically send an ACK frame for a just-received frame via NrfRadio::receive
+- Automatically receive the ACK frame for the just transmitted one via `NrfRadio::transmit`
+- Automatically send an ACK frame for a just-received frame via `NrfRadio::receive`
 
 Also, it cannot do other MAC offloading operations (and this is less crucial):
 - Support filtering by short or extended address or by PAN-ID
 - Maintain a queue of received frames; a frame is received when `NrfRadio::receive` is called and that's it; all others are missed
 
 For a long time it was believed that emulating the MAC-offloading capabilities in software by wrapping `NrfRadio` in `MacRadio`, and then
-executing `MacRadio` in a high priority executor (so that the strict a few tens of microseconds' timings of ACK-TX and ACK-RX can be kept) would do.
+executing `MacRadio` in a high priority executor (so that the strict, few-tens-of-microseconds timings of ACK-TX and ACK-RX can be kept) would do.
 
 **Unfortunately, this turns out not to be the case.**
 
-While the non-crucial MAC filtering and RX-queue capabilites are successfully emulated with the `MacRadio` wrapper, the `MacRadio(NrfRadio)` nesting cannot keep the deadline necessary for ACK receival and transmission, even with a high priority executor.
+While the non-crucial MAC filtering and RX-queue capabilities are successfully emulated with the `MacRadio` wrapper, the `MacRadio(NrfRadio)` nesting cannot keep the deadline necessary for ACK receival and transmission, even with a high priority executor.
 
 Note also that this design was partially driven by the unwillingness to implement the MAC-offloading capabilities directly in the upstream `embassy-nrf` radio.
 
@@ -25,7 +25,7 @@ Note also that I'm not saying that ACKs cannot be received/transmitted in softwa
 
 ## Evidence
 
-When testing the  `NrfRadio` under `MacRadio` under `ProxyRadio` triple against a known-good `ot-rcp` peer with the E2E tests,
+When testing the `NrfRadio` under `MacRadio` under `ProxyRadio` triple against a known-good `ot-rcp` peer with the E2E tests,
 these three upstream suites deterministically fail all the time - the sleepy-child family:
 - `Cert_6_1_01_RouterAttach` (SED variant; the MED variant passes)
 - `Cert_6_4_01_LinkLocal` (SED variant; the MED variant passes)
@@ -60,7 +60,7 @@ late, and the child's MLE - whose candidate state has already been reset - rejec
 
 ### For receiving an ACK frame for a frame we just sent
 
-The reason is the all-in-software switch of the radio from trasnsmission to receival:
+The reason is the all-in-software switch of the radio from transmission to receival:
 - RADIO IRQ latency
 - Executor wake
 - Execution of `NrfRadio::receive` that "manually" switches from TX to RX
@@ -74,13 +74,13 @@ So no matter how fast the interrupt executor is, it would never match an automat
 ### For sending an ACK frame for a frame we just received
 
 Here, the problem is that the preparation _and_ the send of the ACK are happening - **all in software** - **after** the frame is received completely. In other words:
-- A lot of time (~ 200+ us) is lost by the CPU doing nothing and just waiting for the modem to receive the frame in its full;
+- A lot of time (~ 200+ us) is lost by the CPU doing nothing and just waiting for the modem to receive the frame in full;
   - Contrary to that, the C driver **interleaves** the receival of the frame and the (in-software) preparation of the ACK. This is possible because the ACK only needs the MAC header of the incoming frame, not its payload, so the ACK preparation can start as soon as the header is received
-- The switch of the radio from TX to RX is all-software again.
+- The switch of the radio from RX to TX is all-software again.
 
 ### What the NRF silicon offers
 
-Unlike - say - the ESP32XX 802.15.4 hardware which as a true autonomous ACK engine, 
+Unlike - say - the ESP32XX 802.15.4 hardware which has a true autonomous ACK engine, 
 the nRF RADIO has no such thing - it is a modem with a CRC checker plus a hardware *sequencer*: 
 - SHORTS (event-to-task wires inside the peripheral);
 - PPI (the same across peripherals);
@@ -103,24 +103,24 @@ This is the architecture of Nordic's production C driver (nrf-802154).
 What is inescapable is extending the upstream Radio driver in `embassy-nrf` so that it can expose the capabilities discussed in the previous section. At the very minimum, these would be:
 - A way to instruct the radio to auto-switch to receive after transmission is over;
 - An "I just received a frame MAC header!" hook of sorts, which would allow us to prep the corresponding ACK frame;
-- Plus a way to instruct the radio to send this ACK frame exactly at 192 us after the incoming frame is received completely (antena time).
+- Plus a way to instruct the radio to send this ACK frame exactly at 192 us after the incoming frame is received completely (antenna time).
 
 ### Option 1a: Significant extensions to the upstream `embassy-nrf` 802.15.4 radio driver
 
 The thing is, if we do the above, and start extending the upstream radio, why not walk the full path and extend it also with:
-- The soft-mac capabilities of the `MacRadio` where it could filter by short address, extended address and PAN-ID
+- The soft-MAC capabilities of the `MacRadio` where it could filter by short address, extended address and PAN-ID
 - The src-match table
 - The queue of received frames
 
 And then why not just push the whole ACK-TX and ACK-RX logic from `MacRadio` upstream? After all - before `SimRadio` and `VtRadio` were introduced, `MacRadio` - as well as the whole `ProxyRadio` executor offloading infra existed **just** to enhance `NrfRadio` with the MAC-offloading caps OpenThread needs it to have in the first place.
 
-The big deal with pushing all MAC-offloading capabilities to upstream `embassy-nrf` is not only or necessarily in the retirement of `MacRadio`, but in the retirement of `ProxyRadio`, `PhyRadioRunner` and the whole notion of "you need to setup a higher prio interrupt executor for the radio driver specifically". Because the upstream `embassy-nrf` radio will just do all timing-sensitive operations in ISRs thus rendering the need for an interrupt executor obsolete (also because it would maintain an internal RX queue).
+The big deal with pushing all MAC-offloading capabilities to upstream `embassy-nrf` is not only or necessarily in the retirement of `MacRadio`, but in the retirement of `ProxyRadio`, `PhyRadioRunner` and the whole notion of "you need to set up a higher prio interrupt executor for the radio driver specifically". Because the upstream `embassy-nrf` radio will just do all timing-sensitive operations in ISRs thus rendering the need for an interrupt executor obsolete (also because it would maintain an internal RX queue).
 
 ### Option 2: All bets on `nrf-802154`
 
 The `nrf-802154` crate is a type-safe Rust wrapper of the native NRFXLIB C 802.15.4 driver.
 This driver rides on top of `nrf-mpsl` and as such it can co-exist with the NRF BLE controller (i.e. the radio can support BLE and 802.15.4 traffic simultaneously, which is a big deal for `rs-matter`).
 
-This driver offers full mac-offloading capabilities, and as such cannot / should not be used with `MacRadio` + `ProxyRadio` + an interrupt executor.
+This driver offers full MAC-offloading capabilities, and as such cannot / should not be used with `MacRadio` + `ProxyRadio` + an interrupt executor.
 
-So this option would _also_ mean we can retire `ProxyRadio`, `PhyRadioRunner`, the interrupt execvutor requirement and the usage of `MacRadio` for anything but simulation purposes.
+So this option would _also_ mean we can retire `ProxyRadio`, `PhyRadioRunner`, the interrupt executor requirement and the usage of `MacRadio` for anything but simulation purposes.
