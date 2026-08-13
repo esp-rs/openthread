@@ -177,7 +177,14 @@ The nRF MCU tier runs with the current soft-MAC, which means:
   ESP MCU tier, whose radio ACKs in hardware) and are excluded from its
   expected-pass list;
 - rx-on traffic carries the retry tax - functional, but worth remembering
-  when reading airtime-sensitive results from this tier;
+  when reading airtime-sensitive results from this tier. Its visible
+  casualty is `test_reed_address_solicit_rejected`: leader-to-child
+  network-data propagation becomes probabilistic (the leader's MLE Data
+  Response exhausts its MAC retries against ACKs it cannot hear, and the
+  child's Data Request back-off stretches the recovery across
+  advertisement cycles), so whether the service ALOC appears inside the
+  script's window is a coin toss - manually reproducible both ways with
+  identical steps;
 - `MacRadio`/`ProxyRadio` stay as-is meanwhile: polishing scaffolding that
   is scheduled for retirement is not worth the churn.
 
