@@ -11,10 +11,6 @@ repository = "https://github.com/esp-rs/openthread"
 license = "MIT OR Apache-2.0"
 rust-version = "1.84"
 
-# Its own package - and its own target, toolchain config and lockfile - because
-# it cross-compiles to `riscv32imac-unknown-none-elf` while the host side of
-# the test crate is `std`. Same split the `examples/{nrf,esp,std}` tree uses.
-
 [profile.dev]
 # Rust debug is too slow for a radio with real deadlines.
 opt-level = "z"
@@ -57,13 +53,10 @@ embassy-time = "0.5"
 esp-hal = { version = "~1.1", features = ["log-04", "unstable", "exception-handler"] }
 esp-rtos = { version = "0.3", features = ["esp-radio", "embassy"] }
 esp-alloc = { version = "0.10" }
-# Panics go to the console the harness parses - which is exactly where they
-# belong: a dying node's last words end up in the failing test's log tail.
 esp-backtrace = { version = "0.19", features = ["panic-handler", "println"] }
 esp-println = { version = "0.17", features = ["log-04"] }
 esp-radio = { version = "1.0.0-beta.0", features = ["unstable", "ieee802154"] }
 esp-bootloader-esp-idf = { version = "0.5", features = ["log-04"] }
-# Settings persistence - see `src/settings.rs`.
 esp-storage = "0.9"
 log = "0.4"
 heapless = "0.9"
@@ -71,13 +64,6 @@ critical-section = "1.2"
 rand_core = "0.9"
 static_cell = "2.1"
 embedded-io-async = "0.7"
-# The C CLI library reaches for a good deal more of libc than the examples do
-# (`cli_srp_client.cpp` alone wants `strchr`/`strncpy`) - but only the
-# pure-Rust pieces: NOT `all`, which pulls tinyrlibc's vendored C printf and
-# with it a C cross-compiler, for a `vsnprintf` nobody needs (the ESP ROM has
-# one, and the `openthread` build carries nanoprintf anyway). No `alloc`
-# either: `esp-alloc` exports the C malloc/free surface itself, and both
-# defining `free` fails the link.
 tinyrlibc = { version = "0.5", default-features = false, features = [
     "abs",
     "atoi",
@@ -103,13 +89,6 @@ tinyrlibc = { version = "0.5", default-features = false, features = [
     "strtol",
     "strtoul",
 ] }
-
-# The same feature set the host DUT (`openthread-tests`' `cli_node`) is built
-# with, so the harness meets the same CLI surface on either tier - minus the
-# host-only ones. `esp-radio` is what brings in `EspRadio`; `log` (rather than
-# the nRF node's `defmt`) so the two MCU nodes exercise both logging backends.
-# (No `isupper`: `tinyrlibc` provides that symbol here, and enabling both
-# makes the link fail on a duplicate definition.)
 openthread = { path = "../../openthread", default-features = false, features = [
     "esp-radio",
     "log",

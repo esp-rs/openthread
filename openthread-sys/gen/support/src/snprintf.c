@@ -1,7 +1,7 @@
 /**
  * `snprintf` / `vsnprintf` for OpenThread, backed by nanoprintf.
  *
- * OpenThread's own string formatting (and the CLI shim next door) funnel
+ * OpenThread's own string formatting (and the CLI shim) funnel
  * through these two symbols, which the top-level `add_definitions` remaps to
  * `_support_snprintf` / `_support_vsnprintf` so hosted targets do not collide
  * with their libc.

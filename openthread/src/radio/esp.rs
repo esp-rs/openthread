@@ -17,11 +17,6 @@ pub use esp_radio::ieee802154::Ieee802154;
 pub struct EspRadio<'a> {
     driver: Ieee802154<'a>,
     config: Config,
-    /// What the driver's own config currently says about the operation
-    /// parameters, which now arrive per-operation rather than in [`Config`]:
-    /// the channel the radio is on, the transmit power, and the CCA
-    /// threshold. Kept so that a change can be pushed as a whole
-    /// `esp_radio` config only when one of them actually moves.
     channel: u8,
     power: i8,
     cca_threshold: i8,
@@ -96,15 +91,9 @@ impl<'a> EspRadio<'a> {
             enhance_ack_tx: true,
             promiscuous: config.promiscuous,
             coordinator: false,
-            // esp-radio speaks rx-on-when-idle; `Config` speaks auto-sleep
             rx_when_idle: !config.auto_sleep,
             txpower: self.power,
             channel: self.channel,
-            // Both in dBm, as OpenThread and ESP-IDF speak them. The CCA
-            // *mode* is this driver's own choice, not something OpenThread
-            // models - Energy Detect is what ESP-IDF defaults to
-            // (`CONFIG_IEEE802154_CCA_MODE`), and it is the mode the
-            // threshold applies to.
             cca_threshold: self.cca_threshold,
             cca_mode: esp_radio::ieee802154::CcaMode::Ed,
             pan_id: config.pan_id,
@@ -177,11 +166,7 @@ impl Radio for EspRadio<'_> {
             phy: Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF),
             // .union(Capabilities::AUTO_SLEEP) TODO: Depends on coex being off in ESP-IDF
             //
-            // No `SRC_MATCH`: the ESP 802.15.4 hardware HAS a pending-address
-            // table (the ESP-IDF port feeds it via
-            // `esp_ieee802154_add_pending_addr`), but `esp-radio`'s driver
-            // only exposes the pending *mode*, not the table - so the ACKs
-            // answer every data poll FP = 1 until that API gap closes.
+            // TODO: Upstream `SRC_MATCH` support to `esp-radio`.
             mac: MacCapabilities::all().difference(MacCapabilities::SRC_MATCH),
             // TODO: Report the ESP 802.15.4 hardware's real figure.
             receive_sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
@@ -191,42 +176,26 @@ impl Radio for EspRadio<'_> {
     }
 
     async fn set_src_match_config(&mut self, _config: &SrcMatchConfig) -> Result<(), Self::Error> {
-        // Not claimed in `init` (no `MacCapabilities::SRC_MATCH`): the ESP
-        // hardware has the pending-address table, but `esp-radio` exposes only
-        // the pending *mode*, not the table itself. Until it does, the ACKs
-        // this radio sends answer every data poll with Frame Pending = 1.
+        // No-op (but will be called) because the driver does not report `MacCapabilities::SRC_MATCH`
         Ok(())
     }
 
     async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
         self.set_op_params(channel, self.power, self.cca_threshold);
 
-        // This driver's RX runs free: `start_receive` arms it, and frames land
-        // in its internal queue whether or not `receive` is being polled.
         self.driver.start_receive();
 
         Ok(())
     }
 
     async fn set_sleep(&mut self) -> Result<(), Self::Error> {
-        // `esp-radio` (0.18) exposes no way to stop reception or power the RF
-        // down - its `Ieee802154` has `start_receive` but no counterpart, even
-        // though the HAL underneath has the `Stop` command and ESP-IDF's C
-        // driver uses exactly that in `esp_ieee802154_sleep` (it stops the
-        // current operation and disables the RF).
+        // TODO: Upstream in `esp-radio` a `stop_receive` counterpart to the existing `start_receive`
+        // and call it here.
         //
-        // Consequence, until that gap is closed upstream: the receiver stays
-        // on while OpenThread believes this node is asleep, so a sleepy end
-        // device neither saves the power it parked for, nor genuinely misses
-        // the traffic the stack assumes it missed (see `docs/radio-contract.md`,
-        // C6) - frames keep accumulating in the driver queue and are delivered
-        // late on the next `receive`.
-        //
-        // TODO: call the (to be exposed) `esp-radio` stop/sleep here. Note
-        // that a flush of the driver queue would NOT be the right stand-in:
-        // with a real power-down nothing can arrive while parked, so whatever
-        // is queued was legitimately received while awake - which is exactly
-        // why ESP-IDF's own sleep path clears no queues either.
+        // Until that gap is closed: the receiver stays on while OpenThread believes this node is asleep,
+        // so a sleepy end device neither saves the power it parked for, nor genuinely misses the traffic
+        // the stack assumes it missed (see `docs/radio-contract.md`, C6) - frames keep accumulating in
+        // the driver queue and are delivered late on the next `receive`.
         Ok(())
     }
 

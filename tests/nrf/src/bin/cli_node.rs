@@ -1,38 +1,18 @@
-//! The nRF firmware node of the hardware-in-the-loop tier: the same DUT shape
-//! as the host `cli_node`, but running on an nRF52840 with its own radio.
+//! The nRF firmware node of the HIL tier:
+//! Same purpose as the host / STD `cli_node`, but running on the MCU with its own radio.
 //!
 //! The upstream harness drives this exactly as it drives every other node -
-//! CLI lines in, CLI output back - except the pipe is the board's serial
+//! CLI lines in, CLI output back - except the pipe is the chip's serial
 //! console rather than a process's stdin/stdout. `openthread-tests`'
 //! `serial_bridge` is what makes that substitution invisible to the harness.
 //!
 //! # What only this tier exercises
-//!
-//! The simulation tiers cover the stack above the radio, and the RCP tier adds
-//! real RF under a co-processor's firmware. Here the crate's *own* radio path
-//! runs where it is meant to:
 //!
 //! - [`NrfRadio`] driving the nRF's IEEE 802.15.4 peripheral;
 //! - [`MacRadio`], whose software ACKs have to make the inter-frame gap on a
 //!   real clock rather than a simulated one;
 //! - [`ProxyRadio`] / [`PhyRadioRunner`], whose whole reason to exist is
 //!   putting that soft-MAC on a higher-priority executor so it can.
-//!
-//! Any other `Radio` implementation (the `nrf-802154` crate's, say) drops into
-//! the same place - which is the point of testing the contract rather than one
-//! driver.
-//!
-//! # Board
-//!
-//! An nRF52840-DK: the CLI console is `UARTE0` on the DK's J-Link virtual COM
-//! port (P0.06 TX, P0.08 RX at 115200), which enumerates on the host as
-//! `/dev/ttyACM*`. `defmt` logs go out over RTT instead, so they never touch
-//! the console the harness is parsing - the same separation the host DUT keeps
-//! between its logs and its CLI.
-//!
-//! A USB-only board (the nRF52840 *dongle*) has no such UART and would need a
-//! USB CDC console instead; that is a different console binding, not a
-//! different node.
 //!
 //! # Reset
 //!
@@ -263,9 +243,6 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
                 let line = reader.line().trim();
 
                 match line {
-                    // The chip reset both need happens here - see the module
-                    // docs. `factoryreset` goes through the stack first: its
-                    // factory-reset path is what wipes the settings store.
                     "reset" => cortex_m::peripheral::SCB::sys_reset(),
                     "factoryreset" => {
                         let _ = ot.cli_input_line(line);
@@ -279,12 +256,27 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
 
                 reader.clear();
 
-                // Let the response drain fully before accepting the next
-                // command - see `console::drained`.
                 console::drained().await;
             }
         }
     }
+}
+
+/// The chip's factory device address, as an EUI-64.
+fn ieee_eui64() -> [u8; 8] {
+    let ficr = embassy_nrf::pac::FICR;
+
+    let low = ficr.deviceaddr(0).read();
+    let high = ficr.deviceaddr(1).read();
+
+    let mut eui64 = [0; 8];
+    eui64[..4].copy_from_slice(&low.to_be_bytes());
+    eui64[4..].copy_from_slice(&high.to_be_bytes());
+
+    // Locally administered, unicast - this is a device address, not an OUI one.
+    eui64[0] = (eui64[0] & 0xfe) | 0x02;
+
+    eui64
 }
 
 /// Drain pending CLI output to the console.
@@ -387,23 +379,6 @@ fn build_usb_console(
 #[embassy_executor::task]
 async fn run_usb(mut usb: UsbDevice<'static, UsbDriver>) -> ! {
     usb.run().await
-}
-
-/// The chip's factory device address, as an EUI-64.
-fn ieee_eui64() -> [u8; 8] {
-    let ficr = embassy_nrf::pac::FICR;
-
-    let low = ficr.deviceaddr(0).read();
-    let high = ficr.deviceaddr(1).read();
-
-    let mut eui64 = [0; 8];
-    eui64[..4].copy_from_slice(&low.to_be_bytes());
-    eui64[4..].copy_from_slice(&high.to_be_bytes());
-
-    // Locally administered, unicast - this is a device address, not an OUI one.
-    eui64[0] = (eui64[0] & 0xfe) | 0x02;
-
-    eui64
 }
 
 #[embassy_executor::task]

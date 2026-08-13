@@ -139,24 +139,16 @@ bitflags! {
         const FILTER_SHORT_ADDR = 0x10;
         /// Radio supports filtering of PHY frames by their extended address in the MAC payload.
         const FILTER_EXT_ADDR = 0x20;
-        /// The radio's own ACK engine honors the source-address-match table
-        /// ([`Radio::set_src_match_config`] reaches whatever decides the ACKs'
-        /// Frame Pending bit - a hardware pending table, RCP firmware, etc).
+        /// The radio's ACK engine honors the source-address-match table when deciding whether to raise the
+        /// Frame Pending bit.
         ///
-        /// Only meaningful together with [`RX_ACK`](Self::RX_ACK): the table
-        /// matters solely to whoever sends the ACKs. A radio doing its own
-        /// RX ACKs *without* this capability answers every data poll FP = 1
-        /// (protocol-safe over-promising) - and nothing above it can do
-        /// better, since the ACKs are out of software's hands.
+        /// A radio doing its own RX ACKs *without* this capability should answer every data poll FP = 1.
         const SRC_MATCH = 0x40;
     }
 }
 
 impl MacCapabilities {
-    /// The MAC-offload set a radio must provide to be driven by the OpenThread
-    /// stack - whether directly ([`crate::OpenThread::run`]) or from a
-    /// [`PhyRadioRunner`](crate::PhyRadioRunner). Both panic on a radio that
-    /// reports less.
+    /// The MAC-offload set a radio must provide to be driven by the OpenThread stack.
     ///
     /// This is everything except the two capabilities a software layer above
     /// the radio cannot supply, and whose absence costs a diagnostic or an
@@ -209,9 +201,6 @@ pub struct RadioCaps {
     /// The MAC-offloading capabilities.
     pub mac: MacCapabilities,
     /// The radio's receive sensitivity, in dBm.
-    ///
-    /// Reported to OpenThread via `otPlatRadioGetReceiveSensitivity`, which
-    /// uses it as the noise floor for grading neighbor links.
     pub receive_sensitivity: i8,
     /// The radio's default transmit power, in dBm.
     pub default_tx_power: i8,
@@ -307,27 +296,15 @@ impl Default for Config {
     }
 }
 
-/// Capacity of each address family's table in [`SrcMatchConfig`]: sized
-/// after OpenThread's default max-children count (10) with headroom. On
-/// overflow the glue answers `OT_ERROR_NO_BUFS`, which OpenThread handles by
+/// Capacity of the [`SrcMatchConfig`] table.
+/// Sized after OpenThread's default max-children count (10) with headroom.
+///
+/// On overflow the glue answers `OT_ERROR_NO_BUFS`, which OpenThread handles by
 /// falling back to frame-pending-on-every-ack for the un-tracked children.
 pub const SRC_MATCH_CAPACITY: usize = 16;
 
-/// The source-address-match table (the `otPlatRadio*SrcMatch*` platform
-/// surface): the set of sleepy children the stack currently has pending
-/// indirect frames for.
-///
-/// The MAC-level contract it serves: the ACK answering a child's data poll
-/// carries the Frame Pending bit iff data is queued for that child - that bit
-/// is what tells the child to keep its receiver on for the delivery. With
-/// matching `enabled` and the poll's source absent from the table, the ACK
-/// answers FP = 0 and the child returns to sleep immediately; with matching
-/// disabled, every poll is answered FP = 1 (the conservative default the C
-/// contract prescribes).
-///
-/// Whoever sends the ACKs consults this table: [`MacRadio`] for the software
-/// MAC, the hardware/co-processor tables for radios with native RX-ACK
-/// offload (see [`Radio::set_src_match_config`]).
+/// The source-address-match table, i.e. the set of sleepy children the stack
+/// currently has pending indirect frames for.
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct SrcMatchConfig {

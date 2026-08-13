@@ -1,16 +1,6 @@
 //! OpenThread's C command-line interpreter, surfaced on the Rust API.
 //!
-//! The CLI is the standard control surface of OpenThread test/DUT binaries:
-//! the upstream test harness (`tests/scripts/thread-cert`), its `expect`
-//! suite, and the Thread certification harness (THCI) all drive devices by
-//! sending CLI command lines and parsing the textual output. This module lets
-//! a binary built on this crate be driven the same way: feed input lines via
-//! [`OpenThread::cli_input_line`], receive output through the sink registered
-//! with [`OpenThread::cli_init`].
-//!
-//! The C CLI operates on the same OpenThread instance as the rest of this
-//! crate's API, so CLI-triggered state changes are observable through the
-//! regular API and vice versa.
+//! The CLI is the standard control surface of OpenThread test binaries too.
 
 use core::cell::Cell;
 use core::ffi::{c_char, c_void};
@@ -21,32 +11,23 @@ use embassy_sync::blocking_mutex::Mutex;
 use crate::sys::{otCliInputLine, otError_OT_ERROR_INVALID_ARGS, otr_cli_init};
 use crate::{OpenThread, OtError};
 
-/// Maximum accepted CLI input line, NUL terminator included. Sized for the
-/// longest command the upstream harness sends (`dataset set active <hex>`
-/// with a maximal 254-byte dataset TLV, i.e. 508 hex characters).
+/// Maximum accepted CLI input line, NUL terminator included.
+///
+/// Sized for the longest command the upstream harness sends
+/// (`dataset set active <hex>` with a maximal 254-byte dataset TLV, i.e. 508 hex characters).
 const INPUT_MAX: usize = 640;
 
 /// The CLI output sink registered via [`OpenThread::cli_init`].
-///
-/// Process-global, like the C CLI itself: `otCliInit` binds the interpreter to
-/// the (single) OpenThread instance with no de-registration.
 static OUTPUT: Mutex<CriticalSectionRawMutex, Cell<Option<fn(&[u8])>>> =
     Mutex::new(Cell::new(None));
 
 impl OpenThread<'_> {
     /// Initialize the C CLI on this OpenThread instance.
     ///
-    /// `output` receives every chunk of CLI output as raw bytes - typically a
-    /// `\r\n`-terminated line or a piece of one (the CLI formats output in
-    /// multiple small writes; chunk boundaries are not line boundaries).
-    /// It is invoked synchronously from within CLI processing: from
-    /// [`cli_input_line`](OpenThread::cli_input_line) for direct command
-    /// output, or from the OpenThread run loop for asynchronously produced
-    /// output (ping replies, scan tables, the trailing `Done`). It must not
-    /// call back into OpenThread.
-    ///
-    /// Call once; a subsequent call replaces the output sink of the (single)
-    /// C interpreter.
+    /// Arguments:
+    /// - `output` receives every chunk of CLI output as raw bytes - typically a
+    ///   `\r\n`-terminated line or a piece of one.
+    ///   NOTE: Do NOT call-back into OpenThread from this output sink.
     pub fn cli_init(&self, output: fn(&[u8])) {
         let mut ot = self.activate();
         let state = ot.state();

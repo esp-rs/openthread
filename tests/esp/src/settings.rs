@@ -1,21 +1,10 @@
 //! Flash persistence for the OpenThread settings.
 //!
 //! The `Settings` trait is synchronous and so is `esp-storage`'s flash
-//! access, which makes write-through the natural shape: every mutation lands
-//! in a RAM working copy first (`SimpleRamSettings`), and the whole store is
-//! then serialized back to flash in one image. Reads never touch the flash.
+//! access, which makes write-through the natural shape.
+//! Reads never touch the flash.
 //!
-//! Whole-image rather than a log, because the store is small (it caps at the
-//! RAM buffer size, well under one sector), `esp-storage` does the
-//! erase/read-modify-write dance internally, and OpenThread's write rate is
-//! tame - network state changes on attach and dataset events, and the frame
-//! counters are persisted in increments of ~1000 frames, not per frame. Wear
-//! and write latency are both non-issues at this scale.
-//!
-//! A flash operation stalls execute-in-place (and with it the radio driver's
-//! interrupt handling) for its duration. The MAC's hardware ACK path is
-//! unaffected, and a delayed RX/TX event at worst costs a retransmit - a
-//! trade the test tier can afford for durable `reset` semantics.
+//! Whole-image rather than a log, because the store is small.
 //!
 //! # Image layout
 //!
@@ -26,10 +15,7 @@
 //! payload: [ key u16 | value-len u16 | value bytes ]*
 //! ```
 //!
-//! All integers little-endian. Anything that does not parse - erased flash,
-//! a bad checksum from a torn write - reads as an empty store: for a test
-//! node, losing settings is a visible failure, while trusting corrupt ones
-//! is a debugging session.
+//! All integers little-endian.
 
 use esp_storage::FlashStorage;
 
@@ -44,18 +30,10 @@ const MAGIC: u32 = 0x4f54_5331;
 const HDR_LEN: usize = 12;
 
 /// The largest payload the image may carry.
-///
-/// A serialized record is 4 bytes of header plus the value - the same shape
-/// (and thus the same size) as `RamSettings`' in-memory records, so a RAM
-/// buffer no larger than this cap can never produce an oversized image.
 const PAYLOAD_MAX: usize = 1024;
 
 /// The `Settings` implementation of this firmware: a RAM working copy,
 /// written through to a flash image on every mutation.
-///
-/// `factoryreset` needs no special handling here: OpenThread's factory-reset
-/// path clears the settings via the `Settings` trait, and the write-through
-/// makes that durable before the chip reboots.
 pub struct FlashSettings {
     ram: SimpleRamSettings<'static>,
     flash: FlashStorage<'static>,

@@ -1,14 +1,7 @@
 name: Integration Tests
 
-# Runs the upstream OpenThread e2e suites against the `openthread` crate's
-# simulation DUT (`tests/` - see `cargo xtask itest`):
-#
-# - `thread-cert` in virtual time: deterministic lockstep, seconds per run -
-#   the PR gate.
-# - `expect`: upstream CLI tests, short and real-time - also a PR gate.
-# - `thread-cert` in real time: every `simulator.go(N)` is a literal N-second
-#   sleep (~25 min for the allowlist) and some timings are known-marginal at
-#   1x pacing, so this leg runs nightly / on dispatch only.
+# Runs the upstream OpenThread E2E suites against a binary built with `openthread` -
+# see the `tests/` directory and `cargo xtask itest --help`.
 
 on:
   push:

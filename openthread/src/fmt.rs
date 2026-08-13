@@ -10,15 +10,6 @@
 
 use core::fmt::{Debug, Display, LowerHex};
 
-/// Adapt a value that is only known to be [`core::fmt::Debug`] for the
-/// logging macros below.
-///
-/// `defmt` formats types implementing `defmt::Format`, which a generic error
-/// - e.g. `Radio::Error`, whose trait only requires `Debug` - does not. Rather
-/// than force a `defmt::Format` bound onto every driver's error type,
-/// `defmt::Debug2Format` bridges it: the cost is that such a value is
-/// formatted on the device instead of on the host, which is the right trade
-/// for the rare error paths this is used on.
 #[cfg(feature = "defmt")]
 #[collapse_debuginfo(yes)]
 macro_rules! dbg2fmt {
@@ -35,9 +26,6 @@ macro_rules! dbg2fmt {
     };
 }
 
-/// [`unwrap!`] for results whose error type is only known to be
-/// [`core::fmt::Debug`] (see [`dbg2fmt!`] for why `defmt`'s own `unwrap!`
-/// cannot be used there).
 #[cfg(feature = "defmt")]
 #[collapse_debuginfo(yes)]
 macro_rules! unwrap_dbg {

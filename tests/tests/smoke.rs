@@ -1,22 +1,12 @@
-//! The `cargo test` smoke layer: two `cli_node` processes must form a Thread
-//! network over the UDP-multicast simulated medium, driven exactly the way
-//! the upstream OpenThread harness drives its nodes - CLI command lines in,
-//! textual replies out.
+//! The `cargo test` smoke layer:
+//! Two `cli_node` processes must form a Thread network over the UDP-multicast simulated medium,
+//! driven exactly the way the upstream OpenThread harness drives its nodes - 
+//! CLI command lines in, textual replies out.
 //!
 //! This exercises the whole Rust platform stack end-to-end in seconds, with
-//! no Python harness or C peer build: process startup, the embassy alarm,
-//! tasklet pumping, the software MAC (ACK generation and awaiting), the sim
-//! radio's wire protocol, and the CLI front-end plumbing the certification
-//! suites depend on. Attaching requires a bidirectional MLE handshake with
-//! acknowledged unicasts, so nothing short of a working radio path passes.
-//! If the joiner ends up a leader of its own partition instead, the nodes
-//! could not hear each other - the test fails fast rather than by timeout.
-//!
-//! Anything beyond this belongs to the upstream suites (`cargo xtask itest`),
-//! which cover the same binary far more thoroughly - this file only has to
-//! answer "is the stack alive at all" quickly enough to run on every build.
+//! no Python harness or C peer build.
 
-use std::time::Duration;
+use core::time::Duration;
 
 mod common;
 

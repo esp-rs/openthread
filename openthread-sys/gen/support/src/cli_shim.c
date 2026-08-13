@@ -9,10 +9,6 @@
  * Compiled into `libsupport.a` only for the `cli` cargo feature
  * (`OT_RS_CLI=ON`); `otr_cli_output` is then provided by the `openthread`
  * crate (its `cli` module).
- *
- * Note: `vsnprintf` below is remapped to `_support_vsnprintf` (see the
- * top-level `add_definitions`) - the same rudimentary formatter all of
- * OpenThread's own string formatting already goes through.
  */
 
 #include <stdarg.h>

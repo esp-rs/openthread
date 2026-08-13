@@ -88,12 +88,7 @@ impl SerialPort {
     /// unusual rate the platform cannot set surfaces as an error.
     pub fn open(path: impl AsRef<Path>, baud: u32) -> io::Result<Self> {
         // Non-blocking so `async-io` can drive readiness; no controlling tty.
-        //
-        // `O_CLOEXEC` because this open bypasses Rust's std (which sets it on
-        // everything): in a process that `exec`s - a host node implementing
-        // reset by re-executing itself, say - an inherited tty fd would
-        // otherwise survive into the new image and, combined with the
-        // `TIOCEXCL` below, make the port unopenable (`EBUSY`) for it.
+        // `O_CLOEXEC` because this open bypasses Rust's std (which sets it on everything).
         let fd = open(
             path.as_ref(),
             OFlag::O_RDWR | OFlag::O_NOCTTY | OFlag::O_NONBLOCK | OFlag::O_CLOEXEC,

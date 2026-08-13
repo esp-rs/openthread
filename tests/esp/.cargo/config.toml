@@ -15,9 +15,7 @@ target = "riscv32imac-unknown-none-elf"
 build-std = ["core", "alloc"]
 
 [env]
-# The CLI console and the log output share the USB-Serial-JTAG channel, and
-# the harness PARSES the console - so logs stay off in test builds (panics
-# still print, via `esp-backtrace`, which is where a dying node's last words
-# belong). For interactive debugging rebuild with e.g. `ESP_LOG=debug`; the
-# level is compiled in.
+# The CLI console and the log output _might_ share the USB-Serial-JTAG channel,
+# and the harness PARSES the console.
+# Therefore, logs must stay off (panics still print, via `esp-backtrace`).
 ESP_LOG = "off"

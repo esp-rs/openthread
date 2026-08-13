@@ -69,25 +69,12 @@ pub const DEFAULT_RX_QUEUE_SIZE: usize = 12;
 
 /// The resources for a [`MacRadio`].
 ///
-/// Sized once, by the user, and borrowed by the wrapper for its lifetime - so
-/// the buffers the software MAC needs live wherever the user puts them
-/// (a `static`, say) instead of inside the radio value, which is held across
-/// `await` points by the radio loop.
-///
-/// The pending-RX queue depth is the only tunable, and it is erased to a slice
-/// when borrowed, so [`MacRadio`] itself carries no const parameter.
+/// Sized once, by the user, and borrowed by the wrapper for its lifetime.
 pub struct MacRadioResources<const RX_QUEUE_SIZE: usize = DEFAULT_RX_QUEUE_SIZE> {
-    /// The buffer for the ACK PSDU, if the `MacRadio` is instructed
-    /// to send or receive ACKs in software.
+    /// The buffer for the ACK PSDU, if the `MacRadio` is instructed to send or receive ACKs in software.
     ack_psdu_buf: MaybeUninit<[u8; OT_RADIO_FRAME_MAX_SIZE as _]>,
-    /// Frames accepted (and ACKed) while `transmit` was waiting for its own
-    /// ACK, parked here until subsequent `receive` calls deliver them. Sized
-    /// for a line-rate request burst: while this node serializes its replies
-    /// (each a full transmit sequence), further requests keep arriving and
-    /// park here - the default depth of 12 absorbs the bursts the upstream CLI
-    /// suites fire (ten back-to-back pings) with headroom at real-time pacing,
-    /// where 4 measurably dropped the tail and 8 was marginal. Anything
-    /// beyond is dropped like on a saturated real radio.
+    /// Frames accepted (and ACKed) while `transmit` was waiting for its own ACK, parked here
+    /// until subsequent `receive` calls deliver them.
     pending_rx: MaybeUninit<[PendingRxFrame; RX_QUEUE_SIZE]>,
     /// The source-address-match table, consulted for the Frame Pending bit
     /// of the software ACKs answering data polls (see [`SrcMatchConfig`]).
@@ -125,85 +112,6 @@ impl<const RX_QUEUE_SIZE: usize> Default for MacRadioResources<RX_QUEUE_SIZE> {
     }
 }
 
-/// A frame parked in the [`MacRadio`] pending-RX queue.
-struct PendingRxFrame {
-    /// The meta-data of the parked frame
-    meta: PsduMeta,
-    /// The PSDU of the parked frame, valid up to `meta.len`
-    psdu: [u8; OT_RADIO_FRAME_MAX_SIZE as _],
-}
-
-impl PendingRxFrame {
-    /// Create a new, empty parked frame.
-    const fn new() -> Self {
-        Self {
-            meta: PsduMeta {
-                len: 0,
-                channel: 0,
-                rssi: None,
-            },
-            psdu: [0; OT_RADIO_FRAME_MAX_SIZE as _],
-        }
-    }
-}
-
-/// The pending-RX queue: a ring buffer over the user-provided frame slots.
-struct PendingRx<'a> {
-    /// The frame slots, as borrowed from `MacRadioResources`
-    frames: &'a mut [PendingRxFrame],
-    /// The slot holding the oldest parked frame
-    head: usize,
-    /// The number of parked frames
-    len: usize,
-}
-
-impl<'a> PendingRx<'a> {
-    /// Create a new, empty queue over `frames`.
-    const fn new(frames: &'a mut [PendingRxFrame]) -> Self {
-        Self {
-            frames,
-            head: 0,
-            len: 0,
-        }
-    }
-
-    /// Park a frame.
-    ///
-    /// Returns `false` - and drops the frame, like a saturated real radio -
-    /// if the queue is full.
-    fn push_back(&mut self, meta: PsduMeta, psdu: &[u8]) -> bool {
-        if self.len == self.frames.len() {
-            return false;
-        }
-
-        let frame = &mut self.frames[(self.head + self.len) % self.frames.len()];
-
-        frame.meta = meta;
-        frame.psdu[..psdu.len()].copy_from_slice(psdu);
-
-        self.len += 1;
-
-        true
-    }
-
-    /// Take the oldest parked frame, if any, into `psdu_buf`.
-    fn pop_front(&mut self, psdu_buf: &mut [u8]) -> Option<PsduMeta> {
-        if self.len == 0 {
-            return None;
-        }
-
-        let frame = &self.frames[self.head];
-        let meta = frame.meta;
-
-        psdu_buf[..meta.len].copy_from_slice(&frame.psdu[..meta.len]);
-
-        self.head = (self.head + 1) % self.frames.len();
-        self.len -= 1;
-
-        Some(meta)
-    }
-}
-
 /// An enhanced (MAC) radio that can optionally send and receive ACKs for transmitted frames
 /// as well as optionally do address filtering.
 ///
@@ -216,8 +124,6 @@ impl<'a> PendingRx<'a> {
 /// itself does not do:
 ///
 /// ```ignore
-/// // Or `MacRadioResources::<24>` for a deeper pending-RX queue than the
-/// // default (see `DEFAULT_RX_QUEUE_SIZE`).
 /// static MAC_RADIO_RESOURCES: StaticCell<MacRadioResources> = StaticCell::new();
 /// let mac_radio_resources = MAC_RADIO_RESOURCES.init(MacRadioResources::new());
 ///
@@ -729,6 +635,85 @@ impl MacRadioTimer for EmbassyTimeTimer {
 
     async fn wait(&mut self, at: u64) {
         embassy_time::Timer::at(Instant::from_micros(at)).await;
+    }
+}
+
+/// A frame parked in the [`MacRadio`] pending-RX queue.
+struct PendingRxFrame {
+    /// The meta-data of the parked frame
+    meta: PsduMeta,
+    /// The PSDU of the parked frame, valid up to `meta.len`
+    psdu: [u8; OT_RADIO_FRAME_MAX_SIZE as _],
+}
+
+impl PendingRxFrame {
+    /// Create a new, empty parked frame.
+    const fn new() -> Self {
+        Self {
+            meta: PsduMeta {
+                len: 0,
+                channel: 0,
+                rssi: None,
+            },
+            psdu: [0; OT_RADIO_FRAME_MAX_SIZE as _],
+        }
+    }
+}
+
+/// The pending-RX queue: a ring buffer over the user-provided frame slots.
+struct PendingRx<'a> {
+    /// The frame slots, as borrowed from `MacRadioResources`
+    frames: &'a mut [PendingRxFrame],
+    /// The slot holding the oldest parked frame
+    head: usize,
+    /// The number of parked frames
+    len: usize,
+}
+
+impl<'a> PendingRx<'a> {
+    /// Create a new, empty queue over `frames`.
+    const fn new(frames: &'a mut [PendingRxFrame]) -> Self {
+        Self {
+            frames,
+            head: 0,
+            len: 0,
+        }
+    }
+
+    /// Park a frame.
+    ///
+    /// Returns `false` - and drops the frame, like a saturated real radio -
+    /// if the queue is full.
+    fn push_back(&mut self, meta: PsduMeta, psdu: &[u8]) -> bool {
+        if self.len == self.frames.len() {
+            return false;
+        }
+
+        let frame = &mut self.frames[(self.head + self.len) % self.frames.len()];
+
+        frame.meta = meta;
+        frame.psdu[..psdu.len()].copy_from_slice(psdu);
+
+        self.len += 1;
+
+        true
+    }
+
+    /// Take the oldest parked frame, if any, into `psdu_buf`.
+    fn pop_front(&mut self, psdu_buf: &mut [u8]) -> Option<PsduMeta> {
+        if self.len == 0 {
+            return None;
+        }
+
+        let frame = &self.frames[self.head];
+        let meta = frame.meta;
+
+        psdu_buf[..meta.len].copy_from_slice(&frame.psdu[..meta.len]);
+
+        self.head = (self.head + 1) % self.frames.len();
+        self.len -= 1;
+
+        Some(meta)
     }
 }
 

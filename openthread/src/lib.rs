@@ -1354,11 +1354,6 @@ impl<'a> OpenThread<'a> {
                 state.ot.radio_receive_channel
             };
 
-            // On the stack of this future, rather than in `OtResources`: the
-            // OpenThread C code borrows the latter through the `OtState`
-            // `RefCell`, which this loop re-enters on every frame, while these
-            // are held across its awaits - so they would need a `RefCell` of
-            // their own. Not worth it for 2x128 bytes.
             let mut psdu_buf = [0_u8; OT_RADIO_FRAME_MAX_SIZE as usize];
             let mut ack_psdu_buf = [0_u8; OT_RADIO_FRAME_MAX_SIZE as usize];
 
@@ -1407,10 +1402,7 @@ impl<'a> OpenThread<'a> {
 
                     match cmd {
                         // Nothing to do: an interrupt has already done its
-                        // whole job by waking the runner - it cancelled
-                        // whatever was in flight (or, if the radio was idle,
-                        // simply brought us back here to re-read the
-                        // configuration and re-enter the receive state).
+                        // whole job by waking the runner.
                         RadioCommand::Interrupt => (),
                         RadioCommand::Tx => {
                             let mut tx = pin!(self.process_radio_tx(
@@ -1750,13 +1742,7 @@ impl<'a> OpenThread<'a> {
         }
     }
 
-    /// Whether the ACK sent back for `psdu` carried Frame Pending: set for
-    /// an ack-requesting MAC command frame (data polls are command
-    /// frames) whose source the source-match table answers "pending"
-    /// for - mirroring the acking layer's decision from the same table,
-    /// since `PsduMeta` does not carry the radio's actual outcome.
-    /// TODO: Radios with RX-ACK offload may decide differently; plumb
-    /// the real outcome through `PsduMeta`.
+    /// Whether the ACK sent back for `psdu` carried Frame Pending
     fn acked_with_frame_pending(psdu: &[u8], src_match: &radio::SrcMatchConfig) -> bool {
         let mut hdr = radio::MacHeader::new();
 
@@ -2981,14 +2967,6 @@ impl<'a> OtContext<'a> {
         Ok(())
     }
 
-    /// The radio-capability side of rx-on-when-idle (see
-    /// `docs/radio-contract.md`, C7): a standing idle-behavior policy for
-    /// radios advertising `OT_RADIO_CAPS_RX_ON_WHEN_IDLE` (OpenThread never
-    /// calls this otherwise). Forwarded to the driver via the radio
-    /// configuration, negated: OT speaks "keep the receiver on", the driver
-    /// API speaks "may sleep autonomously" ([`Config::auto_sleep`]). The
-    /// runner's own control flow is driven purely by the commanded state
-    /// machine.
     fn plat_radio_set_rx_on_when_idle(&mut self, on: bool) {
         info!("Plat radio set RX on when idle callback, on: {}", on);
 
@@ -3001,8 +2979,6 @@ impl<'a> OtContext<'a> {
         }
     }
 
-    /// The `otPlatRadio*SrcMatch*` surface: mutate the mirrored table and
-    /// wake the radio runner to snapshot it down to the acking layer.
     fn plat_radio_enable_src_match(&mut self, enable: bool) {
         trace!("Plat radio enable src match callback, enable: {}", enable);
 
@@ -3305,26 +3281,27 @@ struct OtState<'a> {
     radio_conf_src_match_changed: Signal<()>,
     /// Raised whenever the radio needs to execute the provided command.
     radio_cmd: Signal<RadioCommand>,
-    /// Whether the radio is enabled (`otPlatRadioEnable`/`Disable`) - the
-    /// Disabled-vs-not axis of the radio state machine, orthogonal to the
-    /// commanded Sleep/Receive/Transmit states the runner executes. Radio
-    /// operations arriving while disabled answer `INVALID_STATE`, per the
-    /// C contract.
+    /// Whether the radio is enabled (`otPlatRadioEnable`/`Disable`).
+    /// Note that this is orthogonal to the commanded Sleep/Receive/Transmit states the runner executes.
+    /// Typically no-op except that radio operations arriving while disabled answer `INVALID_STATE`, per the C contract.
     radio_enabled: bool,
+    /// The channel the radio is commanded to receive on, or `None` if the radio is not commanded to receive.
     radio_receive_channel: Option<u8>,
-    /// The RSSI of the most recently received frame (ACKs included) - the
-    /// cheap latch `otPlatRadioGetRssi`'s synchronous query is served from
-    /// (real radio drivers commonly do the same). Invalid until the first
-    /// reception.
+    /// The RSSI of the most recently received frame (ACKs included).
+    /// Used to answer `otPlatRadioGetRssi` which is synchronous.
     last_rssi: i8,
     /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
     /// Fetched from the actual radio trait in the `OpenThread::run` API.
     radio_caps: otRadioCaps,
-    /// Receive sensitivity (dBm) reported via
-    /// `otPlatRadioGetReceiveSensitivity` - the noise floor OpenThread grades
-    /// neighbor link margins against. Fetched with the capabilities.
+    /// Receive sensitivity (dBm) reported via `otPlatRadioGetReceiveSensitivity` -
+    /// the noise floor OpenThread grades neighbor link margins against.
+    /// Fetched with the capabilities.
     radio_sensitivity: i8,
+    /// CCA energy detect threshold (dBm) reported via `otPlatRadioGetCcaEnergyDetectThreshold` -
+    /// the threshold OpenThread uses to determine whether the channel is clear.
+    /// Fetched with the capabilities.
     radio_cca_threshold: i8,
+    /// Transmit power (dBm) reported via `otPlatRadioGetTransmitPower` and settable via `otPlatRadioSetTransmitPower`.
     radio_tx_power: i8,
     /// Resources for the radio (PHY data frames and their descriptors)
     radio_resources: &'a mut RadioResources,

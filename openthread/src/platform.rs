@@ -224,13 +224,8 @@ extern "C" fn otPlatRadioReceive(instance: *mut otInstance, channel: u8) -> otEr
 
 // --- Source-address match (FTD only) ---
 //
-// An FTD parent tells the radio which sleepy children it has pending indirect
-// frames for; whoever sends the ACKs answers each child's data poll with the
-// Frame Pending bit from this table (see `radio::SrcMatchConfig`). The
-// callbacks mirror the table into the crate state; the radio runner ships
-// snapshots to the acking layer (`Radio::set_src_match_config`). Only referenced
-// when an FTD `libopenthread-ftd.a` is linked; on MTD they are never called
-// and are dropped by `--gc-sections`.
+// Only called when an FTD `libopenthread-ftd.a` is linked;
+// on MTD they are never called and are dropped by `--gc-sections`.
 
 #[no_mangle]
 extern "C" fn otPlatRadioEnableSrcMatch(instance: *const otInstance, enable: bool) {
@@ -300,10 +295,8 @@ extern "C" fn otPlatRadioClearSrcMatchExtEntries(instance: *const otInstance) {
 
 // Factory diagnostics (`OT_DIAGNOSTIC` builds)
 //
-// The exact minimal surface the upstream simulation platform provides
-// (`examples/platforms/simulation/diag.c`): a mode flag, plus no-op
-// acknowledgments of the channel/power hints and of the received-frame
-// extension hook.
+// The exact minimal surface the upstream simulation platform provides -
+// a mode flag, plus no-op acknowledgments of the channel/power hints and of the received-frame extension hook.
 
 static DIAG_MODE: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
 
@@ -320,10 +313,6 @@ extern "C" fn otPlatDiagModeGet() -> bool {
 #[no_mangle]
 extern "C" fn otPlatDiagSetOutputCallback(
     _instance: *mut otInstance,
-    // `otPlatDiagOutputCallback` - a function pointer, passed and ignored as
-    // an opaque pointer here: this platform generates no diag output of its
-    // own (the diag module prints its command responses through the CLI),
-    // exactly like the upstream simulation platform's no-op.
     _callback: *mut core::ffi::c_void,
     _context: *mut core::ffi::c_void,
 ) {

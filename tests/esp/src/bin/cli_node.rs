@@ -1,5 +1,5 @@
-//! The ESP32-C6/H2 firmware node of the hardware-in-the-loop tier: the same
-//! DUT shape as the host `cli_node`, but running on the MCU with its own radio.
+//! The ESP32-XX firmware node of the HIL tier:
+//! Same purpose as the host / STD `cli_node`, but running on the MCU with its own radio.
 //!
 //! The upstream harness drives this exactly as it drives every other node -
 //! CLI lines in, CLI output back - except the pipe is the chip's
@@ -10,17 +10,7 @@
 //! # What only this tier exercises
 //!
 //! [`EspRadio`] driving the chip's IEEE 802.15.4 peripheral, on a real clock,
-//! under the unmodified upstream scenarios. Unlike the nRF node there is no
-//! software MAC in the picture: `esp-radio` offloads the whole MAC set (bar
-//! source matching), so the radio goes straight into `OpenThread::run` - which
-//! also makes this firmware the *simple* end of the MCU tier.
-//!
-//! # Why this board is the automation-friendly one
-//!
-//! The USB-Serial-JTAG peripheral makes one USB port do everything:
-//! `espflash` resets the chip into download mode over it (no buttons), flashes,
-//! resets back into the app, and the same port then carries the CLI console -
-//! so a flash/test/fix loop needs no human hands at all.
+//! under the unmodified upstream scenarios.
 //!
 //! # Console and logs
 //!
@@ -142,8 +132,6 @@ async fn main(spawner: Spawner) {
 
     let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
 
-    // A full hardware MAC (bar source matching) - no `MacRadio`, no
-    // `ProxyRadio`: the radio can run on the main executor.
     spawner.spawn(
         run_ot(
             ot.clone(),
@@ -183,9 +171,6 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
                 let line = reader.line().trim();
 
                 match line {
-                    // The chip reset both need happens here - see the module
-                    // docs. `factoryreset` goes through the stack first: its
-                    // factory-reset path is what wipes the settings store.
                     "reset" => esp_hal::system::software_reset(),
                     "factoryreset" => {
                         let _ = ot.cli_input_line(line);
@@ -199,12 +184,18 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
 
                 reader.clear();
 
-                // Let the response drain fully before accepting the next
-                // command - see `console::drained`.
                 console::drained().await;
             }
         }
     }
+}
+
+/// The chip's factory base MAC as an EUI-64.
+fn ieee_eui64() -> [u8; 8] {
+    let mac_address = esp_hal::efuse::base_mac_address();
+    let mac = mac_address.as_bytes();
+
+    [mac[0], mac[1], mac[2], 0xff, 0xfe, mac[3], mac[4], mac[5]]
 }
 
 /// Drain pending CLI output to the console.
@@ -222,14 +213,6 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
         let _ = console_tx.write_all(&buf[..len]).await;
         let _ = console_tx.flush().await;
     }
-}
-
-/// The chip's factory base MAC as an EUI-64.
-fn ieee_eui64() -> [u8; 8] {
-    let mac_address = esp_hal::efuse::base_mac_address();
-    let mac = mac_address.as_bytes();
-
-    [mac[0], mac[1], mac[2], 0xff, 0xfe, mac[3], mac[4], mac[5]]
 }
 
 #[embassy_executor::task]

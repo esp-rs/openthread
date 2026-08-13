@@ -2,9 +2,8 @@
 //!
 //! A bare PHY with a software MAC on top (`MacRadio`) - a combination that
 //! cannot meet the 802.15.4 immediate-ACK deadlines on the air against
-//! strictly-timed peers, and is therefore scheduled for replacement by an
-//! `nrf-802154`-based driver. See `docs/nrf-radio-architecture.md` for the
-//! measurements, the constraint, and the plan.
+//! strictly-timed peers, and is therefore scheduled for potential replacement.
+//! See `docs/the-case-with-nrf-radio.md` for more details.
 
 pub use embassy_nrf::radio::ieee802154::{Cca as RadioCca, Packet};
 
@@ -25,13 +24,12 @@ impl RadioError for Error {
 pub struct NrfRadio<'a> {
     driver: Ieee802154<'a>,
     config: Config,
-    /// The channel the driver is currently on (commanded by `set_receive` or
-    /// by a `transmit`); also stamped onto received frames' metadata.
     channel: u8,
 }
 
 impl<'a> NrfRadio<'a> {
     const DEFAULT_CONFIG: Config = Config::new();
+
     /// The channel the driver starts on, until the stack commands another.
     const DEFAULT_CHANNEL: u8 = 11;
 

@@ -83,12 +83,8 @@ enum Commands {
     /// an MCU with its native radio. See `xtask/src/ping_stress.rs`.
     PingStress(ping_stress::PingStressArgs),
 
-    /// Run upstream OpenThread e2e suites (`thread-cert`, `expect` - taken
-    /// verbatim from the OpenThread submodule) against the Rust-platform
-    /// simulation DUT (`openthread-tests`' `cli_node`).
-    ///
-    /// See `xtask/src/itest.rs` for the mechanics and the curated test
-    /// allowlists.
+    /// Run upstream OpenThread E2E suites against an `openthread`-derived test binary
+    /// (`cli_node` in the `openthread-tests` project).
     Itest(itest::ItestArgs),
 }
 

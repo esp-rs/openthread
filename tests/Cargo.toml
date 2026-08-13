@@ -11,33 +11,20 @@ rust-version = "1.84"
 
 [features]
 default = []
-# Regenerate the OpenThread bindings on the fly (needed until the committed
-# host-target bindings match the active feature set).
 force-generate-bindings = ["openthread/force-generate-bindings"]
-# The hardware tier: additionally build the RCP-over-serial radio, so a node
-# can drive a real 802.15.4 co-processor instead of the simulated medium
-# (`openthread/std` = the `rcp` spinel host plus the host `SerialPort`).
-# Purely additive - a `hw`-enabled binary still runs the simulation radios
-# when `OT_HW_PORTS` is unset. See `src/hw.rs`.
 hw = ["openthread/std"]
 
 [dependencies]
-# No `platform-std`/`executor-thread`: the node binaries run on this crate's
-# own executor (`src/executor.rs`, built on `embassy_executor::raw`), whose
-# idle path implements the virtual-time lockstep protocol of the upstream
-# simulator - and, in real-time mode, a plain poll-with-timeout. The arch
-# features would define the global `__pender` this crate provides itself.
+# The node binaries run on this crate's own executor platform,
+# whose idle path implements the virtual-time lockstep protocol of the upstream simulator.
 embassy-executor = "0.10"
-# No `std`: that feature registers embassy's std time driver, while these
-# binaries provide their own (real-time or virtual-time; same module).
+# No `std`: we provide our own driver (real-time or virtual-time).
 embassy-time = { version = "0.5", default-features = false }
 # The time-driver hook; the tick rate must match the microsecond event
 # granularity of the upstream simulator protocol.
 embassy-time-driver = { version = "0.2", features = ["tick-hz-1_000_000"] }
 embassy-futures = "0.1"
-# `poll(2)` for the executor's idle blocking (simulator event socket + the
-# cross-thread wake pipe); `term`/`fs` for the HIL tier's serial bridge, which
-# puts the device's console tty into raw mode.
+# `poll(2)` for the executor's idle blocking
 nix = { version = "0.30", default-features = false, features = ["poll", "term", "fs"] }
 log = "0.4"
 env_logger = "0.11"
@@ -45,21 +32,8 @@ rand = { version = "0.9", features = ["std", "std_rng", "os_rng"] }
 static_cell = "2.1"
 async-io = "2"
 socket2 = { version = "0.5", features = ["all"] }
-# C symbols OpenThread's C references;
-# `critical-section` with `std` supplies a host `critical-section` impl.
 tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "strtoul"] }
 critical-section = { version = "1.2", features = ["std"] }
-
-# `ftd` because the test topologies need router-capable nodes (a network is
-# formed by its first router, the Leader). `cli` for the harness-driveable DUT
-# binary (`cli_node`). `mac-filter` is how the upstream harness builds
-# multi-hop topologies (`macfilter` allowlists); `ping-sender` backs the CLI
-# `ping` command many of its tests use; the rest widen the CLI surface toward
-# what the upstream simulation build offers. No `std`: that feature is the
-# RCP serial transport, and these nodes use a local (simulated) radio instead.
-# The suite's topology setup registers on-mesh prefixes (`prefix add`),
-# sets preferred partition ids and issues `networkdiagnostic get` - all
-# CLI surface the upstream reference-device simulation build carries.
 openthread = { path = "../openthread", default-features = false, features = [
     "ftd",
     "cli",

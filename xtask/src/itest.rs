@@ -1,23 +1,18 @@
-//! `itest`: run upstream OpenThread e2e suites against the Rust-platform
-//! simulation DUT.
+//! `itest`: run upstream OpenThread E2E suites against an `openthread`-derived binary.
 //!
-//! The DUT is `openthread-tests`' `cli_node`: the full `openthread` stack on
-//! the Rust platform (embassy alarm, tasklet pumping, software MAC, the
-//! UDP-multicast `SimRadio`), driven through OpenThread's C CLI - the exact
+//! The binary - `cli_node` - is in the `tests/`' directory and is the full `openthread` stack
+//! on the Rust platform  (embassy alarm, tasklet pumping, potentially a software MAC,
+//! and a `Radio` instance, driven through OpenThread's CLI - the exact
 //! process shape the upstream harness spawns for its own `ot-cli-ftd`
-//! simulation binary. Two upstream suites can be pointed at it, both taken
-//! verbatim from the OpenThread submodule (`openthread-sys/openthread`):
+//! simulation binary.
 //!
-//! - `cert`: the Python `tests/scripts/thread-cert` scenarios, in real-time
-//!   mode (`VIRTUAL_TIME=0`) - node processes spawned via `OT_CLI_PATH`,
-//!   frames observed by the harness's own multicast sniffer. Python deps
-//!   (pexpect, pycryptodome) are provisioned into a venv under `.build/`.
-//! - `expect`: the Tcl `tests/scripts/expect` CLI tests - node processes
-//!   spawned as `$OT_SIMULATION_APPS/cli/ot-cli-ftd`, which a shim directory
-//!   of symlinks points at the DUT. Needs the system `expect` binary.
+//! Two upstream suites can be pointed at it:
+//! - `cert`: the Python `tests/scripts/thread-cert` scenarios.
+//! - `expect`: the Tcl `tests/scripts/expect` CLI tests.
 //!
-//! Both suites run against curated allowlists (see [`CERT_TESTS`] /
-//! [`EXPECT_TESTS`]), where every entry is verified green against the DUT.
+//! Both suites run against curated allowlists (see [`CERT_TESTS`], [`EXPECT_TESTS`]),
+//! where every entry is verified green against the tested binary.
+//!
 //! The cert allowlists cover the entire upstream `Cert_*` corpus; the expect
 //! allowlist covers the tests runnable with a CLI-FTD-only DUT (the rest of
 //! that corpus needs posix/RCP node flavors or `diag` commands).
