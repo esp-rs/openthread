@@ -4,10 +4,12 @@ members = [
     "openthread",
     "openthread-sys",
     "examples/std",
-    "tests",
 ]
 
-exclude = ["examples/esp", "examples/nrf", "xtask", "tests/esp", "tests/nrf"]
+# `tests` cannot be a workspace member: its binaries run on
+# `embassy_executor::raw` with their own `__pender` and embassy-time driver
+# (the virtual-time lockstep executor), which clashes with `examples/std`.
+exclude = ["examples/esp", "examples/nrf", "xtask", "tests", "tests/esp", "tests/nrf"]
 
 [workspace.dependencies]
 log = { version = "0.4", default-features = false }

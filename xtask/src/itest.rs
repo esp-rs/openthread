@@ -975,7 +975,8 @@ fn build_posix_host(workspace: &Path, build_dir: &Path) -> Result<PathBuf> {
 }
 
 /// Build the DUT binaries (the `openthread-tests` crate is intentionally
-/// outside the workspace, like `examples`) and return the `cli_node` path.
+/// outside the workspace - see the root `Cargo.toml` on why - so they land
+/// in its own `tests/target/`) and return the `cli_node` path.
 ///
 /// `hw` additionally enables the RCP-over-serial radio; the node binary
 /// refuses to start with a port map it cannot read, so a stale non-`hw`
