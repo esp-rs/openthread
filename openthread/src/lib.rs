@@ -1783,7 +1783,7 @@ impl<'a> OpenThread<'a> {
         frame.mRadioType = 1; // TODO: Figure out what is this
         frame.mChannel = psdu_meta.channel;
         frame.mInfo.mRxInfo.mRssi = rssi;
-        frame.mInfo.mRxInfo.mLqi = rssi_to_lqi(rssi);
+        frame.mInfo.mRxInfo.mLqi = psdu_meta.lqi.unwrap_or_else(|| rssi_to_lqi(rssi));
         frame.mInfo.mRxInfo.mTimestamp = Instant::now().as_micros(); // TODO: Not precise
 
         // The flag is what makes the stack serve a sleepy child's data

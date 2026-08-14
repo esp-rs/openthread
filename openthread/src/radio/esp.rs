@@ -264,6 +264,7 @@ impl Radio for EspRadio<'_> {
                                 len: ack_psdu_len,
                                 channel: ack_frame.channel,
                                 rssi,
+                                lqi: None,
                             }));
                         } else {
                             trace!(
@@ -336,6 +337,7 @@ impl Radio for EspRadio<'_> {
             len: psdu_len,
             channel: raw.channel,
             rssi,
+            lqi: None,
         })
     }
 }

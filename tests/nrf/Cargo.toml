@@ -60,11 +60,38 @@ critical-section = "1.2"
 rand_core = "0.9"
 static_cell = "2.1"
 embedded-alloc = "0.7.0"
-# The C CLI library reaches for a good deal more of libc than the examples
-# do (`cli_srp_client.cpp` alone wants `strchr`/`strncpy`), so take the lot
-# rather than chase symbols one link error at a time. `--gc-sections` drops
-# whatever goes unused.
-tinyrlibc = { version = "0.5", default-features = false, features = ["alloc", "all"] }
+# The C CLI library reaches for a good deal more of libc than the examples do
+# (`cli_srp_client.cpp` alone wants `strchr`/`strncpy`) - but only the
+# pure-Rust pieces: NOT `all`, which pulls tinyrlibc's vendored C printf and
+# with it a C cross-compiler, for a `vsnprintf` nobody needs (the `openthread`
+# build carries nanoprintf anyway). Same trimmed set as `tests/esp`, plus
+# `alloc` for the C malloc/free surface (backed by `embedded-alloc`).
+tinyrlibc = { version = "0.5", default-features = false, features = [
+    "alloc",
+    "abs",
+    "atoi",
+    "isalpha",
+    "isdigit",
+    "isspace",
+    "isupper",
+    "itoa",
+    "utoa",
+    "memchr",
+    "strcat",
+    "strchr",
+    "strcmp",
+    "strcpy",
+    "strcspn",
+    "strlen",
+    "strncasecmp",
+    "strncmp",
+    "strncpy",
+    "strrchr",
+    "strspn",
+    "strstr",
+    "strtol",
+    "strtoul",
+] }
 
 # The same feature set the host DUT (`openthread-tests`' `cli_node`) is built
 # with, so the harness meets the same CLI surface on either tier - minus the

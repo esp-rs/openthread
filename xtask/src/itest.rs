@@ -222,15 +222,12 @@ const CERT_TESTS_VT_EXTRA: &[&str] = &[
 ///   (`OT_TIME_SYNC`), `cli-channel` (channel monitor/manager),
 ///   `cli-log-level` (dynamic log levels), `cli-misc` (MAC-counter reset,
 ///   posix FEM), `cli-reset` (the `reset bootloader` subcommand),
-///   `cli-big-table` (bigger child/router tables than the DUT builds with).
-/// - `cli-scan` / `cli-discover`: functionally pass - the peer's beacon
-///   row is right there in the log - but the scripts match a single-digit
-///   LQI: the C simulation platform reports LQI 0 ("none"), while this
-///   platform synthesizes one from RSSI (255 at simulated signal levels).
-///   Aligning the sim radios with the C platform would green both.
+///   `cli-big-table` (bigger child/router tables than the DUT builds with),
+///   `cli-discover` (`OT_CSL_RECEIVER`: the `csl` commands - the discover
+///   table itself matches, thanks to the sim radios' C-platform LQI).
 /// - `cli-diags`: the factory-diag *radio* path (`diag send` and its RX
 ///   stats) is not wired in the platform (the mode toggle alone is, which
-///   is all `test_diag` needs) - plus the same LQI expectation.
+///   is all `test_diag` needs).
 const EXPECT_TESTS: &[&str] = &[
     "cli-child",
     "cli-childip",
@@ -257,6 +254,7 @@ const EXPECT_TESTS: &[&str] = &[
     "cli-pskc",
     "cli-routereligible",
     "cli-router",
+    "cli-scan",
     "cli-udp",
     "cli-unsecure-port",
 ];
@@ -1220,6 +1218,11 @@ impl Runner {
             // gcov prefixes only materialize for coverage builds).
             .current_dir(ot_root)
             .env("OT_SIMULATION_APPS", &apps)
+            // Some scripts (`cli-discover`) read these two directly, without
+            // an `info exists` guard, so they must be set. The values match
+            // the wrapped OpenThread build and `_common.exp`'s own default.
+            .env("THREAD_VERSION", "1.4")
+            .env("OT_NODE_TYPE", "cli")
             // The DUT nodes run with the repo root as cwd (see above); point
             // their persisted settings at the run dir instead.
             .env("CLI_NODE_SETTINGS_DIR", run_dir.join("settings"));

@@ -324,7 +324,7 @@ fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
 /// config channel at delivery time may no longer be the reception channel.
 /// Missing metadata (a short body) degrades to `None`, and the caller falls
 /// back to the config channel.
-fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>)> {
+fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>, Option<u8>)> {
     if body.len() < 2 {
         return None;
     }
@@ -338,9 +338,11 @@ fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>)> {
     // (2-byte LE length prefix, then channel + lqi + ...).
     let meta = &body[2 + plen..];
     let rssi = meta.first().map(|&b| b as i8);
-    let channel = (meta.len() >= 7 && u16::from_le_bytes([meta[4], meta[5]]) >= 1).then(|| meta[6]);
+    let phy_len = (meta.len() >= 6).then(|| u16::from_le_bytes([meta[4], meta[5]]));
+    let channel = (phy_len >= Some(1) && meta.len() >= 7).then(|| meta[6]);
+    let lqi = (phy_len >= Some(2) && meta.len() >= 8).then(|| meta[7]);
 
-    Some((psdu, rssi, channel))
+    Some((psdu, rssi, channel, lqi))
 }
 
 /// Append a (possibly NUL-terminated) UTF-8 blob `src` into `out` starting at
@@ -1675,7 +1677,7 @@ where
         p += 2;
 
         // The remaining bytes are the ACK radio frame (if any was received).
-        let Some((ack_psdu, ack_rssi, ack_channel)) = parse_radio_frame(&body[p..]) else {
+        let Some((ack_psdu, ack_rssi, ack_channel, ack_lqi)) = parse_radio_frame(&body[p..]) else {
             return Ok(None);
         };
 
@@ -1687,6 +1689,7 @@ where
                     len: copy,
                     channel: ack_channel.unwrap_or(channel),
                     rssi: ack_rssi,
+                    lqi: ack_lqi,
                 }))
             }
             // The caller didn't ask for the ACK PSDU (didn't expect an ACK), so
@@ -1713,13 +1716,14 @@ where
         // a command response (see `try_stash_rx`). This is the common case —
         // inbound frames usually arrive during a transmit.
         while let Some(stashed) = self.rx_queue.pop_front() {
-            if let Some((psdu, rssi, rx_channel)) = parse_radio_frame(&stashed) {
+            if let Some((psdu, rssi, rx_channel, lqi)) = parse_radio_frame(&stashed) {
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
                 return Ok(PsduMeta {
                     len: copy,
                     channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
+                    lqi,
                 });
             }
             // Unparseable stashed frame — skip and try the next.
@@ -1735,7 +1739,7 @@ where
 
             // Unsolicited STREAM_RAW notification = a received frame.
             if tid == 0 && rcmd == CMD_PROP_VALUE_IS && rprop == PROP_STREAM_RAW {
-                let Some((psdu, rssi, rx_channel)) = parse_radio_frame(&frame[off..]) else {
+                let Some((psdu, rssi, rx_channel, lqi)) = parse_radio_frame(&frame[off..]) else {
                     continue;
                 };
 
@@ -1746,6 +1750,7 @@ where
                     len: copy,
                     channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
+                    lqi,
                 });
             }
             // Other frames (matched responses to a concurrent op, status) — ignore.

@@ -327,6 +327,10 @@ impl Radio for SimRadio {
                 len: psdu_len,
                 channel,
                 rssi: Some(SIM_RSSI),
+                // The C simulation platform reports `OT_RADIO_LQI_NONE` on
+                // every frame; the `expect` suites' scan/discover scripts
+                // match on exactly that.
+                lqi: Some(0),
             });
         }
     }

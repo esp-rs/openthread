@@ -350,6 +350,10 @@ pub struct PsduMeta {
     /// Received Signal Strength Indicator (RSSI) in dBm
     /// (if the radio supports appending it at the end of the frame, or `None` otherwise)
     pub rssi: Option<i8>,
+    /// Link Quality Indicator (LQI) of the received frame, as reported by the
+    /// radio; `None` if the radio does not report one, in which case the
+    /// OpenThread glue synthesizes an LQI from the RSSI.
+    pub lqi: Option<u8>,
 }
 
 /// The IEEE 802.15.4 PHY Radio trait.

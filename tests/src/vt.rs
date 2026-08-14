@@ -429,6 +429,8 @@ impl Radio for VtRadio {
                 len: frame.len,
                 channel: frame.channel,
                 rssi: Some(SIM_RSSI),
+                // As in `SimRadio`: the C simulation platform's LQI.
+                lqi: Some(0),
             });
         }
     }

@@ -245,6 +245,7 @@ impl Radio for ProxyRadio<'_> {
             len: response.psdu.len(),
             channel: response.psdu_channel,
             rssi: response.psdu_rssi,
+            lqi: response.psdu_lqi,
         });
 
         if let Some(ack_psdu_buf) = ack_psdu_buf {
@@ -503,6 +504,7 @@ impl PhyRadioRunner<'_> {
                     response.psdu.truncate(psdu_meta.len);
                     response.psdu_channel = psdu_meta.channel;
                     response.psdu_rssi = psdu_meta.rssi;
+                    response.psdu_lqi = psdu_meta.lqi;
                 } else {
                     // No ACK frame returned
                     response.psdu.clear();
@@ -670,6 +672,8 @@ struct ProxyRadioResponse {
     /// The RSSI of the received ACK frame, if the radio supports appending it
     /// at the end of the frame
     psdu_rssi: Option<i8>,
+    /// The LQI of the received ACK frame, if the radio reports one
+    psdu_lqi: Option<u8>,
 }
 
 impl ProxyRadioResponse {
@@ -681,6 +685,7 @@ impl ProxyRadioResponse {
             psdu: heapless::Vec::new(),
             psdu_channel: 0,
             psdu_rssi: None,
+            psdu_lqi: None,
         }
     }
 }
@@ -701,6 +706,7 @@ impl ProxyRadioFrame {
                 len: 0,
                 channel: 0,
                 rssi: None,
+                lqi: None,
             }),
             psdu: [0; PSDU_LEN],
         }

@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 * (Breaking) Changes to the Radio trait to fill in functionality gaps, fix bugs and bring more clarity (#109)
+  * `PsduMeta` extended with an `lqi` field
   * API for fetching initial TX power (in dBm) and CCA energy detect threshold (in dBm)
   * `Cca` enum retired, as OpenThread is anyway unaware of the various ways of doing CCA (Carrier / EnergyDetect / both)
   * Explicit "receive on channel" and "sleep" APIs (the latter important for Sleepy End Devices)
