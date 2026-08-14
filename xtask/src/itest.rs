@@ -34,7 +34,10 @@
 //!   own clock);
 //! - one test at a time, and no medium isolation between tests - there is a
 //!   single air, so `PORT_OFFSET` cannot separate a straggler node of a
-//!   previous run from this one;
+//!   previous run from this one. That extends to *boards*: a DUT from an
+//!   earlier run keeps its last network on the air until parked
+//!   (`factoryreset` leaves it disabled), and an unparked one can adopt the
+//!   next run's nodes into its leftover partition;
 //! - node count is capped by the number of attached dongles, so
 //!   [`HW_TESTS`] carries each test's node count and the oversized ones are
 //!   reported as skipped rather than dropped silently.
@@ -485,6 +488,12 @@ const HW_TESTS_NEED_SNIFFER: &[(&str, usize)] = &[
 /// for the measurements and the plan (an `nrf-802154`-backed radio). Until
 /// that lands, expect exactly these failures in an `--hw-extended` run
 /// against the nRF MCU DUT.
+///
+/// The `expect` suite on this DUT mirrors the pattern: `cli-child-supervision`
+/// (a SED child) fails the same way. `cli-pskc` also fails there, for an
+/// unrelated reason: PSKc PBKDF2 derivation (16k software-AES iterations,
+/// the chip's crypto accelerators unused) takes ~2 minutes on the 64 MHz M4
+/// - far past the script's timeout, with the node blocked throughout.
 #[allow(unused)]
 const HW_TESTS_NRF_MCU_SOFT_MAC: &[(&str, usize)] = &[
     // The SED variants; the MED variants in the same scripts pass.
