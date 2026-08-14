@@ -324,6 +324,7 @@ fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
 /// config channel at delivery time may no longer be the reception channel.
 /// Missing metadata (a short body) degrades to `None`, and the caller falls
 /// back to the config channel.
+#[allow(clippy::type_complexity)]
 fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>, Option<u8>)> {
     if body.len() < 2 {
         return None;
