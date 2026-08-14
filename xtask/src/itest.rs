@@ -209,15 +209,56 @@ const CERT_TESTS_VT_EXTRA: &[&str] = &[
     "Cert_9_2_19_PendingDatasetGet",
 ];
 
-/// The `expect` tests run by default: verified green against the DUT. The
-/// rest of the corpus needs node flavors the DUT shim directory deliberately
-/// does not provide (posix hosts, RCPs, MTD builds) or `diag` commands.
+/// The `expect` tests run by default: verified green against the DUT
+/// (full-corpus discovery sweep, 2026-08-14).
+///
+/// The excluded remainder, by reason:
+///
+/// - Node flavors the DUT shim does not provide: `posix-*`, `tun-*`,
+///   `v1_2-*` (posix hosts / RCPs), `ot-fct` (the factory tool).
+/// - OpenThread build configs the DUT does not enable: `cli-coex`,
+///   `cli-tcp*` (`OT_TCP`), `cli-tcat*` (BLE TCAT), `cli-region`,
+///   `cli_non_rcp-radiostats` (`OT_RADIO_STATS`), `simulation-networktime`
+///   (`OT_TIME_SYNC`), `cli-channel` (channel monitor/manager),
+///   `cli-log-level` (dynamic log levels), `cli-misc` (MAC-counter reset,
+///   posix FEM), `cli-reset` (the `reset bootloader` subcommand),
+///   `cli-big-table` (bigger child/router tables than the DUT builds with).
+/// - `cli-scan` / `cli-discover`: functionally pass - the peer's beacon
+///   row is right there in the log - but the scripts match a single-digit
+///   LQI: the C simulation platform reports LQI 0 ("none"), while this
+///   platform synthesizes one from RSSI (255 at simulated signal levels).
+///   Aligning the sim radios with the C platform would green both.
+/// - `cli-diags`: the factory-diag *radio* path (`diag send` and its RX
+///   stats) is not wired in the platform (the mode toggle alone is, which
+///   is all `test_diag` needs) - plus the same LQI expectation.
 const EXPECT_TESTS: &[&str] = &[
-    "cli-dataset",
-    "cli-networkname",
-    "cli-extaddr",
+    "cli-child",
+    "cli-childip",
+    "cli-child-supervision",
+    "cli-coap",
+    "cli-coaps",
+    "cli-commissioner",
+    "cli-commissioner-multiple-ftds",
     "cli-counters",
+    "cli-dataset",
+    "cli-debug",
+    "cli-discerner",
+    "cli-extaddr",
+    "cli-ipmaddr",
+    "cli-mac",
+    "cli-macfilter",
+    "cli-multicast-loop",
+    "cli-neighbor",
+    "cli-netdata",
+    "cli-networkname",
+    "cli-partitionid",
     "cli-ping",
+    "cli-promiscuous",
+    "cli-pskc",
+    "cli-routereligible",
+    "cli-router",
+    "cli-udp",
+    "cli-unsecure-port",
 ];
 
 /// The `test_*.py` functional scripts (same directory and runner as the
