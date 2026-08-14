@@ -489,6 +489,11 @@ const HW_TESTS_NEED_SNIFFER: &[(&str, usize)] = &[
 /// that lands, expect exactly these failures in an `--hw-extended` run
 /// against the nRF MCU DUT.
 ///
+/// The plan has since been validated: a `cli_node` built from the
+/// `nrf-802154` repo's `tests/` member (full hardware MAC, no software MAC)
+/// sweeps `--hw-extended` 45/45 on the same board - so these failures are
+/// specific to the *soft-MAC* nRF firmware in `tests/nrf`, not to the tier.
+///
 /// The `expect` suite on this DUT mirrors the pattern: `cli-child-supervision`
 /// (a SED child) fails the same way. `cli-pskc` also fails there, for an
 /// unrelated reason: PSKc PBKDF2 derivation (16k software-AES iterations,
