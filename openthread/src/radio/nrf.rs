@@ -1,9 +1,14 @@
-//! `Radio` trait implementation for the `embassy-nrf` ESP IEEE 802.15.4 radio.
+//! `Radio` trait implementation for the `embassy-nrf` IEEE 802.15.4 radio.
+//!
+//! A bare PHY with a software MAC on top (`MacRadio`) - a combination that
+//! cannot meet the 802.15.4 immediate-ACK deadlines on the air against
+//! strictly-timed peers, and is therefore scheduled for potential replacement.
+//! See `docs/the-case-with-nrf-radio.md` for more details.
 
 pub use embassy_nrf::radio::ieee802154::{Cca as RadioCca, Packet};
 
 use crate::fmt::Bytes;
-use crate::{Cca, Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind};
+use crate::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig};
 
 pub use embassy_nrf::radio::ieee802154::Radio as Ieee802154;
 pub use embassy_nrf::radio::{Error, Instance as Ieee802154Peripheral};
@@ -19,35 +24,37 @@ impl RadioError for Error {
 pub struct NrfRadio<'a> {
     driver: Ieee802154<'a>,
     config: Config,
+    channel: u8,
 }
 
 impl<'a> NrfRadio<'a> {
     const DEFAULT_CONFIG: Config = Config::new();
+
+    /// The channel the driver starts on, until the stack commands another.
+    const DEFAULT_CHANNEL: u8 = 11;
 
     /// Create a new `EspRadio` instance.
     pub fn new(radio: Ieee802154<'a>) -> Self {
         let mut this = Self {
             driver: radio,
             config: Self::DEFAULT_CONFIG,
+            channel: Self::DEFAULT_CHANNEL,
         };
 
-        this.update_driver_config();
+        this.driver.set_channel(Self::DEFAULT_CHANNEL);
+        this.driver
+            .set_transmission_power(Self::clamp_tx_power(RadioCaps::DEFAULT_TX_POWER));
 
         this
     }
 
-    fn update_driver_config(&mut self) {
-        let config = &self.config;
-
-        self.driver.set_channel(config.channel);
-        self.driver.set_cca(match config.cca {
-            Cca::Carrier => RadioCca::CarrierSense,
-            Cca::Ed { ed_threshold } => RadioCca::EnergyDetection { ed_threshold },
-            Cca::CarrierAndEd { ed_threshold } => RadioCca::EnergyDetection { ed_threshold },
-            Cca::CarrierOrEd { ed_threshold } => RadioCca::EnergyDetection { ed_threshold },
-        });
-        self.driver
-            .set_transmission_power(Self::clamp_tx_power(config.power));
+    /// Put the driver on `channel`, remembering it for the metadata of
+    /// received frames.
+    fn set_driver_channel(&mut self, channel: u8) {
+        if self.channel != channel {
+            self.channel = channel;
+            self.driver.set_channel(channel);
+        }
     }
 
     /// Snap a requested transmit power (in dBm) to a value the nRF radio's
@@ -87,7 +94,7 @@ impl Radio for NrfRadio<'_> {
     type Error = Error;
 
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
-        // The nRF radio has no PHY or MAC offloading capabilities of its own;
+        // The nRF radio has no MAC offloading capabilities of its own;
         // OpenThread / `MacRadio` handle everything in software. (This includes
         // address filtering, so `Config::alt_short_addr` — the alternate short
         // address an FTD accepts during a child-to-router transition — is honored
@@ -102,27 +109,72 @@ impl Radio for NrfRadio<'_> {
         // energy detection is only used internally as a CCA mode). Until it
         // does, energy scans on this radio yield no measurements (see
         // `Radio::energy_scan`).
+        // TODO: Report the hardware's real receive sensitivity.
         Ok(RadioCaps::default())
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
+        // Nothing to apply: everything this driver needs (channel, power, CCA)
+        // now arrives with the operation, and the MAC-level policy in `Config`
+        // (filtering, promiscuous mode) is emulated above by `MacRadio` - this
+        // is a bare PHY.
         if self.config != *config {
             trace!("Setting radio config: {:?}", config);
 
             self.config = config.clone();
-            self.update_driver_config();
         }
 
+        Ok(())
+    }
+
+    async fn set_src_match_config(&mut self, _config: &SrcMatchConfig) -> Result<(), Self::Error> {
+        // No RX-ACK offload, so nothing here answers data polls: `MacRadio`
+        // keeps the table and decides the Frame Pending bit in software.
+        Ok(())
+    }
+
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
+        // Only the channel: this driver has no free-running RX path, it
+        // receives exactly while `receive` is being polled.
+        self.set_driver_channel(channel);
+
+        Ok(())
+    }
+
+    async fn set_sleep(&mut self) -> Result<(), Self::Error> {
+        // Nothing to power down through `embassy-nrf`'s driver, and nothing
+        // queues up while parked (see `set_receive`).
         Ok(())
     }
 
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        _csma: bool,
+        channel: u8,
+        power: i8,
+        cca_threshold: Option<i8>,
         _ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         trace!("NRF Radio, about to transmit: {}", Bytes(psdu));
+
+        self.set_driver_channel(channel);
+        self.driver
+            .set_transmission_power(Self::clamp_tx_power(power));
+
+        // CCA mode: carrier sense whenever the stack asks for CCA at all.
+        //
+        // TODO: honor the requested threshold. It arrives in dBm (the unit of
+        // OpenThread's `otPlatRadioSetCcaEnergyDetectThreshold`), while
+        // `embassy-nrf`'s `EnergyDetection { ed_threshold }` takes the raw
+        // 0..0xFF ED-sample value of the nRF hardware - "not given in dBm, but
+        // can be converted", per the nRF52840 Product Specification section
+        // 6.20.12.4. Until that conversion is written down, carrier sense is
+        // used, which needs no threshold (and is what this driver did before
+        // the threshold was plumbed at all). `None` (transmit without CCA)
+        // cannot be honored either: `try_send` is the driver's only transmit
+        // and it always performs CCA.
+        let _ = cca_threshold;
+        self.driver.set_cca(RadioCca::CarrierSense);
 
         let mut packet = Packet::new();
         // TODO: `embassy-nrf` driver wants the PSDU without the CRC,
@@ -143,7 +195,7 @@ impl Radio for NrfRadio<'_> {
         // nRF52/53/54 Product Specifications report -92 or -93.
         const ED_RSSI_OFFSET: i8 = -93;
 
-        let channel = self.config.channel;
+        let channel = self.channel;
 
         loop {
             let mut packet = Packet::new();
@@ -169,6 +221,7 @@ impl Radio for NrfRadio<'_> {
                 len: len + 2,
                 channel,
                 rssi: Some(rssi),
+                lqi: Some(packet.lqi()),
             });
         }
     }

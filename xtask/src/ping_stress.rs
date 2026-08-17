@@ -245,7 +245,8 @@ impl PingRun {
 fn ping(args: &PingStressArgs, run: PingRun) -> Result<PingStats> {
     let mut cmd = Command::new("ping");
     cmd.arg("-6").arg("-q");
-    cmd.arg("-i").arg(format!("{}", run.interval_ms as f64 / 1000.0));
+    cmd.arg("-i")
+        .arg(format!("{}", run.interval_ms as f64 / 1000.0));
     cmd.arg("-s").arg(run.size.to_string());
     if let Some(count) = run.count {
         cmd.arg("-c").arg(count.to_string());

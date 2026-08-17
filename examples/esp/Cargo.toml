@@ -1,5 +1,5 @@
 [package]
-name = "esp-openthread-examples"
+name = "openthread-examples-esp"
 version = "0.1.0"
 edition = "2021"
 authors = ["bjoernQ <bjoern.quentin@mobile-j.de>"]
@@ -43,7 +43,7 @@ esp-rtos = { version = "0.3", features = ["esp-radio", "embassy"] }
 esp-alloc = { version = "0.10" }
 esp-backtrace = { version = "0.19", features = ["panic-handler", "println"] }
 esp-println = { version = "0.17", features = ["log-04"] }
-esp-radio = { version = "0.18", features = ["unstable", "ieee802154"] }
+esp-radio = { version = "1.0.0-beta.0", features = ["unstable", "ieee802154"] }
 esp-bootloader-esp-idf = { version = "0.5", features = ["log-04"] }
 log = "0.4"
 heapless = "0.9"
@@ -77,3 +77,17 @@ path = "./src/bin/dns.rs"
 name = "dns"
 #required-features=["dns-client"]
 harness = false
+
+# The released esp family lacks four fixes we need, all merged upstream:
+# - https://github.com/esp-rs/esp-hal/pull/6090
+# - https://github.com/esp-rs/esp-hal/pull/6089
+# - https://github.com/esp-rs/esp-hal/pull/6097
+# - https://github.com/esp-rs/esp-hal/pull/6104
+[patch.crates-io]
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }

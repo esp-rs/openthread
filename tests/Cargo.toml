@@ -1,0 +1,95 @@
+[package]
+name = "openthread-tests"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+publish = false
+description = "Host-side integration-test binaries for `openthread`: simulation nodes wire-compatible with the upstream OpenThread simulation platform and test harness"
+repository = "https://github.com/esp-rs/openthread"
+license = "MIT OR Apache-2.0"
+rust-version = "1.84"
+
+[features]
+default = []
+force-generate-bindings = ["openthread/force-generate-bindings"]
+hw = ["openthread/std"]
+
+[dependencies]
+# The node binaries run on this crate's own executor platform,
+# whose idle path implements the virtual-time lockstep protocol of the upstream simulator.
+embassy-executor = "0.10"
+# No `std`: we provide our own driver (real-time or virtual-time).
+embassy-time = { version = "0.5", default-features = false }
+# The time-driver hook; the tick rate must match the microsecond event
+# granularity of the upstream simulator protocol.
+embassy-time-driver = { version = "0.2", features = ["tick-hz-1_000_000"] }
+embassy-futures = "0.1"
+# `poll(2)` for the executor's idle blocking
+nix = { version = "0.30", default-features = false, features = ["poll", "term", "fs"] }
+log = "0.4"
+env_logger = "0.11"
+rand = { version = "0.9", features = ["std", "std_rng", "os_rng"] }
+static_cell = "2.1"
+async-io = "2"
+socket2 = { version = "0.5", features = ["all"] }
+tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "strtoul"] }
+critical-section = { version = "1.2", features = ["std"] }
+openthread = { path = "../openthread", default-features = false, features = [
+    "ftd",
+    "cli",
+    "isupper",
+    "log",
+    "mac-filter",
+    "ping-sender",
+    "slaac",
+    "ecdsa",
+    "dns-client",
+    "srp-client",
+    "commissioner",
+    "joiner",
+    "border-router",
+    "netdiag-client",
+    "reference-device",
+    "dhcp6-client",
+    "dhcp6-server",
+    # The `test_*.py` functional pool additionally exercises the SRP
+    # client/server pair, DNS-SD, the service registry / netdata publisher,
+    # secure CoAP, and the dataset-updater / child-supervision /
+    # history-tracker utilities.
+    "srp-server",
+    "dnssd-server",
+    "service",
+    "netdata-publisher",
+    # (`coap` also: the CLI's secure-CoAP command references the plain CoAP
+    # API, so a `cli`+`coaps` build without `coap` fails to link.)
+    "coap",
+    "coaps",
+    "dataset-updater",
+    "child-supervision",
+    "history-tracker",
+    # The functional pool's remaining feature-shaped tests: the anycast
+    # locator (`locate`), the ND-agent ALOC round of `test_anycast`, IPv6
+    # fragmentation, and the factory `diag` commands.
+    "anycast-locator",
+    "neighbor-discovery-agent",
+    "ip6-fragmentation",
+    "diagnostic",
+    # `test_srp_register_500_services`: 500 host/service registrations live
+    # in OpenThread's internal heap on both the client and server side.
+    # (65528 = the largest valid size: the heap requires 8-byte alignment
+    # (static-asserted), and its block arithmetic is `uint16_t`-based - a
+    # size of exactly 65536 passes the alignment assert but wraps to 0 in
+    # `ot::Utils::Heap::Heap()` and SIGSEGVs at instance init.)
+    "heap-int-65528",
+] }
+embassy-sync = "0.8"
+
+[[bin]]
+path = "./src/bin/cli_node.rs"
+name = "cli_node"
+
+# The hardware tier's bring-up probe; pointless without a radio to probe.
+[[bin]]
+path = "./src/bin/hw_probe.rs"
+name = "hw_probe"
+required-features = ["hw"]

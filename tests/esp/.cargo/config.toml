@@ -1,0 +1,21 @@
+[target.riscv32imac-unknown-none-elf]
+runner = "espflash flash --monitor"
+
+[build]
+rustflags = [
+  # Required to obtain backtraces (e.g. when using the "esp-backtrace" crate.)
+  "-C", "force-frame-pointers",
+  # esp-hal's linker scripts (memory layout + the ROM/PHY symbol tables).
+  "-C", "link-arg=-Tlinkall.x",
+]
+
+target = "riscv32imac-unknown-none-elf"
+
+[unstable]
+build-std = ["core", "alloc"]
+
+[env]
+# The CLI console and the log output _might_ share the USB-Serial-JTAG channel,
+# and the harness PARSES the console.
+# Therefore, logs must stay off (panics still print, via `esp-backtrace`).
+ESP_LOG = "off"

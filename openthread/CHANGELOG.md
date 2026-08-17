@@ -6,6 +6,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## Unreleased
+* (Breaking) Changes to the Radio trait to fill in functionality gaps, fix bugs and bring more clarity (#109)
+  * `PsduMeta` extended with an `lqi` field
+  * API for fetching initial TX power (in dBm) and CCA energy detect threshold (in dBm)
+  * `Cca` enum retired, as OpenThread is anyway unaware of the various ways of doing CCA (Carrier / EnergyDetect / both)
+  * Explicit "receive on channel" and "sleep" APIs (the latter important for Sleepy End Devices)
+* (Breaking) `MacRadio` is no longer automatically instantiated by the crate; instead, it is now expected that the user will explicitly wrap its native radio with it if it does not support all required `MacCapabilities`. Reason - `MacRadio` now takes a user-sizable `MacRadioResources` in its constructor fn (#109)
+* (Breaking) `heap-int-65536` renamed to `heap-int-65528` as this is the ceiling of an internal heap OpenThread can support (#109)
+* Implemented a configurable RX queue in `MacRadio`, which helps to not lose RX frames when wrapping and operating basic PHY-only radios like the NrfRadio (#109)
+* Run upstream OpenThread timing and functional E2E tests against `openthread`-derived binaries, for testing `openthread`'s async plumbing and the Rust 802.15.4 drivers (#109)
+  * New `tests` (crate `openthread-tests`) sub-project containing the test binaries exercised during E2E tests
+  * The `xtask` sub-project CLI can now run the E2E tests
+  * E2E tests exercised as part of the CI
+* Wire OpenThread's callbacks for getting/setting current CCA threshold and current TX power with the drivers (#109)
+* Safe CLI API - necessary for running the upstream OpenThread E2E functionality and timing tests with `openthread`-derived binaries (#109)
+* Added features for enabling even more OpenThread functionality: `cli`, `anycast-locator`, `neighbor-discovery-agent`, `ip6-fragmentation`, `diagnostic`, `netdiag-client`, `reference-device` - necessary for passing functionality and timing E2E tests (#109)
 * `NrfRadio`: convert the LQI energy reading into RSSI dBm according to nRF Product Specifications (#108)
 * Fix FTD Routers silently dropping mesh-local unicasts (#106)
   * Report OpenThread's default receive sensitivity (-110 dBm) instead of 0 dBm as the noise floor for link-quality grading

@@ -53,6 +53,7 @@ use embassy_time::{Duration, Timer};
 
 use crate::radio::{
     Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
+    SrcMatchConfig,
 };
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 
@@ -158,6 +159,10 @@ const PROP_MAC_ENERGY_SCAN_RESULT: u32 = 0x39;
 const PROP_RADIO_CAPS: u32 = 0x1207;
 const PROP_PHY_CHAN: u32 = 0x21;
 const PROP_PHY_TX_POWER: u32 = 0x25;
+/// `SPINEL_PROP_PHY_CCA_THRESHOLD` — the RCP's CCA energy-detect threshold, in dBm (int8).
+const PROP_PHY_CCA_THRESHOLD: u32 = 0x24;
+/// `SPINEL_PROP_PHY_RX_SENSITIVITY` — the RCP's receive sensitivity in dBm.
+const PROP_PHY_RX_SENSITIVITY: u32 = 0x27;
 const PROP_MAC_15_4_LADDR: u32 = 0x34;
 const PROP_MAC_15_4_SADDR: u32 = 0x35;
 /// `SPINEL_PROP_MAC_15_4_ALT_SADDR` (`MAC__BEGIN + 12`) — a *second* short
@@ -168,8 +173,15 @@ const PROP_MAC_15_4_PANID: u32 = 0x36;
 const PROP_MAC_RAW_STREAM_ENABLED: u32 = 0x37;
 const PROP_MAC_PROMISCUOUS_MODE: u32 = 0x38;
 /// `SPINEL_PROP_MAC_RX_ON_WHEN_IDLE_MODE` — keep the receiver on between TX/RX
-/// so the RCP hears asynchronous traffic (MLE, parent responses).
+/// so the RCP hears asynchronous traffic (MLE, parent responses). The wire
+/// value is the negation of [`Config::auto_sleep`].
 const PROP_MAC_RX_ON_WHEN_IDLE_MODE: u32 = 0x3b;
+/// The RCP's source-match table (`SPINEL_PROP_MAC_SRC_MATCH_*`): whether the
+/// ACKs answering data polls take their Frame Pending bit from the table, and
+/// the table's short/extended entries.
+const PROP_MAC_SRC_MATCH_ENABLED: u32 = 0x1303;
+const PROP_MAC_SRC_MATCH_SHORT_ADDRESSES: u32 = 0x1304;
+const PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES: u32 = 0x1305;
 const PROP_STREAM_RAW: u32 = 0x71;
 
 /// The RCP capability ids we require (a real RCP in raw-MAC mode).
@@ -191,6 +203,10 @@ const CMD_RESET: u32 = crate::sys::SPINEL_CMD_RESET as u32;
 const CMD_PROP_VALUE_GET: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_GET as u32;
 const CMD_PROP_VALUE_SET: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_SET as u32;
 const CMD_PROP_VALUE_IS: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_IS as u32;
+const CMD_PROP_VALUE_INSERT: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_INSERT as u32;
+const CMD_PROP_VALUE_REMOVE: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_REMOVE as u32;
+const CMD_PROP_VALUE_INSERTED: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_INSERTED as u32;
+const CMD_PROP_VALUE_REMOVED: u32 = crate::sys::SPINEL_CMD_PROP_VALUE_REMOVED as u32;
 const RESET_STACK: u32 = crate::sys::SPINEL_RESET_STACK as u32;
 const STATUS_RESET_BEGIN: u32 = crate::sys::SPINEL_STATUS_RESET__BEGIN as u32;
 const STATUS_RESET_END: u32 = crate::sys::SPINEL_STATUS_RESET__END as u32;
@@ -308,7 +324,8 @@ fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
 /// config channel at delivery time may no longer be the reception channel.
 /// Missing metadata (a short body) degrades to `None`, and the caller falls
 /// back to the config channel.
-fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>)> {
+#[allow(clippy::type_complexity)]
+fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>, Option<u8>)> {
     if body.len() < 2 {
         return None;
     }
@@ -322,9 +339,11 @@ fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>)> {
     // (2-byte LE length prefix, then channel + lqi + ...).
     let meta = &body[2 + plen..];
     let rssi = meta.first().map(|&b| b as i8);
-    let channel = (meta.len() >= 7 && u16::from_le_bytes([meta[4], meta[5]]) >= 1).then(|| meta[6]);
+    let phy_len = (meta.len() >= 6).then(|| u16::from_le_bytes([meta[4], meta[5]]));
+    let channel = (phy_len >= Some(1) && meta.len() >= 7).then(|| meta[6]);
+    let lqi = (phy_len >= Some(2) && meta.len() >= 8).then(|| meta[7]);
 
-    Some((psdu, rssi, channel))
+    Some((psdu, rssi, channel, lqi))
 }
 
 /// Append a (possibly NUL-terminated) UTF-8 blob `src` into `out` starting at
@@ -335,6 +354,39 @@ fn copy_utf8(src: &[u8], out: &mut [u8], at: usize) -> usize {
     let copy = end.min(out.len().saturating_sub(at));
     out[at..at + copy].copy_from_slice(&src[..copy]);
     at + copy
+}
+
+/// Log a spinel frame's header, so a link that misbehaves can be read off a
+/// `RUST_LOG=openthread=trace` run rather than guessed at. Deliberately just
+/// the header plus the payload length: whole frames at this level would bury
+/// the conversation in radio traffic.
+fn trace_frame(direction: &str, frame: &[u8]) {
+    match spinel_parse_header(frame) {
+        Some((tid, cmd, prop, off)) if prop == PROP_LAST_STATUS => {
+            // The status value is the whole story of a `LAST_STATUS` frame -
+            // "1 byte" without it hides exactly the failures worth seeing.
+            let status = spinel_uint_decode(&frame[off..])
+                .map(|(status, _)| status)
+                .unwrap_or(u32::MAX);
+
+            trace!(
+                "{} tid {} cmd 0x{:x} LAST_STATUS {}",
+                direction,
+                tid,
+                cmd,
+                status,
+            );
+        }
+        Some((tid, cmd, prop, off)) => trace!(
+            "{} tid {} cmd 0x{:x} prop 0x{:x} ({} bytes)",
+            direction,
+            tid,
+            cmd,
+            prop,
+            frame.len().saturating_sub(off),
+        ),
+        None => trace!("{} unparseable ({} bytes)", direction, frame.len()),
+    }
 }
 
 /// A tiny set of outstanding spinel transaction ids (1..=15), stored as a
@@ -410,7 +462,9 @@ const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
     .union(MacCapabilities::FILTER_SHORT_ADDR)
     .union(MacCapabilities::FILTER_EXT_ADDR)
     .union(MacCapabilities::TX_ACK)
-    .union(MacCapabilities::RX_ACK);
+    .union(MacCapabilities::RX_ACK)
+    .union(MacCapabilities::PROMISCUOUS)
+    .union(MacCapabilities::SRC_MATCH);
 
 /// The resources (buffers) needed by a [`SpinelRadio`].
 ///
@@ -435,6 +489,8 @@ pub struct SpinelRadioResources<const RX_QUEUE_DEPTH: usize = DEFAULT_RX_QUEUE_D
     rx_frame: MaybeUninit<[u8; MAX_SPINEL_FRAME]>,
     /// Received-frame bodies stashed while a command response is awaited.
     rx_queue: MaybeUninit<heapless::Deque<RxFrame, RX_QUEUE_DEPTH>>,
+    /// The radio's state (source-match table, last config, etc.).
+    state: MaybeUninit<SpinelRadioState>,
 }
 
 impl<const RX_QUEUE_DEPTH: usize> SpinelRadioResources<RX_QUEUE_DEPTH> {
@@ -444,6 +500,7 @@ impl<const RX_QUEUE_DEPTH: usize> SpinelRadioResources<RX_QUEUE_DEPTH> {
             tx_frame: MaybeUninit::uninit(),
             rx_frame: MaybeUninit::uninit(),
             rx_queue: MaybeUninit::uninit(),
+            state: MaybeUninit::uninit(),
         }
     }
 
@@ -456,11 +513,17 @@ impl<const RX_QUEUE_DEPTH: usize> SpinelRadioResources<RX_QUEUE_DEPTH> {
         &mut [u8; MAX_SPINEL_FRAME],
         &mut [u8; MAX_SPINEL_FRAME],
         &mut heapless::deque::DequeView<RxFrame>,
+        &mut SpinelRadioState,
     ) {
         (
             self.tx_frame.write([0; MAX_SPINEL_FRAME]),
             self.rx_frame.write([0; MAX_SPINEL_FRAME]),
             self.rx_queue.write(heapless::Deque::new()).as_mut_view(),
+            self.state.write(SpinelRadioState {
+                src_match: SrcMatchConfig::new(),
+                src_match_flushed: SrcMatchConfig::new(),
+                config: None,
+            }),
         )
     }
 }
@@ -496,8 +559,25 @@ pub struct SpinelRadio<'a, T> {
     /// handshake. Until the handshake runs it holds the fixed baseline
     /// ([`SPINEL_RADIO_CAPS`]); afterwards it is the RCP's reported set.
     caps: Capabilities,
-    /// Last-applied config; used to only re-send changed properties.
-    config: Option<Config>,
+    /// The channel the RCP is currently tuned to (`PROP_PHY_CHAN`), and the
+    /// CCA threshold it currently has (`PROP_PHY_CCA_THRESHOLD`).
+    channel: u8,
+    /// The CCA threshold the RCP currently has (`PROP_PHY_CCA_THRESHOLD`).
+    cca_threshold: i8,
+    /// The RCP's own defaults for the transmit power and the CCA threshold,
+    /// read once during the handshake and reported through [`RadioCaps`].
+    default_tx_power: i8,
+    /// The RCP's own defaults for the transmit power and the CCA threshold,
+    /// read once during the handshake and reported through [`RadioCaps`].
+    default_cca_threshold: i8,
+    /// The receive sensitivity read from the RCP's `PHY_RX_SENSITIVITY`
+    /// during the handshake; the crate-wide default until then (and for RCP
+    /// firmwares that do not implement the property).
+    sensitivity: i8,
+    /// The source-match table in `state` is not yet pushed to the RCP: the
+    /// trait's delivery is synchronous, the spinel writes are not, so the
+    /// push happens on the next async operation (see `flush_src_match`).
+    src_match_dirty: bool,
     /// Whether raw-stream (RX) is currently enabled on the RCP.
     rx_enabled: bool,
     /// Next transaction id (1..=15, 0 is reserved for unsolicited notifications).
@@ -521,6 +601,9 @@ pub struct SpinelRadio<'a, T> {
     /// A `DequeView`, so the queue depth chosen via [`SpinelRadioResources`]
     /// does not generify this type.
     rx_queue: &'a mut heapless::deque::DequeView<RxFrame>,
+    /// The source-match tables and config shadow, borrowed from the
+    /// resources - see [`SpinelRadioState`].
+    state: &'a mut SpinelRadioState,
 }
 
 impl<'a, T> SpinelRadio<'a, T>
@@ -535,19 +618,25 @@ where
         transport: T,
         resources: &'a mut SpinelRadioResources<RX_QUEUE_DEPTH>,
     ) -> Self {
-        let (tx_frame, rx_frame, rx_queue) = resources.init();
+        let (tx_frame, rx_frame, rx_queue, state) = resources.init();
 
         Self {
             transport,
             eui64: None,
             caps: SPINEL_RADIO_CAPS,
-            config: None,
+            channel: 11,
+            cca_threshold: RadioCaps::DEFAULT_CCA_THRESHOLD,
+            default_tx_power: RadioCaps::DEFAULT_TX_POWER,
+            default_cca_threshold: RadioCaps::DEFAULT_CCA_THRESHOLD,
+            sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
+            src_match_dirty: false,
             rx_enabled: false,
             next_tid: 1,
             tx_frame,
             rx_frame,
             rx_len: 0,
             rx_queue,
+            state,
         }
     }
 
@@ -598,6 +687,8 @@ where
     /// Send an already-built raw spinel `frame` to the transport (which frames it
     /// for its wire — HDLC for UART, the SPI header protocol for SPI).
     async fn send_frame(&mut self, frame: &[u8]) -> Result<(), RadioErrorKind> {
+        trace_frame("RCP <-", frame);
+
         self.transport
             .send(frame)
             .await
@@ -623,6 +714,9 @@ where
             }
         };
         self.rx_len = len;
+
+        trace_frame("RCP ->", &self.rx_frame[..len]);
+
         Ok(len)
     }
 
@@ -632,6 +726,152 @@ where
         self.send_prop_await(prop, payload, RESPONSE_TIMEOUT)
             .await
             .map(|_| ())
+    }
+
+    /// Push a pending source-match table to the RCP, if any.
+    ///
+    /// Each address family goes as one whole-array `VALUE_SET`.
+    async fn flush_src_match(&mut self) -> Result<(), RadioErrorKind> {
+        if !self.src_match_dirty {
+            return Ok(());
+        }
+
+        // Per-entry INSERT/REMOVE, with an empty whole-table SET only for
+        // clear-all: exactly the wire shapes OpenThread's own hosts use,
+        // and therefore the only ones every RCP firmware actually exercises.
+        //
+        // `src_match_flushed` mirrors what the RCP has, entry by entry, so a
+        // failed op leaves the mirror truthful and the dirty flag makes the
+        // next operation prologue retry the remainder.
+
+        let target = self.state.src_match.clone();
+
+        // Removals first, freeing table slots for the additions.
+        if target.short_addrs.is_empty() && !self.state.src_match_flushed.short_addrs.is_empty() {
+            self.set_prop(PROP_MAC_SRC_MATCH_SHORT_ADDRESSES, &[])
+                .await?;
+            self.state.src_match_flushed.short_addrs.clear();
+        } else {
+            for index in (0..self.state.src_match_flushed.short_addrs.len()).rev() {
+                let addr = self.state.src_match_flushed.short_addrs[index];
+                if !target.short_addrs.contains(&addr) {
+                    self.modify_prop(
+                        CMD_PROP_VALUE_REMOVE,
+                        PROP_MAC_SRC_MATCH_SHORT_ADDRESSES,
+                        &addr.to_le_bytes(),
+                    )
+                    .await?;
+                    self.state.src_match_flushed.short_addrs.swap_remove(index);
+                }
+            }
+        }
+
+        if target.ext_addrs.is_empty() && !self.state.src_match_flushed.ext_addrs.is_empty() {
+            self.set_prop(PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES, &[])
+                .await?;
+            self.state.src_match_flushed.ext_addrs.clear();
+        } else {
+            for index in (0..self.state.src_match_flushed.ext_addrs.len()).rev() {
+                let addr = self.state.src_match_flushed.ext_addrs[index];
+                if !target.ext_addrs.contains(&addr) {
+                    self.modify_prop(
+                        CMD_PROP_VALUE_REMOVE,
+                        PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES,
+                        &addr.to_be_bytes(),
+                    )
+                    .await?;
+                    self.state.src_match_flushed.ext_addrs.swap_remove(index);
+                }
+            }
+        }
+
+        for addr in &target.short_addrs {
+            if !self.state.src_match_flushed.short_addrs.contains(addr) {
+                self.modify_prop(
+                    CMD_PROP_VALUE_INSERT,
+                    PROP_MAC_SRC_MATCH_SHORT_ADDRESSES,
+                    &addr.to_le_bytes(),
+                )
+                .await?;
+                let _ = self.state.src_match_flushed.short_addrs.push(*addr);
+            }
+        }
+
+        for addr in &target.ext_addrs {
+            if !self.state.src_match_flushed.ext_addrs.contains(addr) {
+                self.modify_prop(
+                    CMD_PROP_VALUE_INSERT,
+                    PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES,
+                    &addr.to_be_bytes(),
+                )
+                .await?;
+                let _ = self.state.src_match_flushed.ext_addrs.push(*addr);
+            }
+        }
+
+        if target.enabled != self.state.src_match_flushed.enabled {
+            self.set_prop(PROP_MAC_SRC_MATCH_ENABLED, &[target.enabled as u8])
+                .await?;
+            self.state.src_match_flushed.enabled = target.enabled;
+        }
+
+        self.src_match_dirty = false;
+
+        Ok(())
+    }
+
+    /// Send a `PROP_VALUE_INSERT`/`PROP_VALUE_REMOVE` for a single table entry
+    /// and await its acknowledgement (`PROP_VALUE_INSERTED`/`REMOVED`; a
+    /// `LAST_STATUS` reply carries the failure).
+    async fn modify_prop(
+        &mut self,
+        cmd: u32,
+        prop: u32,
+        payload: &[u8],
+    ) -> Result<(), RadioErrorKind> {
+        let tid = self.alloc_tid();
+
+        let frame_len = {
+            let mut n = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
+                .ok_or(RadioErrorKind::TxFailed)?;
+            if n + payload.len() > self.tx_frame.len() {
+                return Err(RadioErrorKind::TxFailed);
+            }
+            self.tx_frame[n..n + payload.len()].copy_from_slice(payload);
+            n += payload.len();
+            n
+        };
+
+        trace_frame("RCP <-", &self.tx_frame[..frame_len]);
+        self.transport
+            .send(&self.tx_frame[..frame_len])
+            .await
+            .map_err(|_| RadioErrorKind::TxFailed)?;
+
+        let (rprop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
+
+        if rprop == PROP_LAST_STATUS {
+            let status = spinel_uint_decode(&self.rx_frame[off..self.rx_len])
+                .map(|(status, _)| status)
+                .unwrap_or(0);
+
+            if status != 0 {
+                debug!(
+                    "RCP: {} of prop 0x{:x} refused, LAST_STATUS {}",
+                    if cmd == CMD_PROP_VALUE_INSERT {
+                        "INSERT"
+                    } else {
+                        "REMOVE"
+                    },
+                    prop,
+                    status
+                );
+
+                return Err(RadioErrorKind::Other);
+            }
+        }
+
+        Ok(())
     }
 
     /// Send a `PROP_VALUE_SET` with a raw payload and await its matched
@@ -666,6 +906,7 @@ where
 
         // Send straight out of `self.tx_frame`: the transport borrow and the
         // frame borrow are disjoint fields.
+        trace_frame("RCP <-", &self.tx_frame[..frame_len]);
         self.transport
             .send(&self.tx_frame[..frame_len])
             .await
@@ -735,14 +976,50 @@ where
 
         let frame_len = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
             .ok_or(RadioErrorKind::TxFailed)?;
+        trace_frame("RCP <-", &self.tx_frame[..frame_len]);
         self.transport
             .send(&self.tx_frame[..frame_len])
             .await
             .map_err(|_| RadioErrorKind::TxFailed)?;
 
-        let (_prop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
+        let off = self.await_prop(tid, prop).await?;
         let len = self.rx_len;
+
         Ok(f(&self.rx_frame[off..len]))
+    }
+
+    /// Await the response to `tid` that actually carries `prop`.
+    ///
+    /// A `PROP_VALUE_GET` is answered either with the property itself or with
+    /// `LAST_STATUS` - the RCP's way of saying it cannot serve the request,
+    /// which is an error for this property (and, for the optional reads,
+    /// simply means "use the default").
+    async fn await_prop(&mut self, tid: u8, prop: u32) -> Result<usize, RadioErrorKind> {
+        loop {
+            let (rprop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
+
+            if rprop == prop {
+                return Ok(off);
+            }
+
+            if rprop == PROP_LAST_STATUS {
+                let status = spinel_uint_decode(&self.rx_frame[off..self.rx_len])
+                    .map(|(status, _)| status)
+                    .unwrap_or(0);
+
+                // Not an error in itself - a refusal is a normal protocol
+                // outcome, and the caller decides whether it matters (the
+                // best-effort reads fall back to a default, and say so).
+                debug!("RCP: property 0x{:x} refused, LAST_STATUS {}", prop, status);
+
+                return Err(RadioErrorKind::Other);
+            }
+
+            warn!(
+                "RCP: awaiting property 0x{:x} on tid {}, got 0x{:x} - ignoring",
+                prop, tid, rprop
+            );
+        }
     }
 
     /// Await a single response frame with a matching `tid`, dispatching any
@@ -756,8 +1033,6 @@ where
         tid: u8,
         timeout: Duration,
     ) -> Result<(u32, usize), RadioErrorKind> {
-        let cmd_is = CMD_PROP_VALUE_IS;
-
         loop {
             let frame_len = self.recv_frame(timeout).await?;
 
@@ -772,7 +1047,14 @@ where
                 continue;
             };
 
-            if rtid == tid && rcmd == cmd_is {
+            // `PROP_VALUE_IS` answers GET/SET (and carries `LAST_STATUS`
+            // errors); `INSERTED`/`REMOVED` answer the per-entry table
+            // modifications.
+            if rtid == tid
+                && (rcmd == CMD_PROP_VALUE_IS
+                    || rcmd == CMD_PROP_VALUE_INSERTED
+                    || rcmd == CMD_PROP_VALUE_REMOVED)
+            {
                 return Ok((rprop, off));
             }
             // A mismatched command response — ignore.
@@ -828,6 +1110,7 @@ where
             // kind as a packed-uint argument.
             let n = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, reset_arg)
                 .ok_or(RadioErrorKind::Other)?;
+            trace_frame("RCP <-", &self.tx_frame[..n]);
             self.transport
                 .send(&self.tx_frame[..n])
                 .await
@@ -895,11 +1178,18 @@ where
         // why the `Radio` trait's compile-time `const CAPS` cannot carry it and
         // [`Radio::init`] returns it instead. We keep any bits our fixed baseline
         // guarantees even if a minimal RCP under-reports.
+        //
+        // Best-effort: this property is an OpenThread extension, and stock RCP
+        // firmware that predates it (or omits it) answers `PROP_NOT_FOUND`.
         let caps_bits = self
             .get_prop(PROP_RADIO_CAPS, |payload| {
                 spinel_uint_decode(payload).map(|(v, _)| v).unwrap_or(0)
             })
-            .await?;
+            .await
+            .unwrap_or_else(|_| {
+                info!("RCP does not report RADIO_CAPS; using the baseline only");
+                0
+            });
         self.caps = Capabilities::from_bits_truncate(caps_bits as u16) | SPINEL_RADIO_CAPS;
 
         info!(
@@ -908,6 +1198,55 @@ where
             caps_bits,
             SPINEL_RADIO_CAPS.bits()
         );
+
+        // Read the RCP's receive sensitivity. Best-effort.
+        match self
+            .get_prop(PROP_PHY_RX_SENSITIVITY, |payload| {
+                payload.first().map(|&s| s as i8)
+            })
+            .await
+        {
+            Ok(Some(sensitivity)) => self.sensitivity = sensitivity,
+            _ => {
+                info!(
+                    "RCP does not report PHY_RX_SENSITIVITY; using the default {} dBm",
+                    self.sensitivity
+                );
+            }
+        }
+
+        // The RCP's power-on transmit power and CCA threshold (both dBm, int8)
+        // become this radio's reported defaults.
+        //
+        // Best-effort, like the sensitivity read above.
+        match self
+            .get_prop(PROP_PHY_TX_POWER, |payload| {
+                payload.first().map(|&p| p as i8)
+            })
+            .await
+        {
+            Ok(Some(power)) => self.default_tx_power = power,
+            _ => info!(
+                "RCP does not report PHY_TX_POWER; using the default {} dBm",
+                self.default_tx_power
+            ),
+        }
+
+        match self
+            .get_prop(PROP_PHY_CCA_THRESHOLD, |payload| {
+                payload.first().map(|&t| t as i8)
+            })
+            .await
+        {
+            Ok(Some(threshold)) => {
+                self.default_cca_threshold = threshold;
+                self.cca_threshold = threshold;
+            }
+            _ => info!(
+                "RCP does not report PHY_CCA_THRESHOLD; using the default {} dBm",
+                self.default_cca_threshold
+            ),
+        }
 
         // Enable the PHY.
         self.set_prop(PROP_PHY_ENABLED, &[1]).await?;
@@ -943,17 +1282,15 @@ where
     /// the last flush, pipelined as a single burst (one round-trip regardless of
     /// how many properties changed — see [`Self::set_props`]).
     async fn flush_config(&mut self, config: &Config) -> Result<(), RadioErrorKind> {
-        let prev = self.config.clone();
+        let prev = self.state.config.clone();
         let changed = |get: fn(&Config) -> u64| prev.as_ref().map(get) != Some(get(config));
 
         // Materialize each changed property's little-endian payload into a local
         // so its slice stays valid for the whole burst, then stage the
         // `(prop, payload)` pairs. At most seven properties, so a fixed array +
         // length avoids any allocation.
-        let chan = [config.channel];
-        let power = [config.power as u8];
         let promisc = [config.promiscuous as u8];
-        let rx_when_idle = [config.rx_when_idle as u8];
+        let rx_on_when_idle = [!config.auto_sleep as u8];
         let pan_id = config.pan_id.unwrap_or(0xffff).to_le_bytes();
         let short_addr = config.short_addr.unwrap_or(0xffff).to_le_bytes();
         // Alternate short address: `0xfffe` (`OT_RADIO_INVALID_SHORT_ADDR`) is the
@@ -972,23 +1309,15 @@ where
         let mut batch: [(u32, &[u8]); 8] = [(0, &[]); 8];
         let mut count = 0;
 
-        if changed(|c| c.channel as u64) {
-            batch[count] = (PROP_PHY_CHAN, &chan);
-            count += 1;
-        }
-        if changed(|c| c.power as u8 as u64) {
-            batch[count] = (PROP_PHY_TX_POWER, &power);
-            count += 1;
-        }
         if changed(|c| c.promiscuous as u64) {
             batch[count] = (PROP_MAC_PROMISCUOUS_MODE, &promisc);
             count += 1;
         }
-        if changed(|c| c.rx_when_idle as u64) {
+        if changed(|c| c.auto_sleep as u64) {
             // NOTE: some RCP firmwares (e.g. the nRF `ot-rcp`) do not implement
             // this property and reply with an error LAST_STATUS, which we ignore
             // (the RCP then keeps its default rx-when-idle behaviour). Harmless.
-            batch[count] = (PROP_MAC_RX_ON_WHEN_IDLE_MODE, &rx_when_idle);
+            batch[count] = (PROP_MAC_RX_ON_WHEN_IDLE_MODE, &rx_on_when_idle);
             count += 1;
         }
         if changed(|c| c.pan_id.unwrap_or(0xffff) as u64) {
@@ -1016,11 +1345,31 @@ where
 
         self.set_props(batch[..count].iter().copied()).await?;
 
-        self.config = Some(config.clone());
+        self.state.config = Some(config.clone());
         Ok(())
     }
 
     /// Ensure raw-stream RX is enabled (so the RCP forwards received frames).
+    async fn ensure_channel(&mut self, channel: u8) -> Result<(), RadioErrorKind> {
+        if self.channel != channel {
+            self.set_prop(PROP_PHY_CHAN, &[channel]).await?;
+            self.channel = channel;
+        }
+
+        Ok(())
+    }
+
+    /// Push a CCA threshold (dBm) to the RCP.
+    async fn ensure_cca_threshold(&mut self, threshold: i8) -> Result<(), RadioErrorKind> {
+        if self.cca_threshold != threshold {
+            self.set_prop(PROP_PHY_CCA_THRESHOLD, &[threshold as u8])
+                .await?;
+            self.cca_threshold = threshold;
+        }
+
+        Ok(())
+    }
+
     async fn ensure_rx_enabled(&mut self, enabled: bool) -> Result<(), RadioErrorKind> {
         if self.rx_enabled != enabled {
             self.set_prop(PROP_MAC_RAW_STREAM_ENABLED, &[enabled as u8])
@@ -1116,12 +1465,49 @@ where
         Ok(RadioCaps {
             phy: self.caps,
             mac: SPINEL_RADIO_MAC_CAPS,
+            receive_sensitivity: self.sensitivity,
+            default_tx_power: self.default_tx_power,
+            default_cca_threshold: self.default_cca_threshold,
         })
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
         self.ensure_init().await?;
+        self.flush_src_match().await?;
         self.flush_config(config).await
+    }
+
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
+        self.ensure_init().await?;
+        self.flush_src_match().await?;
+
+        // The RCP receives on the channel property; the raw stream is what
+        // makes it forward the frames to us.
+        self.ensure_channel(channel).await?;
+        self.ensure_rx_enabled(true).await
+    }
+
+    async fn set_sleep(&mut self) -> Result<(), Self::Error> {
+        self.ensure_init().await?;
+
+        // Stop the RCP from streaming frames up. This is the closest thing to
+        // "park" the spinel raw-MAC surface offers: `PROP_MAC_RAW_STREAM_ENABLED`
+        // is what the upstream POSIX host toggles too.
+        self.ensure_rx_enabled(false).await
+    }
+
+    async fn set_src_match_config(&mut self, entries: &SrcMatchConfig) -> Result<(), Self::Error> {
+        self.state.src_match = entries.clone();
+        self.src_match_dirty = true;
+
+        // Push right away when the link is already up; before the handshake
+        // the dirty flag keeps it pending and the operation prologues flush
+        // it (which also re-delivers the table across an RCP re-init).
+        if self.eui64.is_some() {
+            self.flush_src_match().await?;
+        }
+
+        Ok(())
     }
 
     async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
@@ -1189,13 +1575,24 @@ where
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        cca: bool,
+        channel: u8,
+        power: i8,
+        cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         self.ensure_init().await?;
+        self.flush_src_match().await?;
 
-        let channel = self.config.as_ref().map(|c| c.channel).unwrap_or(11);
-        let tx_power = self.config.as_ref().map(|c| c.power).unwrap_or(0);
+        // The frame carries its own channel and power below, but the RCP's
+        // channel property is what its receiver returns to afterwards, so keep
+        // the two in step. The CCA threshold has no per-frame slot at all - it
+        // is a property, pushed only when it moves.
+        self.ensure_channel(channel).await?;
+        if let Some(threshold) = cca_threshold {
+            self.ensure_cca_threshold(threshold).await?;
+        }
+
+        let tx_power = power;
 
         // Build the STREAM_RAW transmit payload:
         //   data-with-len(psdu) + channel + maxCsmaBackoffs + maxFrameRetries
@@ -1220,7 +1617,7 @@ where
         n += 1;
         payload[n] = 3; // maxFrameRetries
         n += 1;
-        payload[n] = cca as u8; // csmaCaEnabled
+        payload[n] = cca_threshold.is_some() as u8; // csmaCaEnabled
         n += 1;
         payload[n] = 1; // isHeaderUpdated (OT core secured the frame)
         n += 1;
@@ -1281,7 +1678,7 @@ where
         p += 2;
 
         // The remaining bytes are the ACK radio frame (if any was received).
-        let Some((ack_psdu, ack_rssi, ack_channel)) = parse_radio_frame(&body[p..]) else {
+        let Some((ack_psdu, ack_rssi, ack_channel, ack_lqi)) = parse_radio_frame(&body[p..]) else {
             return Ok(None);
         };
 
@@ -1293,6 +1690,7 @@ where
                     len: copy,
                     channel: ack_channel.unwrap_or(channel),
                     rssi: ack_rssi,
+                    lqi: ack_lqi,
                 }))
             }
             // The caller didn't ask for the ACK PSDU (didn't expect an ACK), so
@@ -1303,25 +1701,30 @@ where
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         self.ensure_init().await?;
+        self.flush_src_match().await?;
+        // Normally already done by `set_receive`; re-asserted here because a
+        // `receive` may also follow a transmit, and because it is cheap (the
+        // property is only written when it actually changes).
         self.ensure_rx_enabled(true).await?;
 
         // Fallback for frames whose metadata lacks the PHY-data struct; the
         // parsed per-frame channel is preferred (a stashed frame may have been
-        // received on a different channel than the current config's, e.g.
-        // during an active scan).
-        let cfg_channel = self.config.as_ref().map(|c| c.channel).unwrap_or(0);
+        // received on a different channel than the one the RCP is tuned to
+        // now, e.g. during an active scan).
+        let cfg_channel = self.channel;
 
         // First return any frame that was stashed while we were busy waiting for
         // a command response (see `try_stash_rx`). This is the common case —
         // inbound frames usually arrive during a transmit.
         while let Some(stashed) = self.rx_queue.pop_front() {
-            if let Some((psdu, rssi, rx_channel)) = parse_radio_frame(&stashed) {
+            if let Some((psdu, rssi, rx_channel, lqi)) = parse_radio_frame(&stashed) {
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
                 return Ok(PsduMeta {
                     len: copy,
                     channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
+                    lqi,
                 });
             }
             // Unparseable stashed frame — skip and try the next.
@@ -1337,7 +1740,7 @@ where
 
             // Unsolicited STREAM_RAW notification = a received frame.
             if tid == 0 && rcmd == CMD_PROP_VALUE_IS && rprop == PROP_STREAM_RAW {
-                let Some((psdu, rssi, rx_channel)) = parse_radio_frame(&frame[off..]) else {
+                let Some((psdu, rssi, rx_channel, lqi)) = parse_radio_frame(&frame[off..]) else {
                     continue;
                 };
 
@@ -1348,9 +1751,26 @@ where
                     len: copy,
                     channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
+                    lqi,
                 });
             }
             // Other frames (matched responses to a concurrent op, status) — ignore.
         }
     }
+}
+
+/// The driver's larger-than-a-register state, kept in the resources rather
+/// than in [`SpinelRadio`] itself so the radio value - held across `await`
+/// points by the radio loop's futures - stays small: the two source-match
+/// tables (~170 bytes each) and the last-applied [`Config`].
+struct SpinelRadioState {
+    /// The latest source-match table from the stack; `src_match_dirty` in the
+    /// radio marks it not yet pushed to the RCP.
+    src_match: SrcMatchConfig,
+    /// The source-match table as the RCP currently has it: what the
+    /// per-entry INSERT/REMOVE flush has successfully applied so far. The
+    /// diff between this and `src_match` is what a flush sends.
+    src_match_flushed: SrcMatchConfig,
+    /// Last-applied config; used to only re-send changed properties.
+    config: Option<Config>,
 }

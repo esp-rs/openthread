@@ -57,19 +57,19 @@ impl<'a> OperationalDataset<'a> {
         Self {
             active_timestamp: components
                 .active_timestamp_present
-                .then(|| ThreadTimestamp {
+                .then_some(ThreadTimestamp {
                     seconds: raw.mActiveTimestamp.mSeconds,
                     ticks: raw.mActiveTimestamp.mTicks,
                     authoritative: raw.mActiveTimestamp.mAuthoritative,
                 }),
             pending_timestamp: components
                 .pending_timestamp_present
-                .then(|| ThreadTimestamp {
+                .then_some(ThreadTimestamp {
                     seconds: raw.mPendingTimestamp.mSeconds,
                     ticks: raw.mPendingTimestamp.mTicks,
                     authoritative: raw.mPendingTimestamp.mAuthoritative,
                 }),
-            network_key: components.network_key_present.then(|| raw.mNetworkKey.m8),
+            network_key: components.network_key_present.then_some(raw.mNetworkKey.m8),
             network_name: components.network_name_present.then(|| {
                 let name = unsafe {
                     core::slice::from_raw_parts(
@@ -89,14 +89,14 @@ impl<'a> OperationalDataset<'a> {
             }),
             extended_pan_id: components
                 .extended_pan_id_present
-                .then(|| raw.mExtendedPanId.m8),
+                .then_some(raw.mExtendedPanId.m8),
             mesh_local_prefix: components
                 .mesh_local_prefix_present
-                .then(|| raw.mMeshLocalPrefix.m8),
+                .then_some(raw.mMeshLocalPrefix.m8),
             delay: components.delay_present.then_some(raw.mDelay),
             pan_id: components.pan_id_present.then_some(raw.mPanId),
             channel: components.channel_present.then_some(raw.mChannel),
-            pskc: components.pskc_present.then(|| raw.mPskc.m8),
+            pskc: components.pskc_present.then_some(raw.mPskc.m8),
             security_policy: components
                 .security_policy_present
                 .then(|| SecurityPolicy::load_raw(&raw.mSecurityPolicy)),

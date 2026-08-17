@@ -3,9 +3,13 @@ resolver = "2"
 members = [
     "openthread",
     "openthread-sys",
+    "examples/std",
 ]
 
-exclude = ["examples", "xtask"]
+# `tests` cannot be a workspace member: its binaries run on
+# `embassy_executor::raw` with their own `__pender` and embassy-time driver
+# (the virtual-time lockstep executor), which clashes with `examples/std`.
+exclude = ["examples/esp", "examples/nrf", "xtask", "tests", "tests/esp", "tests/nrf"]
 
 [workspace.dependencies]
 log = { version = "0.4", default-features = false }
@@ -27,8 +31,8 @@ embedded-hal-async = { version = "1", default-features = false }
 # addition (its serial handles need a different, overlapped-I/O path).
 async-io = { version = "2", default-features = false }
 nix = { version = "0.30", default-features = false }
-esp-radio = { version = "0.18", default-features = false }
-embassy-nrf = { version = "0.10", default-features = false }
+esp-radio = { version = "1.0.0-beta.0", default-features = false }
+embassy-nrf = { version = "0.11", default-features = false }
 portable-atomic = { version = "1", default-features = false }
 
 mbedtls-rs-sys = { version = "0.1", default-features = false }

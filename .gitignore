@@ -1,8 +1,12 @@
 */build
 */target
 target
+# `cargo xtask itest` scratch state (python venv, harness shim dirs, run logs)
+.build
 tmpsrc
 .idea
 .vscode
 .embuild
 Cargo.lock
+/tmp/
+/tests/tmp/

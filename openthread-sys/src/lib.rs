@@ -40,6 +40,16 @@ pub use self::bindings::*;
 #[cfg(feature = "mbedtls-rs-sys")]
 use mbedtls_rs_sys as _;
 
+// The CLI output bridge (see `gen/support/src/cli_shim.c`): initializes the C
+// CLI with a callback that formats each output chunk and forwards the bytes to
+// the `otr_cli_output` Rust function (implemented by the `openthread` crate).
+// Declared by hand rather than generated: the symbol lives in the shim, not in
+// an OpenThread public header.
+#[cfg(feature = "cli")]
+extern "C" {
+    pub fn otr_cli_init(instance: *mut otInstance, context: *mut core::ffi::c_void);
+}
+
 #[allow(
     non_camel_case_types,
     non_snake_case,

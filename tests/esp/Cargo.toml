@@ -1,0 +1,147 @@
+[package]
+name = "openthread-tests-esp"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+publish = false
+categories = ["embedded", "hardware-support"]
+keywords = ["thread", "openthread", "embedded", "test"]
+description = "The ESP32-C6/H2 firmware node of `openthread`'s hardware-in-the-loop test tier: the full stack on the MCU, driven through its USB-Serial-JTAG console by the upstream OpenThread test harness"
+repository = "https://github.com/esp-rs/openthread"
+license = "MIT OR Apache-2.0"
+rust-version = "1.84"
+
+[profile.dev]
+# Rust debug is too slow for a radio with real deadlines.
+opt-level = "z"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = "fat"
+debug = 2
+debug-assertions = false
+overflow-checks = false
+
+[features]
+default = ["esp32c6"]
+esp32c6 = [
+    "esp-rtos/esp32c6",
+    "esp-radio/esp32c6",
+    "esp-hal/esp32c6",
+    "esp-backtrace/esp32c6",
+    "esp-println/esp32c6",
+    "esp-bootloader-esp-idf/esp32c6",
+    "esp-storage/esp32c6",
+]
+esp32h2 = [
+    "esp-rtos/esp32h2",
+    "esp-radio/esp32h2",
+    "esp-hal/esp32h2",
+    "esp-backtrace/esp32h2",
+    "esp-println/esp32h2",
+    "esp-bootloader-esp-idf/esp32h2",
+    "esp-storage/esp32h2",
+]
+force-generate-bindings = ["openthread/force-generate-bindings"]
+
+[dependencies]
+embassy-executor = "0.10"
+embassy-sync = "0.8"
+embassy-futures = "0.1"
+embassy-time = "0.5"
+esp-hal = { version = "~1.1", features = ["log-04", "unstable", "exception-handler"] }
+esp-rtos = { version = "0.3", features = ["esp-radio", "embassy"] }
+esp-alloc = { version = "0.10" }
+esp-backtrace = { version = "0.19", features = ["panic-handler", "println"] }
+esp-println = { version = "0.17", features = ["log-04"] }
+esp-radio = { version = "1.0.0-beta.0", features = ["unstable", "ieee802154"] }
+esp-bootloader-esp-idf = { version = "0.5", features = ["log-04"] }
+esp-storage = "0.9"
+log = "0.4"
+heapless = "0.9"
+critical-section = "1.2"
+rand_core = "0.9"
+static_cell = "2.1"
+embedded-io-async = "0.7"
+tinyrlibc = { version = "0.5", default-features = false, features = [
+    "abs",
+    "atoi",
+    "isalpha",
+    "isdigit",
+    "isspace",
+    "isupper",
+    "itoa",
+    "utoa",
+    "memchr",
+    "strcat",
+    "strchr",
+    "strcmp",
+    "strcpy",
+    "strcspn",
+    "strlen",
+    "strncasecmp",
+    "strncmp",
+    "strncpy",
+    "strrchr",
+    "strspn",
+    "strstr",
+    "strtol",
+    "strtoul",
+] }
+openthread = { path = "../../openthread", default-features = false, features = [
+    "esp-radio",
+    "log",
+    "ftd",
+    "cli",
+    "mac-filter",
+    "ping-sender",
+    "slaac",
+    "ecdsa",
+    "dns-client",
+    "srp-client",
+    "commissioner",
+    "joiner",
+    "border-router",
+    "netdiag-client",
+    "reference-device",
+    # The functional pool drives these on whichever node the script picks -
+    # often node 1, i.e. this DUT. Their absence fails tests with
+    # `Error 35: InvalidCommand` (found the hard way on the first extended
+    # MCU sweep: the whole SRP family plus CoAP/DHCP6/fragmentation).
+    "srp-server",
+    "dnssd-server",
+    "service",
+    "netdata-publisher",
+    "coap",
+    "coaps",
+    "dataset-updater",
+    "child-supervision",
+    "history-tracker",
+    "anycast-locator",
+    "neighbor-discovery-agent",
+    "ip6-fragmentation",
+    "dhcp6-client",
+    "dhcp6-server",
+    "diagnostic",
+] }
+
+[[bin]]
+path = "./src/bin/cli_node.rs"
+name = "cli_node"
+harness = false
+
+# The released esp family lacks four fixes we need, all merged upstream:
+# - https://github.com/esp-rs/esp-hal/pull/6090
+# - https://github.com/esp-rs/esp-hal/pull/6089
+# - https://github.com/esp-rs/esp-hal/pull/6097
+# - https://github.com/esp-rs/esp-hal/pull/6104
+[patch.crates-io]
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-storage = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }

@@ -7,7 +7,8 @@ use esp_radio::ieee802154::Config as EspConfig;
 
 use crate::fmt::Bytes;
 use crate::{
-    Capabilities, Cca, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
+    Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
+    SrcMatchConfig,
 };
 
 pub use esp_radio::ieee802154::Ieee802154;
@@ -16,11 +17,27 @@ pub use esp_radio::ieee802154::Ieee802154;
 pub struct EspRadio<'a> {
     driver: Ieee802154<'a>,
     config: Config,
+    channel: u8,
+    power: i8,
+    cca_threshold: i8,
     rx_queue_size: usize,
 }
 
 impl<'a> EspRadio<'a> {
     const DEFAULT_CONFIG: Config = Config::new();
+
+    /// The transmit power the radio starts with, reported to the stack as
+    /// this radio's default (`RadioCaps::default_tx_power`) and used until
+    /// OpenThread sets another. Matches `esp-radio`'s own default.
+    const DEFAULT_TX_POWER: i8 = 10;
+
+    /// The CCA energy-detect threshold the radio starts with, in dBm - the
+    /// ESP-IDF default (`CONFIG_IEEE802154_CCA_THRESHOLD`), which is also
+    /// `esp-radio`'s.
+    const DEFAULT_CCA_THRESHOLD: i8 = -60;
+
+    /// The channel the radio starts on, until the stack commands another.
+    const DEFAULT_CHANNEL: u8 = 11;
 
     /// Default esp-radio receive-queue depth (frames buffered before drops).
     ///
@@ -34,6 +51,9 @@ impl<'a> EspRadio<'a> {
         let mut this = Self {
             driver: ieee802154,
             config: Self::DEFAULT_CONFIG,
+            channel: Self::DEFAULT_CHANNEL,
+            power: Self::DEFAULT_TX_POWER,
+            cca_threshold: Self::DEFAULT_CCA_THRESHOLD,
             rx_queue_size: Self::DEFAULT_RX_QUEUE_SIZE,
         };
 
@@ -71,21 +91,11 @@ impl<'a> EspRadio<'a> {
             enhance_ack_tx: true,
             promiscuous: config.promiscuous,
             coordinator: false,
-            rx_when_idle: config.rx_when_idle,
-            txpower: config.power,
-            channel: config.channel,
-            cca_threshold: match config.cca {
-                Cca::Carrier => 0,
-                Cca::Ed { ed_threshold } => ed_threshold as _,
-                Cca::CarrierAndEd { ed_threshold } => ed_threshold as _,
-                Cca::CarrierOrEd { ed_threshold } => ed_threshold as _,
-            },
-            cca_mode: match config.cca {
-                Cca::Carrier => esp_radio::ieee802154::CcaMode::Carrier,
-                Cca::Ed { .. } => esp_radio::ieee802154::CcaMode::Ed,
-                Cca::CarrierAndEd { .. } => esp_radio::ieee802154::CcaMode::CarrierAndEd,
-                Cca::CarrierOrEd { .. } => esp_radio::ieee802154::CcaMode::CarrierOrEd,
-            },
+            rx_when_idle: !config.auto_sleep,
+            txpower: self.power,
+            channel: self.channel,
+            cca_threshold: self.cca_threshold,
+            cca_mode: esp_radio::ieee802154::CcaMode::Ed,
             pan_id: config.pan_id,
             short_addr: config.short_addr,
             // `config.alt_short_addr` (the second short address an FTD accepts
@@ -116,6 +126,18 @@ impl<'a> EspRadio<'a> {
         self.driver.set_config(esp_config);
     }
 
+    /// Apply the operation parameters that now arrive per-operation, pushing
+    /// a driver config only when one of them actually changed.
+    fn set_op_params(&mut self, channel: u8, power: i8, cca_threshold: i8) {
+        if self.channel != channel || self.power != power || self.cca_threshold != cca_threshold {
+            self.channel = channel;
+            self.power = power;
+            self.cca_threshold = cca_threshold;
+
+            self.update_driver_config();
+        }
+    }
+
     fn rx_callback() {
         RX_SIGNAL.signal(());
     }
@@ -142,9 +164,39 @@ impl Radio for EspRadio<'_> {
         // this radio yield no measurements (see `Radio::energy_scan`).
         Ok(RadioCaps {
             phy: Capabilities::ACK_TIMEOUT.union(Capabilities::CSMA_BACKOFF),
-            // .union(Capabilities::RX_ON_WHEN_IDLE) TODO: Depends on coex being off in ESP-IDF
-            mac: MacCapabilities::all(),
+            // .union(Capabilities::AUTO_SLEEP) TODO: Depends on coex being off in ESP-IDF
+            //
+            // TODO: Upstream `SRC_MATCH` support to `esp-radio`.
+            mac: MacCapabilities::all().difference(MacCapabilities::SRC_MATCH),
+            // TODO: Report the ESP 802.15.4 hardware's real figure.
+            receive_sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
+            default_tx_power: Self::DEFAULT_TX_POWER,
+            default_cca_threshold: Self::DEFAULT_CCA_THRESHOLD,
         })
+    }
+
+    async fn set_src_match_config(&mut self, _config: &SrcMatchConfig) -> Result<(), Self::Error> {
+        // No-op (but will be called) because the driver does not report `MacCapabilities::SRC_MATCH`
+        Ok(())
+    }
+
+    async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
+        self.set_op_params(channel, self.power, self.cca_threshold);
+
+        self.driver.start_receive();
+
+        Ok(())
+    }
+
+    async fn set_sleep(&mut self) -> Result<(), Self::Error> {
+        // TODO: Upstream in `esp-radio` a `stop_receive` counterpart to the existing `start_receive`
+        // and call it here.
+        //
+        // Until that gap is closed: the receiver stays on while OpenThread believes this node is asleep,
+        // so a sleepy end device neither saves the power it parked for, nor genuinely misses the traffic
+        // the stack assumes it missed (see `docs/radio-contract.md`, C6) - frames keep accumulating in
+        // the driver queue and are delivered late on the next `receive`.
+        Ok(())
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
@@ -161,19 +213,21 @@ impl Radio for EspRadio<'_> {
     async fn transmit(
         &mut self,
         psdu: &[u8],
-        cca: bool,
+        channel: u8,
+        power: i8,
+        cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
         TX_SIGNAL.reset();
 
-        trace!(
-            "802.15.4: About to TX {} bytes ch{}",
-            psdu.len(),
-            self.config.channel
-        );
+        // The threshold only matters when CCA is performed at all; keep the
+        // current one otherwise, so a no-CCA frame does not churn the config.
+        self.set_op_params(channel, power, cca_threshold.unwrap_or(self.cca_threshold));
+
+        trace!("802.15.4: About to TX {} bytes ch{}", psdu.len(), channel);
 
         self.driver
-            .transmit_raw(psdu, cca)
+            .transmit_raw(psdu, cca_threshold.is_some())
             .map_err(|_| RadioErrorKind::Other)?;
 
         let success = TX_SIGNAL.wait().await;
@@ -210,6 +264,7 @@ impl Radio for EspRadio<'_> {
                                 len: ack_psdu_len,
                                 channel: ack_frame.channel,
                                 rssi,
+                                lqi: None,
                             }));
                         } else {
                             trace!(
@@ -233,8 +288,10 @@ impl Radio for EspRadio<'_> {
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         RX_SIGNAL.reset();
 
-        trace!("802.15.4: About to RX on ch{}", self.config.channel);
+        trace!("802.15.4: About to RX on ch{}", self.channel);
 
+        // Idempotent: `set_receive` has normally armed the driver already, but
+        // a `receive` following a transmit needs the RX path back on.
         self.driver.start_receive();
 
         let raw = loop {
@@ -280,6 +337,7 @@ impl Radio for EspRadio<'_> {
             len: psdu_len,
             channel: raw.channel,
             rssi,
+            lqi: None,
         })
     }
 }

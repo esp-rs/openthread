@@ -1,0 +1,141 @@
+[package]
+name = "openthread-tests-nrf"
+version = "0.1.0"
+edition = "2021"
+resolver = "2"
+publish = false
+categories = ["embedded", "hardware-support"]
+keywords = ["thread", "openthread", "embedded", "test"]
+description = "The nRF firmware node of `openthread`'s hardware-in-the-loop test tier: the full stack on an nRF52840, driven through its serial console by the upstream OpenThread test harness"
+repository = "https://github.com/esp-rs/openthread"
+license = "MIT OR Apache-2.0"
+rust-version = "1.84"
+
+# Its own package - and its own target, toolchain config and lockfile - because
+# it cross-compiles to `thumbv7em-none-eabi` while the host side of the test
+# crate is `std`. Same split the `examples/{nrf,esp,std}` tree already uses.
+
+[profile.dev]
+# Rust debug is too slow for a radio with real deadlines.
+opt-level = "z"
+
+[profile.release]
+codegen-units = 1
+opt-level = "z"
+lto = "fat"
+debug = 2
+debug-assertions = false
+overflow-checks = false
+
+[features]
+default = []
+force-generate-bindings = ["openthread/force-generate-bindings"]
+# Link for a board carrying the Adafruit nRF52 UF2 bootloader, which owns the
+# bottom of flash - see `memory-uf2.x`. Without it the firmware is linked to
+# own all of flash, which is right for a board flashed through a debug probe
+# and would overwrite a bootloader.
+uf2 = []
+# Bind the CLI console to the nRF's own USB peripheral (CDC ACM) instead of
+# `UARTE0`. Required for a board whose only serial port is USB - a XIAO
+# nRF52840 or an nRF52840 dongle - and wrong for one where the host talks to a
+# UART-to-USB bridge, like the DK's J-Link VCOM.
+console-usb = ["dep:embassy-usb"]
+
+[dependencies]
+cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
+cortex-m-rt = "0.7.0"
+rtt-target = { version = "0.6", features = ["defmt"] }
+panic-rtt-target = "0.2"
+embassy-executor = { version = "0.10", features = ["platform-cortex-m", "executor-thread", "executor-interrupt", "defmt"] }
+embassy-sync = { version = "0.8", features = ["defmt"] }
+embassy-futures = "0.1"
+embassy-time = { version = "0.5", features = ["defmt"] }
+embassy-usb = { version = "0.5", features = ["defmt"], optional = true }
+embassy-nrf = { version = "0.11", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time"] }
+defmt = "0.3"
+# Settings persistence - see `src/settings.rs`.
+embedded-storage = "0.3"
+heapless = "0.9"
+critical-section = "1.2"
+rand_core = "0.9"
+static_cell = "2.1"
+embedded-alloc = "0.7.0"
+# The C CLI library reaches for a good deal more of libc than the examples do
+# (`cli_srp_client.cpp` alone wants `strchr`/`strncpy`) - but only the
+# pure-Rust pieces: NOT `all`, which pulls tinyrlibc's vendored C printf and
+# with it a C cross-compiler, for a `vsnprintf` nobody needs (the `openthread`
+# build carries nanoprintf anyway). Same trimmed set as `tests/esp`, plus
+# `alloc` for the C malloc/free surface (backed by `embedded-alloc`).
+tinyrlibc = { version = "0.5", default-features = false, features = [
+    "alloc",
+    "abs",
+    "atoi",
+    "isalpha",
+    "isdigit",
+    "isspace",
+    "isupper",
+    "itoa",
+    "utoa",
+    "memchr",
+    "strcat",
+    "strchr",
+    "strcmp",
+    "strcpy",
+    "strcspn",
+    "strlen",
+    "strncasecmp",
+    "strncmp",
+    "strncpy",
+    "strrchr",
+    "strspn",
+    "strstr",
+    "strtol",
+    "strtoul",
+] }
+
+# The same feature set the host DUT (`openthread-tests`' `cli_node`) is built
+# with, so the harness meets the same CLI surface on either tier - minus the
+# host-only ones. `embassy-nrf` is what brings in `NrfRadio`.
+openthread = { path = "../../openthread", default-features = false, features = [
+    "embassy-nrf",
+    "defmt",
+    "ftd",
+    "cli",
+    # NOTE: no `isupper` - `tinyrlibc` provides that symbol here, and enabling
+    # both makes the link fail on a duplicate definition.
+    "mac-filter",
+    "ping-sender",
+    "slaac",
+    "ecdsa",
+    "dns-client",
+    "srp-client",
+    "commissioner",
+    "joiner",
+    "border-router",
+    "netdiag-client",
+    "reference-device",
+    # The functional pool drives these on whichever node the script picks -
+    # often node 1, i.e. this DUT. Their absence fails tests with
+    # `Error 35: InvalidCommand` (found the hard way on the first extended
+    # MCU sweep: the whole SRP family plus CoAP/DHCP6/fragmentation).
+    "srp-server",
+    "dnssd-server",
+    "service",
+    "netdata-publisher",
+    "coap",
+    "coaps",
+    "dataset-updater",
+    "child-supervision",
+    "history-tracker",
+    "anycast-locator",
+    "neighbor-discovery-agent",
+    "ip6-fragmentation",
+    "dhcp6-client",
+    "dhcp6-server",
+    "diagnostic",
+] }
+
+[[bin]]
+path = "./src/bin/cli_node.rs"
+name = "cli_node"
+harness = false

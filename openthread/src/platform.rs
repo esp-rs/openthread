@@ -106,6 +106,40 @@ extern "C" fn otPlatRadioSetPromiscuous(instance: *const otInstance, enable: boo
 }
 
 #[no_mangle]
+extern "C" fn otPlatRadioGetTransmitPower(instance: *const otInstance, power: *mut i8) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_get_transmit_power(unsafe { power.as_mut() })
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetTransmitPower(instance: *const otInstance, power: i8) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_set_transmit_power(power)
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetCcaEnergyDetectThreshold(
+    instance: *const otInstance,
+    threshold: *mut i8,
+) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_get_cca_energy_detect_threshold(unsafe { threshold.as_mut() })
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetCcaEnergyDetectThreshold(
+    instance: *const otInstance,
+    threshold: i8,
+) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_set_cca_energy_detect_threshold(threshold)
+        .into_ot_code()
+}
+
+#[no_mangle]
 extern "C" fn otPlatRadioGetRssi(instance: *const otInstance) -> i8 {
     OtContext::callback(instance).plat_radio_get_rssi()
 }
@@ -190,78 +224,118 @@ extern "C" fn otPlatRadioReceive(instance: *mut otInstance, channel: u8) -> otEr
 
 // --- Source-address match (FTD only) ---
 //
-// OpenThread routers/leaders (FTD) ask the radio to filter frames by the
-// short/extended source addresses of their attached children. These callbacks
-// are only referenced when an FTD `libopenthread-ftd.a` is linked; on MTD they
-// are never called and are dropped by `--gc-sections`.
-//
-// TODO: surface these on the high-level radio trait so a driver can implement
-// real hardware source matching. The defaults below accept-and-ignore (i.e. the
-// radio behaves as if source matching is unavailable), which is functionally
-// safe — OpenThread falls back to indirect transmission without HW assist.
+// Only called when an FTD `libopenthread-ftd.a` is linked;
+// on MTD they are never called and are dropped by `--gc-sections`.
 
 #[no_mangle]
-extern "C" fn otPlatRadioEnableSrcMatch(_instance: *const otInstance, _enable: bool) {}
+extern "C" fn otPlatRadioEnableSrcMatch(instance: *const otInstance, enable: bool) {
+    OtContext::callback(instance).plat_radio_enable_src_match(enable);
+}
 
 #[no_mangle]
 extern "C" fn otPlatRadioAddSrcMatchShortEntry(
-    _instance: *const otInstance,
-    _short_address: u16,
+    instance: *const otInstance,
+    short_address: u16,
 ) -> otError {
-    otError_OT_ERROR_NONE
+    OtContext::callback(instance)
+        .plat_radio_add_src_match_short(short_address)
+        .into_ot_code()
 }
 
 #[no_mangle]
 extern "C" fn otPlatRadioAddSrcMatchExtEntry(
-    _instance: *const otInstance,
-    _ext_address: *const u8,
+    instance: *const otInstance,
+    ext_address: *const u8,
 ) -> otError {
-    otError_OT_ERROR_NONE
+    // Byte order as for `otPlatRadioSetExtendedAddress` above.
+    let ext_address = u64::from_le_bytes(unwrap!(unsafe {
+        core::slice::from_raw_parts(ext_address, 8)
+    }
+    .try_into()));
+
+    OtContext::callback(instance)
+        .plat_radio_add_src_match_ext(ext_address)
+        .into_ot_code()
 }
 
 #[no_mangle]
 extern "C" fn otPlatRadioClearSrcMatchShortEntry(
-    _instance: *const otInstance,
-    _short_address: u16,
+    instance: *const otInstance,
+    short_address: u16,
 ) -> otError {
-    otError_OT_ERROR_NONE
+    OtContext::callback(instance)
+        .plat_radio_clear_src_match_short(short_address)
+        .into_ot_code()
 }
 
 #[no_mangle]
 extern "C" fn otPlatRadioClearSrcMatchExtEntry(
-    _instance: *const otInstance,
-    _ext_address: *const u8,
+    instance: *const otInstance,
+    ext_address: *const u8,
 ) -> otError {
-    otError_OT_ERROR_NONE
+    let ext_address = u64::from_le_bytes(unwrap!(unsafe {
+        core::slice::from_raw_parts(ext_address, 8)
+    }
+    .try_into()));
+
+    OtContext::callback(instance)
+        .plat_radio_clear_src_match_ext(ext_address)
+        .into_ot_code()
 }
 
 #[no_mangle]
-extern "C" fn otPlatRadioClearSrcMatchShortEntries(_instance: *const otInstance) {}
-
-#[no_mangle]
-extern "C" fn otPlatRadioClearSrcMatchExtEntries(_instance: *const otInstance) {}
-
-// --- PBKDF2 (FTD with commissioning) ---
-//
-// A router acting as a commissioner derives the PSKc via PBKDF2. OpenThread
-// requests it from the platform when `OPENTHREAD_CONFIG_PLATFORM_PBKDF2_ENABLE`
-// is set. Only referenced when both FTD and a commissioning feature are linked.
-//
-// TODO: route this to mbedtls (`mbedtls_pkcs5_pbkdf2_hmac_ext`); for now it
-// reports failure so callers don't silently use an all-zero key.
-#[no_mangle]
-extern "C" fn otPlatCryptoPbkdf2GenerateKey(
-    _password: *const u8,
-    _password_len: u16,
-    _salt: *const u8,
-    _salt_len: u16,
-    _iteration_counter: u32,
-    _key_len: u16,
-    _key: *mut u8,
-) -> otError {
-    // OT_ERROR_NOT_CAPABLE
-    crate::sys::otError_OT_ERROR_NOT_CAPABLE
+extern "C" fn otPlatRadioClearSrcMatchShortEntries(instance: *const otInstance) {
+    OtContext::callback(instance).plat_radio_clear_src_match_short_entries();
 }
+
+#[no_mangle]
+extern "C" fn otPlatRadioClearSrcMatchExtEntries(instance: *const otInstance) {
+    OtContext::callback(instance).plat_radio_clear_src_match_ext_entries();
+}
+
+// Factory diagnostics (`OT_DIAGNOSTIC` builds)
+//
+// The exact minimal surface the upstream simulation platform provides -
+// a mode flag, plus no-op acknowledgments of the channel/power hints and of the received-frame extension hook.
+
+static DIAG_MODE: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+
+#[no_mangle]
+extern "C" fn otPlatDiagModeSet(mode: bool) {
+    DIAG_MODE.store(mode, core::sync::atomic::Ordering::Relaxed);
+}
+
+#[no_mangle]
+extern "C" fn otPlatDiagModeGet() -> bool {
+    DIAG_MODE.load(core::sync::atomic::Ordering::Relaxed)
+}
+
+#[no_mangle]
+extern "C" fn otPlatDiagSetOutputCallback(
+    _instance: *mut otInstance,
+    _callback: *mut core::ffi::c_void,
+    _context: *mut core::ffi::c_void,
+) {
+}
+
+#[no_mangle]
+extern "C" fn otPlatDiagChannelSet(_channel: u8) {}
+
+#[no_mangle]
+extern "C" fn otPlatDiagTxPowerSet(_power: i8) {}
+
+#[no_mangle]
+extern "C" fn otPlatDiagRadioReceived(
+    _instance: *mut otInstance,
+    _frame: *mut otRadioFrame,
+    _error: otError,
+) {
+}
+
+// NOTE: `otPlatCryptoPbkdf2GenerateKey` (PSKc derivation, FTD commissioning)
+// is deliberately NOT defined here: OpenThread's `crypto_platform.cpp` ships
+// a working `OT_TOOL_WEAK` implementation for every FTD build under both of
+// its crypto-lib variants, and a strong Rust stub would shadow it.
 
 #[no_mangle]
 extern "C" fn otPlatSettingsInit(
@@ -370,11 +444,18 @@ extern "C" fn otPlatLog(
     _format: *const c_char,
     str: *const c_char,
 ) -> otError {
-    if level > 0 {
+    {
         if let Ok(str) = unsafe { CStr::from_ptr(str) }.to_str() {
             match level {
+                0 /*NONE*/ => {
+                    // Level-"none" records are not ordinary logs:
+                    // OpenThread emits them only for content that must always surface - the MeshCoP certification dumps of reference-device
+                    // builds (`DumpCert`: `[THCI]` headers plus hex lines). The distinct prefix lets embedders that must expose these on their
+                    // console (test DUTs driven by the upstream cert harness) route on it.
+                    info!("[OpenThread-OUT] {}", str);
+                }
                 1 /*CRIT*/ => {
-                    info!("[OpenThread] {}", str);
+                    error!("[OpenThread] {}", str);
                 }
                 2 /*WARN*/ => {
                     warn!("[OpenThread] {}", str);

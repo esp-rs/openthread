@@ -10,20 +10,31 @@ add_subdirectory(./openthread)
 # Custom C code (`snprintf`/`vsnprintf`, and an empty stub source)
 add_subdirectory(./gen/support)
 
-# Neutralize the OpenThread CLI libraries. OpenThread's NCP libraries
-# unconditionally `target_link_libraries(... openthread-cli-*)` even though the
-# CLI is only *used* when `OPENTHREAD_CONFIG_NCP_CLI_STREAM_ENABLE` is set
-# (off by default here). CMake still *builds* the CLI as a link dependency, and
-# `cli_tcp.cpp` fails to compile against our trimmed MbedTLS profile (it needs
-# X.509). Since the CLI symbols are never referenced, we replace the CLI
+# The OpenThread CLI libraries: really built only for the `cli` cargo feature
+# (`OT_RS_CLI=ON`), neutralized otherwise.
+#
+# Neutralized because OpenThread's NCP libraries unconditionally
+# `target_link_libraries(... openthread-cli-*)` even though the CLI is only
+# *used* when `OPENTHREAD_CONFIG_NCP_CLI_STREAM_ENABLE` is set (off by default
+# here). CMake still *builds* the CLI as a link dependency, and `cli_tcp.cpp`
+# fails to compile against our trimmed MbedTLS profile when TCP is enabled (it
+# needs X.509). When the CLI symbols are not referenced, we replace the CLI
 # targets' sources with a single empty translation unit: the link is satisfied,
 # nothing problematic is compiled, and the upstream submodule stays unpatched.
-set(_empty_src "${CMAKE_CURRENT_SOURCE_DIR}/gen/support/src/empty.c")
-foreach(_cli_target openthread-cli-mtd openthread-cli-ftd openthread-cli-radio)
-    if(TARGET ${_cli_target})
-        set_target_properties(${_cli_target} PROPERTIES SOURCES "${_empty_src}")
-    endif()
-endforeach()
+#
+# With `OT_RS_CLI=ON` the real sources stay in place (`cli_tcp.cpp` is then
+# fully `OPENTHREAD_CONFIG_TCP_ENABLE`-guarded, so it only turns problematic in
+# combination with the `tcp` feature - a combination the `cli` feature does not
+# support with the trimmed MbedTLS profile).
+option(OT_RS_CLI "Build the real OpenThread CLI libraries (`cli` cargo feature)" OFF)
+if(NOT OT_RS_CLI)
+    set(_empty_src "${CMAKE_CURRENT_SOURCE_DIR}/gen/support/src/empty.c")
+    foreach(_cli_target openthread-cli-mtd openthread-cli-ftd openthread-cli-radio)
+        if(TARGET ${_cli_target})
+            set_target_properties(${_cli_target} PROPERTIES SOURCES "${_empty_src}")
+        endif()
+    endforeach()
+endif()
 
 # Umbrella target listing exactly the static libraries `openthread-sys` ships
 # and links (see `gen/features.rs::device_link_libs`). The build script builds
@@ -52,6 +63,12 @@ set(_ot_sys_libs
     openthread-platform-utils-static
     support
 )
+
+# The CLI libraries join the umbrella only when really built (`cli` feature);
+# see the `OT_RS_CLI` block above.
+if(OT_RS_CLI)
+    list(APPEND _ot_sys_libs openthread-cli-mtd openthread-cli-ftd)
+endif()
 # Note: the NCP role (`openthread-ncp-*`, `openthread-spinel-ncp`) is
 # intentionally omitted — see `Cargo.toml` / `gen/features.rs`. Leaving these
 # targets out of the umbrella means CMake never builds them.

@@ -737,6 +737,7 @@ dependencies = [
  "anyhow",
  "clap",
  "env_logger",
+ "libc",
  "log",
  "serde_json",
  "tempfile",

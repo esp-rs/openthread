@@ -10,6 +10,52 @@
 
 use core::fmt::{Debug, Display, LowerHex};
 
+#[cfg(feature = "defmt")]
+#[collapse_debuginfo(yes)]
+macro_rules! dbg2fmt {
+    ($x:expr) => {
+        ::defmt::Debug2Format(&$x)
+    };
+}
+
+#[cfg(not(feature = "defmt"))]
+#[collapse_debuginfo(yes)]
+macro_rules! dbg2fmt {
+    ($x:expr) => {
+        &$x
+    };
+}
+
+#[cfg(feature = "defmt")]
+#[collapse_debuginfo(yes)]
+macro_rules! unwrap_dbg {
+    ($arg:expr) => {
+        match $crate::fmt::Try::into_result($arg) {
+            ::core::result::Result::Ok(t) => t,
+            ::core::result::Result::Err(e) => {
+                ::defmt::panic!(
+                    "unwrap of `{}` failed: {:?}",
+                    ::core::stringify!($arg),
+                    ::defmt::Debug2Format(&e),
+                );
+            }
+        }
+    };
+}
+
+#[cfg(not(feature = "defmt"))]
+#[collapse_debuginfo(yes)]
+macro_rules! unwrap_dbg {
+    ($arg:expr) => {
+        match $crate::fmt::Try::into_result($arg) {
+            ::core::result::Result::Ok(t) => t,
+            ::core::result::Result::Err(e) => {
+                ::core::panic!("unwrap of `{}` failed: {:?}", ::core::stringify!($arg), e);
+            }
+        }
+    };
+}
+
 #[collapse_debuginfo(yes)]
 macro_rules! assert {
     ($($x:tt)*) => {

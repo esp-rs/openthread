@@ -87,6 +87,21 @@ jobs:
       - name: Build - STD Examples
         run: cd examples/std; cargo build --features force-generate-bindings
 
+      # The host-side test crate (`openthread-tests`). The functional runs live
+      # in the Integration Tests workflow; this only keeps it lint- and
+      # build-clean. `hw` pulls in `serialport`, which needs libudev.
+      - name: Install libudev (tests' `hw` feature)
+        run: sudo apt-get update && sudo apt-get install -y libudev-dev
+
+      - name: Fmt Check - Tests
+        run: cd tests; cargo fmt -- --check
+
+      - name: Clippy - Tests
+        run: cd tests; cargo clippy --all-targets --features hw,force-generate-bindings -- -D warnings
+
+      - name: Build - Tests
+        run: cd tests; cargo build --bins --features hw,force-generate-bindings
+
   build-openthread:
     name: Pre-build OpenThread native libs
     runs-on: ubuntu-latest
@@ -202,10 +217,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # [family, examples feature, target, test-driver feature]
+        # The last element selects the `tests/<family>` build variant; for nrf
+        # that is `console-usb` - the hardware-validated XIAO build (the UARTE
+        # console arm is the smaller cfg of the two).
         mcu:
-          - [esp, esp32c6, riscv32imac-unknown-none-elf]
-          - [esp, esp32h2, riscv32imac-unknown-none-elf]
-          - [nrf, default, thumbv7em-none-eabi]
+          - [esp, esp32c6, riscv32imac-unknown-none-elf, esp32c6]
+          - [esp, esp32h2, riscv32imac-unknown-none-elf, esp32h2]
+          - [nrf, default, thumbv7em-none-eabi, console-usb]
     steps:
       - uses: actions/checkout@v4
 
@@ -241,11 +260,13 @@ jobs:
       #       ./
       #       xtask
 
+      # `-p` rather than the whole workspace: `examples/std` is a member too,
+      # and its dependency tree needs `std`, which no MCU target has.
       - name: Clippy
-        run: cargo clippy --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
+        run: cargo clippy -p openthread -p openthread-sys --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
 
       - name: Build
-        run: cargo build --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+        run: cargo build -p openthread -p openthread-sys --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
 
       - name: Fmt Check - Examples
         run: cd examples/${{ matrix.mcu[0] }}; cargo fmt -- --check
@@ -277,6 +298,18 @@ jobs:
 
       - name: Build - Examples
         run: cd examples/${{ matrix.mcu[0] }}; cargo build --no-default-features --features ${{ matrix.mcu[1] }},force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+
+      # The MCU test drivers (`tests/esp`, `tests/nrf`): the firmware nodes of
+      # the hardware-in-the-loop tier. No `--target`/`-Zbuild-std` here - their
+      # own `.cargo/config.toml` carries both, same as local builds.
+      - name: Fmt Check - Test drivers
+        run: cd tests/${{ matrix.mcu[0] }}; cargo fmt -- --check
+
+      - name: Clippy - Test drivers
+        run: cd tests/${{ matrix.mcu[0] }}; cargo clippy --no-default-features --features ${{ matrix.mcu[3] }},force-generate-bindings -- -D warnings
+
+      - name: Build - Test drivers
+        run: cd tests/${{ matrix.mcu[0] }}; cargo build --release --no-default-features --features ${{ matrix.mcu[3] }},force-generate-bindings
 
   # If libraries are rebuilt and tests are successful, we upload them in a specific job
   # that has write access to prevent security breaches, and unwanted use of the token

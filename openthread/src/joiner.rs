@@ -98,7 +98,7 @@ impl OpenThread<'_> {
 
         let res = poll_fn(move |cx| self.activate().state().ot.join_done.poll_wait(cx)).await;
 
-        let _ = scopeguard::ScopeGuard::into_inner(guard);
+        scopeguard::ScopeGuard::into_inner(guard);
 
         ot!(res)
     }

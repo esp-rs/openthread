@@ -89,7 +89,7 @@ heap-int-12288 = []
 heap-int-16384 = []
 heap-int-32768 = []
 heap-int-49152 = []
-heap-int-65536 = []
+heap-int-65528 = []
 
 # ---------------------------------------------------------------------------
 # Device-type / radio-location selection. These pick WHICH static archives are
@@ -114,6 +114,13 @@ heap-int-65536 = []
 # ---------------------------------------------------------------------------
 ftd = []
 rcp = []
+# Compile OpenThread's C CLI library (`openthread-cli-{mtd,ftd}`, normally
+# stubbed out - see `CMakeLists.txt`) and link the flavor matching `?td`,
+# plus the small C shim bridging the CLI's `va_list` output callback to Rust.
+#
+# The CLI is the standard control surface of OpenThread E2E test binaries:
+# the upstream test harness drives devices through it.
+cli = []
 
 # Always generate the bindings during build, even if pre-built bindings for the build target are available
 force-generate-bindings = []
@@ -187,23 +194,31 @@ commissioner = ["_ot-dtls"]
 # the DTLS engine (client+server, cookies) plus J-PAKE, but NOT cert handling.
 # Cert-based DTLS (TCAT / ECDHE-ECDSA) is a separate, manual opt-in.
 _ot-dtls = [
-    "mbedtls-rs-sys/tls-engine",
-    "mbedtls-rs-sys/tls-client",
-    "mbedtls-rs-sys/tls-server",
-    "mbedtls-rs-sys/tls-proto-tls12",
-    "mbedtls-rs-sys/tls-proto-dtls",
-    "mbedtls-rs-sys/alg-ecjpake",
-    "mbedtls-rs-sys/kex-ecjpake",
+    "mbedtls-rs-sys?/tls-engine",
+    "mbedtls-rs-sys?/tls-client",
+    "mbedtls-rs-sys?/tls-server",
+    "mbedtls-rs-sys?/tls-proto-tls12",
+    "mbedtls-rs-sys?/tls-proto-dtls",
+    "mbedtls-rs-sys?/alg-ecjpake",
+    "mbedtls-rs-sys?/kex-ecjpake",
 ]
 # Border functionality
 border-router = []
 border-routing = []
+# Addressing / IPv6 services
+anycast-locator = []
+neighbor-discovery-agent = []
+ip6-fragmentation = []
+# Factory diagnostics
+diagnostic = []
 # Diagnostics / management
 ping-sender = []
 link-metrics-initiator = []
 link-metrics-subject = []
 mac-filter = []
 jam-detection = []
+netdiag-client = []
+reference-device = []
 child-supervision = []
 mesh-diag = []
 history-tracker = []
