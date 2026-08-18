@@ -85,6 +85,18 @@ const DEFAULT_RESET_CMD: &str = "factoryreset";
 /// problem better than we can).
 const PROMPT_TIMEOUT: Duration = Duration::from_secs(10);
 
+/// How quiet the line must go before the bridge trusts it enough to write.
+const SETTLE_QUIET: Duration = Duration::from_millis(50);
+
+/// How long to spend waiting for that quiet before writing anyway.
+const SETTLE_TIMEOUT: Duration = Duration::from_millis(500);
+
+/// How many times to send the reset before falling back to waiting it out.
+const RESET_ATTEMPTS: usize = 3;
+
+/// How long each of those attempts waits for the prompt.
+const RESET_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
+
 /// How long a vanished device gets to re-enumerate before the bridge gives
 /// up and exits. Covers a chip reset plus USB re-enumeration with a wide
 /// margin; a device still gone after this is not rebooting, it is dead.
@@ -351,10 +363,94 @@ fn pump(mut device: Device) -> ! {
 /// expects a prompt within a tenth of a second of spawning us, and a device
 /// that has merely been sitting idle will not volunteer one - so something has
 /// to prod it.
+/// Read until the device shows a prompt, or `timeout` expires.
+fn await_prompt(device: &mut Device, timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    let mut seen = Vec::new();
+    let mut buf = [0; 256];
+
+    while Instant::now() < deadline {
+        match device.read(&mut buf) {
+            Some(n) => {
+                seen.extend_from_slice(&buf[..n]);
+
+                if seen.ends_with(b"> ") {
+                    return true;
+                }
+
+                if seen.len() > 8192 {
+                    seen.drain(..seen.len() - 2);
+                }
+            }
+            None => {
+                if device.take_reconnected() {
+                    return true;
+                }
+
+                wait(
+                    &device.fd,
+                    PollFlags::POLLIN,
+                    Some(Duration::from_millis(50)),
+                );
+            }
+        }
+    }
+
+    false
+}
+
+fn settle(device: &mut Device) {
+    let deadline = Instant::now() + SETTLE_TIMEOUT;
+    let mut quiet_since = Instant::now();
+    let mut buf = [0; 256];
+
+    while Instant::now() < deadline {
+        match device.read(&mut buf) {
+            Some(_) => quiet_since = Instant::now(),
+            None => {
+                if quiet_since.elapsed() >= SETTLE_QUIET {
+                    return;
+                }
+
+                wait(
+                    &device.fd,
+                    PollFlags::POLLIN,
+                    Some(Duration::from_millis(10)),
+                );
+            }
+        }
+    }
+}
+
 fn reset_device(device: &mut Device) {
     let command = std::env::var(RESET_VAR).unwrap_or_else(|_| DEFAULT_RESET_CMD.to_string());
 
-    device.write(format!("{command}\r\n").as_bytes());
+    // Let the line settle before the first write, discarding whatever opening
+    // it stirred up. A USB-serial bridge chip generally (re)configures its UART
+    // when the host opens the port, and that transient reads as framing errors
+    // on both sides - on a XIAO nRF54L15's onboard SAMD11 it corrupts the first
+    // bytes in each direction. Writing the reset into that window loses it, and
+    // the run then proceeds against a device that never reset: stale dataset,
+    // stale role, and tests failing a long way from the cause.
+    settle(device);
+
+    // Retry the reset rather than trusting it to land first time. The first
+    // exchange after an open is the least reliable one there is - see `settle`
+    // - and a lost reset does not fail loudly: the device simply keeps the
+    // previous test's state, so the next test configures a node that is still
+    // running Thread, `extaddr` comes back `InvalidState`, and the failure
+    // surfaces later as a node that never becomes leader. An empty line first,
+    // to flush any half-line the transient left in the device's reader.
+    for attempt in 0..RESET_ATTEMPTS {
+        device.write(b"\r\n");
+        device.write(format!("{command}\r\n").as_bytes());
+
+        if await_prompt(device, RESET_ATTEMPT_TIMEOUT) {
+            return;
+        }
+
+        let _ = attempt;
+    }
 
     // Read until the prompt reappears, discarding the reset's own banner - the
     // harness has not started listening yet, and a boot banner in its stream

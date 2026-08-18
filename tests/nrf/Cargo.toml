@@ -40,6 +40,11 @@ uf2 = []
 # nRF52840 or an nRF52840 dongle - and wrong for one where the host talks to a
 # UART-to-USB bridge, like the DK's J-Link VCOM.
 console-usb = ["dep:embassy-usb"]
+# Which pins the UART console comes out on. The default is the DK's J-Link
+# virtual COM port (P0.06 TX, P0.08 RX); this selects a XIAO nRF52840's D6/D7
+# pads (P1.11 TX, P1.12 RX) instead, which is what a XIAO wired to an external
+# debug probe's UART bridge needs. Ignored under `console-usb`.
+console-uart-xiao = []
 
 [dependencies]
 cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
