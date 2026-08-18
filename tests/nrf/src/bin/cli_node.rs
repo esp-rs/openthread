@@ -39,13 +39,15 @@ use cortex_m_rt::entry;
 
 use embassy_executor::{Executor, InterruptExecutor, Spawner};
 
+#[cfg(not(feature = "console-usb"))]
+use embassy_nrf::buffered_uarte::{BufferedUarte, BufferedUarteRx, BufferedUarteTx};
 use embassy_nrf::interrupt::{InterruptExt, Priority};
 use embassy_nrf::mode::Blocking;
 use embassy_nrf::nvmc::Nvmc;
 use embassy_nrf::radio::ieee802154::Radio as Ieee802154;
 use embassy_nrf::rng::Rng;
 #[cfg(not(feature = "console-usb"))]
-use embassy_nrf::uarte::{self, UarteRx, UarteTx};
+use embassy_nrf::uarte;
 #[cfg(feature = "console-usb")]
 use embassy_nrf::usb;
 use embassy_nrf::{bind_interrupts, interrupt, peripherals, radio};
@@ -85,7 +87,7 @@ macro_rules! mk_static {
 #[cfg(not(feature = "console-usb"))]
 bind_interrupts!(struct Irqs {
     RADIO => radio::InterruptHandler<peripherals::RADIO>;
-    UARTE0 => uarte::InterruptHandler<peripherals::UARTE0>;
+    UARTE0 => embassy_nrf::buffered_uarte::InterruptHandler<peripherals::UARTE0>;
 });
 
 #[cfg(feature = "console-usb")]
@@ -97,9 +99,9 @@ bind_interrupts!(struct Irqs {
 
 /// The console's two ends, whichever peripheral is underneath.
 #[cfg(not(feature = "console-usb"))]
-type ConsoleTx = UarteTx<'static>;
+type ConsoleTx = BufferedUarteTx<'static>;
 #[cfg(not(feature = "console-usb"))]
-type ConsoleRx = UarteRx<'static>;
+type ConsoleRx = BufferedUarteRx<'static>;
 
 #[cfg(feature = "console-usb")]
 type UsbDriver = usb::Driver<'static, usb::vbus_detect::HardwareVbusDetect>;
@@ -138,11 +140,39 @@ fn main() -> ! {
     #[cfg(not(feature = "console-usb"))]
     let (console_tx, console_rx) = {
         let mut uarte_config = uarte::Config::default();
-        uarte_config.baudrate = uarte::Baudrate::BAUD115200;
-        uarte_config.parity = uarte::Parity::EXCLUDED;
+        uarte_config.baudrate = uarte::Baudrate::Baud115200;
+        uarte_config.parity = uarte::Parity::Excluded;
 
-        // The DK's J-Link virtual COM port.
-        uarte::Uarte::new(p.UARTE0, p.P0_08, p.P0_06, Irqs, uarte_config).split()
+        // The DK's J-Link virtual COM port by default; `console-uart-xiao`
+        // picks a XIAO nRF52840's D6/D7 pads instead, for a XIAO wired to an
+        // external debug probe's UART bridge.
+        #[cfg(not(feature = "console-uart-xiao"))]
+        let (rxd, txd) = (p.P0_08, p.P0_06);
+        #[cfg(feature = "console-uart-xiao")]
+        let (rxd, txd) = (p.P1_12, p.P1_11);
+
+        // Buffered rather than a raw `Uarte`: a raw `UarteRx::read` only arms
+        // EasyDMA for the duration of the call, so a byte arriving while the
+        // node echoes the previous one is lost, and the harness sees commands
+        // mangled into `InvalidCommand`. The buffered driver keeps RX armed
+        // into a ring buffer. Its TIMER, PPI channels and PPI group are free
+        // here: this node drives the radio through `embassy-nrf` alone, with
+        // no MPSL and no Nordic C driver bidding for them.
+        let (console_rx, console_tx) = BufferedUarte::new(
+            p.UARTE0,
+            p.TIMER1,
+            p.PPI_CH0,
+            p.PPI_CH1,
+            p.PPI_GROUP3,
+            rxd,
+            txd,
+            Irqs,
+            uarte_config,
+            mk_static!([u8; 1024], [0; 1024]),
+            mk_static!([u8; 1024], [0; 1024]),
+        )
+        .split();
+        (console_tx, console_rx)
     };
 
     #[cfg(feature = "console-usb")]
@@ -227,7 +257,7 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
 
     loop {
         #[cfg(not(feature = "console-usb"))]
-        let read = console_rx.read(&mut buf[..1]).await.map(|()| 1);
+        let read = console_rx.read(&mut buf).await;
         #[cfg(feature = "console-usb")]
         let read = {
             console_rx.wait_connection().await;
@@ -243,9 +273,18 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
                 let line = reader.line().trim();
 
                 match line {
-                    "reset" => cortex_m::peripheral::SCB::sys_reset(),
+                    // Drain before rebooting, or the reply races the reset:
+                    // whether it reaches the wire comes down to timing, and
+                    // the harness is left waiting on a response that was
+                    // never sent - which it reports as a device that went
+                    // quiet, a long way from the cause.
+                    "reset" => {
+                        console::drained().await;
+                        cortex_m::peripheral::SCB::sys_reset()
+                    }
                     "factoryreset" => {
                         let _ = ot.cli_input_line(line);
+                        console::drained().await;
                         cortex_m::peripheral::SCB::sys_reset();
                     }
                     "" => (),
@@ -294,6 +333,8 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
         console_tx.wait_connection().await;
 
         let len = console::read_out(&mut buf).await;
+        // No await between taking the bytes and claiming them - see `tx_begin`.
+        console::tx_begin();
 
         #[cfg(not(feature = "console-usb"))]
         let _ = console_tx.write(&buf[..len]).await;
@@ -335,6 +376,8 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
                 let _ = embassy_time::with_timeout(TX_STALL, console_tx.write_packet(&[])).await;
             }
         }
+
+        console::tx_end();
     }
 }
 

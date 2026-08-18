@@ -30,6 +30,8 @@
 //! truncated line far more usefully than it reports a node that stopped
 //! breathing.
 
+use core::sync::atomic::{AtomicBool, Ordering};
+
 use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
 use embassy_sync::pipe::Pipe;
 
@@ -66,7 +68,30 @@ pub async fn read_out(buf: &mut [u8]) -> usize {
     OUT.read(buf).await
 }
 
-/// Wait until every byte queued so far has been taken by the console task.
+/// Whether the console task is holding bytes it has taken from [`OUT`] but
+/// not yet put on the wire.
+///
+/// An empty pipe is not the same as an empty wire: the task takes a chunk and
+/// only then writes it. Reset paths care about the difference, because a chip
+/// reset that beats the last write truncates the very reply the harness is
+/// waiting for.
+static TX_INFLIGHT: AtomicBool = AtomicBool::new(false);
+
+/// Claim the bytes just taken from [`OUT`] as in flight.
+///
+/// Must be called by the console task with no await between it and the
+/// [`read_out`] that produced the bytes - on a single-threaded executor that
+/// is what makes the hand-off atomic with respect to [`drained`].
+pub fn tx_begin() {
+    TX_INFLIGHT.store(true, Ordering::Release);
+}
+
+/// Release the claim once the bytes are on the wire.
+pub fn tx_end() {
+    TX_INFLIGHT.store(false, Ordering::Release);
+}
+
+/// Wait until every byte queued so far has reached the wire.
 ///
 /// The command loop awaits this after each CLI command, BEFORE reading the
 /// next one: the harness is strictly command-response paced, so parking here
@@ -74,7 +99,7 @@ pub async fn read_out(buf: &mut [u8]) -> usize {
 /// wire - cooperative backpressure that makes command/response traffic
 /// lossless without ever blocking the (synchronous) output callback.
 pub async fn drained() {
-    while !OUT.is_empty() {
+    while !OUT.is_empty() || TX_INFLIGHT.load(Ordering::Acquire) {
         // The drain task is the one emptying the pipe; yielding is what lets
         // it run. `yield_now` alone can spin ahead of a slow wire, so pace it
         // with the smallest real delay.
@@ -89,18 +114,30 @@ pub async fn drained() {
 /// reads - which is also what a person on a serial console expects.
 pub struct LineReader {
     line: heapless::Vec<u8, LINE_MAX>,
+    /// Whether the previous byte was a CR, so that the LF of a CRLF pair is
+    /// swallowed rather than taken as a second, empty line.
+    after_cr: bool,
 }
 
 impl LineReader {
     pub const fn new() -> Self {
         Self {
             line: heapless::Vec::new(),
+            after_cr: false,
         }
     }
 
     /// Feed one received byte; returns whether it completed a line.
+    ///
+    /// CR, LF and CRLF all end a line - but CRLF ends *one*, not two. Taking
+    /// the LF as a second (empty) line would answer a single command with two
+    /// prompts, and whoever is matching prompts on the other end then reads one
+    /// command behind for the rest of the session.
     pub fn push(&mut self, byte: u8) -> bool {
+        let after_cr = core::mem::replace(&mut self.after_cr, byte == b'\r');
+
         match byte {
+            b'\n' if after_cr => false,
             b'\r' | b'\n' => {
                 out(b"\r\n");
                 true

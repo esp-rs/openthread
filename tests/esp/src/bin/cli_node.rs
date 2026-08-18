@@ -171,9 +171,18 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
                 let line = reader.line().trim();
 
                 match line {
-                    "reset" => esp_hal::system::software_reset(),
+                    // Drain before rebooting, or the reply races the reset:
+                    // whether it reaches the wire comes down to timing, and
+                    // the harness is left waiting on a response that was
+                    // never sent - which it reports as a device that went
+                    // quiet, a long way from the cause.
+                    "reset" => {
+                        console::drained().await;
+                        esp_hal::system::software_reset()
+                    }
                     "factoryreset" => {
                         let _ = ot.cli_input_line(line);
+                        console::drained().await;
                         esp_hal::system::software_reset();
                     }
                     "" => (),
@@ -210,8 +219,13 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
 
     loop {
         let len = console::read_out(&mut buf).await;
+        // No await between taking the bytes and claiming them - see `tx_begin`.
+        console::tx_begin();
+
         let _ = console_tx.write_all(&buf[..len]).await;
         let _ = console_tx.flush().await;
+
+        console::tx_end();
     }
 }
 
