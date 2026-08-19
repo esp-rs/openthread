@@ -8,8 +8,8 @@ The crate does not depend on any platform features and only needs an implementat
 The radio might be located on the same die, or the user might provide an implementation that communicates with the actual radio over UART, SPI, USB, etc.
 
 Two IEEE 802.15.4 radios are supported in-crate (others could just implement the `Radio` trait):
-- The ESP32C6 and ESP32H2 radio (enable the `esp-ieee802154` feature);
-- The NRF radio (enable the `embasy-nrf` feature).
+- The ESP32XX radio (enable the `esp-radio` feature)
+- The NRF radio in the `embassy-nrf` HAL - with caveats (enable the `embassy-nrf` feature); Using the [nrf-802154 rado driver](https://github.com/sysgrok/nrf-802154) instead of `embassy-nrf` is strongly recommended though, as the latter is able to keep up with the 802.15.4 ACK timings, is more feature complete, and supports BLE coex
 
 ## Build
 
@@ -32,15 +32,18 @@ For the on-the-fly OpenThread CMake build to work, you'll need to install and se
 
 ## Features
 
+- Thread 1.4 compatibility
 - MTD (Minimal Thread Device) functionality
 - FTD (Full Thread Device) functionality
+- SED functionality (but no CSL yet)
+- Support for the Spinel protocol and 802.15.4 radio offload via Thread RCP
+- CLI API
 - Optional integration with `embassy-net`
-- Out of the box support for the IEEE 802.15.4 radio in Espressif's `esp-hal` and the NRF52 radio in `embassy-nrf`.
+- Out of the box support for the IEEE 802.15.4 radio in Espressif's `esp-hal` and the NRF52 radio in `embassy-nrf`
 
 ## Next
 
-- Sleepy end-device
-- Support for the Spinel protocol and 802.15.4 rasdio oflload via Thread RCP
+- CSL
 
 ## Non-Goals
 
@@ -48,5 +51,6 @@ For the on-the-fly OpenThread CMake build to work, you'll need to install and se
 
 ## Status
 
-- The examples (native OpenThread UDP sockets; `embassy-net` integration; SRP) build and run on Espressif MCUs, and on the NRF52840.
-- `rs-matter` - the pure-Rust Matter stack)- does run with Thread as the operational network, powered by this library 
+- Upstream E2E and expect-framework tests running as part of CI (with virtual time); HIL tests pass with EspRadio and [nrf-802154](https://github.com/sysgrok/nrf-802154)
+- The examples (native OpenThread UDP sockets; `embassy-net` integration; SRP) build and run on Espressif MCUs, and on the NRF52840 / NRF54L10/15
+- `rs-matter` - the pure-Rust Matter stack - does run with Thread as the operational network, powered by this library
