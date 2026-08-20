@@ -5,7 +5,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## Unreleased
+## [0.3.0] - 2026-08-20
 * (Breaking) `heap-int-65536` renamed to `heap-int-65528` as this is the ceiling of an internal heap OpenThread can support (#109)
 * Replace the internal `tinyrlibc`-derived `snprintf` implementation with the much more compliant `nanoprintf` one (#109)
 * Added features for enabling even more OpenThread functionality: `cli`, `anycast-locator`, `neighbor-discovery-agent`, `ip6-fragmentation`, `diagnostic`, `netdiag-client`, `reference-device` - necessary for passing functionality and timing E2E tests (#109)
