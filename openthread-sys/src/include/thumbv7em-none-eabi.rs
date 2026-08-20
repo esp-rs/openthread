@@ -23818,6 +23818,119 @@ unsafe extern "C" {
         aContext: *mut ::core::ffi::c_void,
     );
 }
+/// Represents a CLI command.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otCliCommand {
+    ///< A pointer to the command string.
+    pub mName: *const ::core::ffi::c_char,
+    pub mCommand: ::core::option::Option<
+        unsafe extern "C" fn(
+            aContext: *mut ::core::ffi::c_void,
+            aArgsLength: u8,
+            aArgs: *mut *mut ::core::ffi::c_char,
+        ) -> otError,
+    >,
+}
+impl Default for otCliCommand {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+/// Pointer is called to notify about Console output.
+///
+/// @param[out] aContext    A user context pointer.
+/// @param[in]  aFormat     The format string.
+/// @param[in]  aArguments  The format string arguments.
+///
+/// @returns                Number of bytes written by the callback.
+pub type otCliOutputCallback = ::core::option::Option<
+    unsafe extern "C" fn(
+        aContext: *mut ::core::ffi::c_void,
+        aFormat: *const ::core::ffi::c_char,
+        aArguments: va_list,
+    ) -> ::core::ffi::c_int,
+>;
+unsafe extern "C" {
+    /// Initialize the CLI module.
+    ///
+    /// @param[in]  aInstance   The OpenThread instance structure.
+    /// @param[in]  aCallback   A callback method called to process CLI output.
+    /// @param[in]  aContext    A user context pointer.
+    pub fn otCliInit(
+        aInstance: *mut otInstance,
+        aCallback: otCliOutputCallback,
+        aContext: *mut ::core::ffi::c_void,
+    );
+}
+unsafe extern "C" {
+    /// Is called to feed in a console input line.
+    ///
+    /// @param[in]  aBuf        A pointer to a null-terminated string.
+    pub fn otCliInputLine(aBuf: *mut ::core::ffi::c_char);
+}
+unsafe extern "C" {
+    /// Set a user command table.
+    ///
+    /// @param[in]  aUserCommands  A pointer to an array with user commands.
+    /// @param[in]  aLength        @p aUserCommands length.
+    /// @param[in]  aContext       @p The context passed to the handler.
+    ///
+    /// @retval OT_ERROR_NONE    Successfully updated command table with commands from @p aUserCommands.
+    /// @retval OT_ERROR_FAILED  Maximum number of command entries have already been set.
+    pub fn otCliSetUserCommands(
+        aUserCommands: *const otCliCommand,
+        aLength: u8,
+        aContext: *mut ::core::ffi::c_void,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Write a number of bytes to the CLI console as a hex string.
+    ///
+    /// @param[in]  aBytes   A pointer to data which should be printed.
+    /// @param[in]  aLength  @p aBytes length.
+    pub fn otCliOutputBytes(aBytes: *const u8, aLength: u8);
+}
+unsafe extern "C" {
+    /// Write formatted string to the CLI console
+    ///
+    /// @param[in]  aFmt   A pointer to the format string.
+    /// @param[in]  ...    A matching list of arguments.
+    pub fn otCliOutputFormat(aFmt: *const ::core::ffi::c_char, ...);
+}
+unsafe extern "C" {
+    /// Write error code to the CLI console
+    ///
+    /// If the @p aError is `OT_ERROR_PENDING` nothing will be outputted.
+    ///
+    /// @param[in]  aError Error code value.
+    pub fn otCliAppendResult(aError: otError);
+}
+unsafe extern "C" {
+    /// Callback to write the OpenThread Log to the CLI console
+    ///
+    /// @param[in]  aLogLevel   The log level.
+    /// @param[in]  aLogRegion  The log region.
+    /// @param[in]  aFormat     A pointer to the format string.
+    /// @param[in]  aArgs       va_list matching aFormat.
+    pub fn otCliPlatLogv(
+        aLogLevel: otLogLevel,
+        aLogRegion: otLogRegion,
+        aFormat: *const ::core::ffi::c_char,
+        aArgs: va_list,
+    );
+}
+unsafe extern "C" {
+    /// Callback to allow vendor specific commands to be added to the user command table.
+    ///
+    /// Available when `OPENTHREAD_CONFIG_CLI_VENDOR_COMMANDS_ENABLE` is enabled and
+    /// `OPENTHREAD_CONFIG_CLI_MAX_USER_CMD_ENTRIES` is greater than 1.
+    pub fn otCliVendorSetUserCommands();
+}
 /// Represents a ping reply.
 #[repr(C)]
 #[derive(Copy, Clone)]
