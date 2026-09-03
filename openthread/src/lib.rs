@@ -21,7 +21,6 @@ use embassy_time::Instant;
 
 use fmt::Bytes;
 use openthread_sys::otTaskletsArePending;
-use portable_atomic::Ordering;
 
 use platform::{OT_ACTIVE_STATE, OT_REFCNT};
 
@@ -174,10 +173,17 @@ impl<'a> OpenThread<'a> {
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
     ) -> Result<Self, OtError> {
-        if OT_REFCNT
-            .compare_exchange(0, 1, Ordering::SeqCst, Ordering::SeqCst)
-            .is_err()
-        {
+        let acquired = OT_REFCNT.lock(|refcnt| {
+            let acquired = refcnt.get() == 0;
+
+            if acquired {
+                refcnt.set(1);
+            }
+
+            acquired
+        });
+
+        if !acquired {
             // `OpenThread` is already instantiated; can't instantiate another instance
             // until all `OpenThread` instances are dropped
             Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
@@ -1800,7 +1806,7 @@ impl<'a> OpenThread<'a> {
 
 impl Drop for OpenThread<'_> {
     fn drop(&mut self) {
-        if OT_REFCNT.load(Ordering::SeqCst) == 1 {
+        if OT_REFCNT.lock(|refcnt| refcnt.get()) == 1 {
             // We are the last clone of `OpenThread` so we should finalize the OpenThread instance
 
             let mut ot = self.activate();
@@ -1811,14 +1817,14 @@ impl Drop for OpenThread<'_> {
         }
 
         // Decrement the reference count
-        OT_REFCNT.fetch_sub(1, Ordering::SeqCst);
+        OT_REFCNT.lock(|refcnt| refcnt.set(refcnt.get() - 1));
     }
 }
 
 impl Clone for OpenThread<'_> {
     fn clone(&self) -> Self {
         // Increment the reference count
-        OT_REFCNT.fetch_add(1, Ordering::SeqCst);
+        OT_REFCNT.lock(|refcnt| refcnt.set(refcnt.get() + 1));
 
         Self {
             state: self.state,

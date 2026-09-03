@@ -1,9 +1,10 @@
 //! An internal module that does the plumbing from the OpenThread C "Platform" API callbacks to Rust
 
-use core::cell::UnsafeCell;
+use core::cell::{Cell, UnsafeCell};
 use core::ffi::{c_char, CStr};
 
-use portable_atomic::AtomicUsize;
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::Mutex;
 
 use openthread_sys::otError_OT_ERROR_NONE;
 
@@ -17,7 +18,7 @@ pub(crate) struct SyncUnsafeCell<T>(pub UnsafeCell<T>);
 unsafe impl<T> Sync for SyncUnsafeCell<T> {}
 
 /// A global reference counter for OpenThread instances
-pub(crate) static OT_REFCNT: AtomicUsize = AtomicUsize::new(0);
+pub(crate) static OT_REFCNT: Mutex<CriticalSectionRawMutex, Cell<usize>> = Mutex::new(Cell::new(0));
 
 /// A static, mutable global state that allows OpenThnread to call us back via its `otPlat*` functions
 /// Look at `OtActiveState` and `OpenThread` for more information as to when this variable is set and unset
@@ -298,16 +299,16 @@ extern "C" fn otPlatRadioClearSrcMatchExtEntries(instance: *const otInstance) {
 // The exact minimal surface the upstream simulation platform provides -
 // a mode flag, plus no-op acknowledgments of the channel/power hints and of the received-frame extension hook.
 
-static DIAG_MODE: portable_atomic::AtomicBool = portable_atomic::AtomicBool::new(false);
+static DIAG_MODE: Mutex<CriticalSectionRawMutex, Cell<bool>> = Mutex::new(Cell::new(false));
 
 #[no_mangle]
 extern "C" fn otPlatDiagModeSet(mode: bool) {
-    DIAG_MODE.store(mode, core::sync::atomic::Ordering::Relaxed);
+    DIAG_MODE.lock(|mode_cell| mode_cell.set(mode));
 }
 
 #[no_mangle]
 extern "C" fn otPlatDiagModeGet() -> bool {
-    DIAG_MODE.load(core::sync::atomic::Ordering::Relaxed)
+    DIAG_MODE.lock(|mode_cell| mode_cell.get())
 }
 
 #[no_mangle]

@@ -168,4 +168,3 @@ async-io = { workspace = true, default-features = false, optional = true }
 nix = { workspace = true, default-features = false, features = ["fs", "term", "poll"], optional = true }
 esp-radio = { workspace = true, default-features = false, features = ["unstable", "ieee802154"], optional = true }
 embassy-nrf = { workspace = true, default-features = false, optional = true }
-portable-atomic = { workspace = true, default-features = false }
