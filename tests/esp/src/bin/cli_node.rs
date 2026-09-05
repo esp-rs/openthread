@@ -43,7 +43,7 @@
 
 use embassy_executor::Spawner;
 
-use esp_hal::rng::Rng;
+use esp_hal::rng::{Trng, TrngSource};
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal::usb::usb_serial_jtag::{UsbSerialJtag, UsbSerialJtagRx, UsbSerialJtagTx};
 use esp_hal::Async;
@@ -108,7 +108,13 @@ async fn main(spawner: Spawner) {
     // gets on its command line.
     let ieee_eui64 = ieee_eui64();
 
-    let rng = mk_static!(Rng, Rng::new());
+    // OpenThread requires a cryptographically secure RNG; the TRNG is only
+    // truly random while its entropy source (RNG + SAR ADC) stays enabled
+    let _trng_source = mk_static!(
+        TrngSource<'static>,
+        TrngSource::new(peripherals.RNG, peripherals.ADC1)
+    );
+    let rng = mk_static!(Trng, Trng::try_new().unwrap());
 
     let ot_resources = mk_static!(OtResources, OtResources::new());
     let ot_settings_buf = mk_static!([u8; 1024], [0; 1024]);

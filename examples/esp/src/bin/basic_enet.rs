@@ -14,7 +14,7 @@ use embassy_executor::Spawner;
 use embassy_net::udp::{PacketMetadata, UdpMetadata, UdpSocket};
 use embassy_net::{Config, ConfigV6, Ipv6Cidr, Runner, StackResources, StaticConfigV6};
 
-use esp_hal::rng::Rng;
+use esp_hal::rng::{Trng, TrngSource};
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
@@ -25,7 +25,7 @@ use openthread::enet::{self, EnetDriver, EnetRunner};
 use openthread::esp::EspRadio;
 use openthread::{BytesFmt, OpenThread, OtResources, SimpleRamSettings};
 
-use rand_core::RngCore;
+use rand_core::Rng as _;
 
 use tinyrlibc as _;
 
@@ -75,8 +75,13 @@ async fn main(spawner: Spawner) {
             .software_interrupt0,
     );
 
-    // TODO: Use TRNG?
-    let rng = mk_static!(Rng, Rng::new());
+    // OpenThread requires a cryptographically secure RNG; the TRNG is only
+    // truly random while its entropy source (RNG + SAR ADC) stays enabled
+    let _trng_source = mk_static!(
+        TrngSource<'static>,
+        TrngSource::new(peripherals.RNG, peripherals.ADC1)
+    );
+    let rng = mk_static!(Trng, Trng::try_new().unwrap());
 
     let enet_seed = rng.next_u64();
 

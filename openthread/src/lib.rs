@@ -26,7 +26,7 @@ use platform::{OT_ACTIVE_STATE, OT_REFCNT};
 
 use signal::Signal;
 
-pub use rand_core::RngCore as OtRngCore;
+pub use rand_core::CryptoRng as OtRng;
 
 pub use dataset::*;
 #[cfg(feature = "dns-client")]
@@ -169,7 +169,7 @@ impl<'a> OpenThread<'a> {
     /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
     pub fn new(
         ieee_eui64: [u8; 8],
-        rng: &'a mut dyn OtRngCore,
+        rng: &'a mut dyn OtRng,
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
     ) -> Result<Self, OtError> {
@@ -192,9 +192,7 @@ impl<'a> OpenThread<'a> {
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
-            unsafe {
-                core::mem::transmute::<&'a mut dyn OtRngCore, &'static mut dyn OtRngCore>(rng)
-            },
+            unsafe { core::mem::transmute::<&'a mut dyn OtRng, &'static mut dyn OtRng>(rng) },
             unsafe {
                 core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
             },
@@ -228,7 +226,7 @@ impl<'a> OpenThread<'a> {
     /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
     pub fn new_with_udp<const UDP_SOCKETS: usize, const UDP_RX_SZ: usize>(
         ieee_eui64: [u8; 8],
-        rng: &'a mut dyn OtRngCore,
+        rng: &'a mut dyn OtRng,
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
         udp_resources: &'a mut OtUdpResources<UDP_SOCKETS, UDP_RX_SZ>,
@@ -236,9 +234,7 @@ impl<'a> OpenThread<'a> {
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
-            unsafe {
-                core::mem::transmute::<&'a mut dyn OtRngCore, &'static mut dyn OtRngCore>(rng)
-            },
+            unsafe { core::mem::transmute::<&'a mut dyn OtRng, &'static mut dyn OtRng>(rng) },
             unsafe {
                 core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
             },
@@ -280,7 +276,7 @@ impl<'a> OpenThread<'a> {
     #[cfg(feature = "srp-client")]
     pub fn new_with_srp<const SRP_SVCS: usize, const SRP_BUF_SZ: usize>(
         ieee_eui64: [u8; 8],
-        rng: &'a mut dyn OtRngCore,
+        rng: &'a mut dyn OtRng,
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
         srp_resources: &'a mut OtSrpResources<SRP_SVCS, SRP_BUF_SZ>,
@@ -288,9 +284,7 @@ impl<'a> OpenThread<'a> {
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
-            unsafe {
-                core::mem::transmute::<&'a mut dyn OtRngCore, &'static mut dyn OtRngCore>(rng)
-            },
+            unsafe { core::mem::transmute::<&'a mut dyn OtRng, &'static mut dyn OtRng>(rng) },
             unsafe {
                 core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
             },
@@ -337,7 +331,7 @@ impl<'a> OpenThread<'a> {
         const SRP_BUF_SZ: usize,
     >(
         ieee_eui64: [u8; 8],
-        rng: &'a mut dyn OtRngCore,
+        rng: &'a mut dyn OtRng,
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
         udp_resources: &'a mut OtUdpResources<UDP_SOCKETS, UDP_RX_SZ>,
@@ -347,9 +341,7 @@ impl<'a> OpenThread<'a> {
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
-            unsafe {
-                core::mem::transmute::<&'a mut dyn OtRngCore, &'static mut dyn OtRngCore>(rng)
-            },
+            unsafe { core::mem::transmute::<&'a mut dyn OtRng, &'static mut dyn OtRng>(rng) },
             unsafe {
                 core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
             },
@@ -1873,7 +1865,7 @@ impl OtResources {
     fn init(
         &mut self,
         ieee_eui64: [u8; 8],
-        rng: &'static mut dyn OtRngCore,
+        rng: &'static mut dyn OtRng,
         settings: &'static mut dyn Settings,
     ) -> &RefCell<OtState<'static>> {
         let radio_resources = unsafe { self.radio_resources.assume_init_mut() };
@@ -3224,7 +3216,7 @@ struct OtState<'a> {
     /// The IEEE EUI-64 address of the Radio device.
     ieee_eui64: [u8; 8],
     /// The random number generator associated with the `OtData` instance.
-    rng: &'a mut dyn OtRngCore,
+    rng: &'a mut dyn OtRng,
     /// The OT settings
     settings: &'a mut dyn Settings,
     /// The callback to invoke when network scanning is in progress

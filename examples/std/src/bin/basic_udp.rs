@@ -21,8 +21,8 @@ use openthread::spinel::{
 };
 use openthread::{BytesFmt, OpenThread, OtResources, OtUdpResources, SimpleRamSettings, UdpSocket};
 
-use rand::rngs::StdRng;
-use rand::{RngCore, SeedableRng};
+use rand::rngs::{StdRng, SysRng};
+use rand::{Rng, SeedableRng};
 
 use static_cell::{ConstStaticCell, StaticCell};
 
@@ -68,7 +68,7 @@ async fn main_task(spawner: Spawner) {
 
     // A `'static` RNG (OpenThread stores the reference), seeded from the OS.
     static RNG: StaticCell<StdRng> = StaticCell::new();
-    let rng = RNG.init(StdRng::from_os_rng());
+    let rng = RNG.init(StdRng::try_from_rng(&mut SysRng).unwrap());
 
     // A random EUI-64 for this host node.
     let mut ieee_eui64 = [0u8; 8];

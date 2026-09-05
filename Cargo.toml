@@ -13,14 +13,14 @@ exclude = ["examples/esp", "examples/nrf", "xtask", "tests", "tests/esp", "tests
 
 [workspace.dependencies]
 log = { version = "0.4", default-features = false }
-defmt = { version = "1.0", default-features = false }
+defmt = { version = "1", default-features = false }
 scopeguard = { version = "1", default-features = false }
-rand_core = { version = "0.9", default-features = false }
+rand_core = { version = "0.10", default-features = false }
 embassy-sync = { version = "0.8", default-features = false }
 embassy-time = { version = "0.5", default-features = false }
 embassy-futures = { version = "0.1", default-features = false }
 heapless = { version = "0.9", default-features = false }
-bitflags = { version = "2.5", default-features = false }
+bitflags = { version = "2.13", default-features = false }
 embassy-net-driver-channel = { version = "0.4", default-features = false }
 embedded-io-async = { version = "0.7", default-features = false }
 embedded-hal = { version = "1", default-features = false }

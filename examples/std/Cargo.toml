@@ -28,7 +28,7 @@ embassy-futures = "0.1"
 log = "0.4"
 env_logger = "0.11"
 heapless = "0.9"
-rand = { version = "0.9", features = ["std", "std_rng", "os_rng"] }
+rand = { version = "0.10", features = ["std", "std_rng", "sys_rng"] }
 static_cell = "2.1"
 # `utoa` provides the `utoa`/`strtoul` C symbols OpenThread's C references;
 # `critical-section` with `std` supplies a host `critical-section` impl.

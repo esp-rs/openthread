@@ -45,8 +45,6 @@ use openthread::{
 
 use panic_rtt_target as _;
 
-use rand_core::RngCore;
-
 use tinyrlibc as _;
 
 macro_rules! mk_static {
@@ -109,7 +107,7 @@ async fn main(spawner: Spawner) {
     let rng = mk_static!(Rng<'static, Blocking>, Rng::new_blocking(p.RNG));
 
     let mut ieee_eui64 = [0; 8];
-    RngCore::fill_bytes(rng, &mut ieee_eui64);
+    rand_core::Rng::fill_bytes(rng, &mut ieee_eui64);
 
     let ot_resources = mk_static!(OtResources, OtResources::new());
     let ot_udp_resources =

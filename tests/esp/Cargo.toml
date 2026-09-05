@@ -61,7 +61,7 @@ esp-storage = "0.9"
 log = "0.4"
 heapless = "0.9"
 critical-section = "1.2"
-rand_core = "0.9"
+rand_core = "0.10"
 static_cell = "2.1"
 embedded-io-async = "0.7"
 tinyrlibc = { version = "0.5", default-features = false, features = [

@@ -34,8 +34,6 @@ use openthread::{
     PhyRadioRunner, ProxyRadio, ProxyRadioResources, SimpleRamSettings,
 };
 
-use rand_core::RngCore;
-
 use panic_rtt_target as _;
 
 use tinyrlibc as _;
@@ -98,10 +96,10 @@ async fn main(spawner: Spawner) {
 
     let rng = mk_static!(Rng<'static, Blocking>, Rng::new_blocking(p.RNG));
 
-    let enet_seed = rng.next_u64();
+    let enet_seed = rand_core::Rng::next_u64(rng);
 
     let mut ieee_eui64 = [0; 8];
-    RngCore::fill_bytes(rng, &mut ieee_eui64);
+    rand_core::Rng::fill_bytes(rng, &mut ieee_eui64);
 
     let ot_resources = mk_static!(OtResources, OtResources::new());
     let ot_settings_buf = mk_static!([u8; 1024], [0; 1024]);
