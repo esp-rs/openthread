@@ -23,8 +23,8 @@ use openthread::spinel::{
 };
 use openthread::{DeviceRole, OpenThread, OtResources, SimpleRamSettings};
 
-use rand::rngs::StdRng;
-use rand::{RngCore, SeedableRng};
+use rand::rngs::{StdRng, SysRng};
+use rand::{Rng, SeedableRng};
 
 use static_cell::{ConstStaticCell, StaticCell};
 
@@ -62,7 +62,7 @@ async fn main_task(spawner: Spawner) {
     info!("Starting; opening RCP serial {serial_path} @ {baud} baud");
 
     static RNG: StaticCell<StdRng> = StaticCell::new();
-    let rng = RNG.init(StdRng::from_os_rng());
+    let rng = RNG.init(StdRng::try_from_rng(&mut SysRng).unwrap());
 
     let mut ieee_eui64 = [0u8; 8];
     rng.fill_bytes(&mut ieee_eui64);

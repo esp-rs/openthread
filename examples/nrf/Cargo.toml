@@ -43,7 +43,7 @@ embassy-nrf = { version = "0.11", features = ["defmt", "nrf52840", "time-driver-
 defmt = "0.3"
 heapless = "0.9"
 critical-section = "1.2"
-rand_core = "0.9"
+rand_core = "0.10"
 static_cell = "2.1"
 
 openthread = { path = "../../openthread", features = ["udp", "srp", "dns-client", "embassy-net-driver-channel", "embassy-nrf", "defmt"] }

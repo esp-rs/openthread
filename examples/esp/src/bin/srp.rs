@@ -16,16 +16,17 @@ use log::info;
 
 use embassy_executor::Spawner;
 
-use esp_hal::rng::Rng;
+use esp_hal::rng::{Trng, TrngSource};
 use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
 
 use openthread::esp::EspRadio;
 use openthread::{
-    BytesFmt, OpenThread, OtResources, OtRngCore, OtSrpResources, OtUdpResources,
-    SimpleRamSettings, SrpConf, UdpSocket,
+    BytesFmt, OpenThread, OtResources, OtSrpResources, OtUdpResources, SimpleRamSettings, SrpConf,
+    UdpSocket,
 };
+use rand_core::Rng as _;
 
 use tinyrlibc as _;
 
@@ -78,8 +79,13 @@ async fn main(spawner: Spawner) {
             .software_interrupt0,
     );
 
-    // TODO: Use TRNG?
-    let rng = mk_static!(Rng, Rng::new());
+    // OpenThread requires a cryptographically secure RNG; the TRNG is only
+    // truly random while its entropy source (RNG + SAR ADC) stays enabled
+    let _trng_source = mk_static!(
+        TrngSource<'static>,
+        TrngSource::new(peripherals.RNG, peripherals.ADC1)
+    );
+    let rng = mk_static!(Trng, Trng::try_new().unwrap());
 
     let mut ieee_eui64 = [0; 8];
     rng.fill_bytes(&mut ieee_eui64);

@@ -41,7 +41,7 @@ use openthread_tests::settings::FileSettings;
 use openthread_tests::sim::SimRadio;
 use openthread_tests::vt::{VtLink, VtRadio};
 
-use rand::rngs::StdRng;
+use rand::rngs::{StdRng, SysRng};
 use rand::SeedableRng;
 
 use static_cell::StaticCell;
@@ -310,7 +310,7 @@ async fn main_task(spawner: Spawner, args: NodeArgs, radio_link: Option<VtLink>)
     info!("CLI simulation node {node_id} starting");
 
     static RNG: StaticCell<StdRng> = StaticCell::new();
-    let rng = RNG.init(StdRng::from_os_rng());
+    let rng = RNG.init(StdRng::try_from_rng(&mut SysRng).unwrap());
 
     // Deterministic, node-unique EUI64 (the node id in the last two bytes).
     let mut ieee_eui64 = [0x18, 0xb4, 0x30, 0x00, 0x00, 0x00, 0x00, 0x00];
