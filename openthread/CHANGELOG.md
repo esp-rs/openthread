@@ -7,6 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 * (Breaking) Update to `rand_core` 0.10; `OpenThread` now needs a CSPRNG
+* Update MSRV to 1.85
 * Remove the `portable-atomic` dependency
 
 ## [0.3.0] - 2026-08-20
