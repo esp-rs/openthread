@@ -90,7 +90,7 @@ jobs:
 
       # Not yet published; until then, built from the `size-check` branch of embuild
       - name: Install cargo-elfsize
-        run: cargo install --git https://github.com/esp-rs/embuild --branch size-check cargo-elfsize
+        run: cargo install cargo-elfsize
 
       - name: Build - Head
         run: |
@@ -151,7 +151,7 @@ jobs:
 
       # Not yet published; until then, built from the `size-check` branch of embuild
       - name: Install cargo-elfsize
-        run: cargo install --git https://github.com/esp-rs/embuild --branch size-check cargo-elfsize
+        run: cargo install cargo-elfsize
 
       - name: Download the measurements
         uses: actions/download-artifact@v4
