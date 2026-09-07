@@ -1,7 +1,7 @@
 # Firmware size report for every pull request.
 #
 # The examples of every MCU family are built twice, at the pull request's merge commit and
-# at the tip of the base branch, and the ELFs are measured with `cargo elfsize`. The
+# at the tip of the base branch, and the ELFs are measured with `elfsize`. The
 # `report` job then renders the measurements of all examples and MCUs as one report, so
 # that the same change can be compared across chips. The report goes to the job summary and is uploaded as an
 # artifact, from where the `Size comment` workflow (size-comment.yml) posts it as a pull
@@ -89,8 +89,8 @@ jobs:
           echo "CLANG_PATH=${CLANG_PATH}" >> "$GITHUB_ENV"
 
       # Not yet published; until then, built from the `size-check` branch of embuild
-      - name: Install cargo-elfsize
-        run: cargo install cargo-elfsize
+      - name: Install elfsize
+        run: cargo install elfsize
 
       - name: Build - Head
         run: |
@@ -123,13 +123,13 @@ jobs:
             label="$example on ${{ matrix.mcu[3] }}"
             out="size/$example-${{ matrix.mcu[3] }}.json"
             if [ -f "$RUNNER_TEMP/base-$example.elf" ]; then
-              cargo elfsize measure --label "$label" --output "$out" "$RUNNER_TEMP/base-$example.elf" "$RUNNER_TEMP/head-$example.elf"
+              elfsize measure --label "$label" --output "$out" "$RUNNER_TEMP/base-$example.elf" "$RUNNER_TEMP/head-$example.elf"
             else
-              cargo elfsize measure --label "$label" --output "$out" "$RUNNER_TEMP/head-$example.elf"
+              elfsize measure --label "$label" --output "$out" "$RUNNER_TEMP/head-$example.elf"
             fi
           done
           # This MCU alone, for the job summary; the annotations are left to the `report` job
-          cargo elfsize report --warn "$SIZE_WARN_PERCENT" size/*.json | grep -v '^::' >> "$GITHUB_STEP_SUMMARY"
+          elfsize report --warn "$SIZE_WARN_PERCENT" size/*.json | grep -v '^::' >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload the measurement
         uses: actions/upload-artifact@v4
@@ -150,8 +150,8 @@ jobs:
           toolchain: stable
 
       # Not yet published; until then, built from the `size-check` branch of embuild
-      - name: Install cargo-elfsize
-        run: cargo install cargo-elfsize
+      - name: Install elfsize
+        run: cargo install elfsize
 
       - name: Download the measurements
         uses: actions/download-artifact@v4
@@ -162,7 +162,7 @@ jobs:
 
       - name: Report
         run: |
-          cargo elfsize report --warn "$SIZE_WARN_PERCENT" size/*.json > "$RUNNER_TEMP/report.txt"
+          elfsize report --warn "$SIZE_WARN_PERCENT" size/*.json > "$RUNNER_TEMP/report.txt"
           # Printed as-is so that the runner picks up the `::warning::` annotations;
           # the artifact and summary get the markdown alone
           cat "$RUNNER_TEMP/report.txt"
