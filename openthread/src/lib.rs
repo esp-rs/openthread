@@ -1212,7 +1212,10 @@ impl<'a> OpenThread<'a> {
             // Initialize the OpenThread instance
             state.ot.instance = unsafe { otInstanceInitSingle() };
 
-            info!("OpenThread instance initialized");
+            info!(
+                "OpenThread instance initialized, version: {}",
+                Self::version()
+            );
 
             ot!(unsafe {
                 otSetStateChangedCallback(

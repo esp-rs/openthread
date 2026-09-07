@@ -1,10 +1,11 @@
 # Firmware size report for every pull request.
 #
-# One example per MCU family is built twice, at the pull request's merge commit and at the
-# tip of the base branch, and the two ELFs are diffed with `cargo elfsize`. The report goes
-# to the job summary and is uploaded as an artifact, from where the `Size comment` workflow
-# (size-comment.yml) posts it as a pull request comment. On pushes to `main` only the
-# sizes of the pushed commit are reported.
+# The examples of every MCU family are built twice, at the pull request's merge commit and
+# at the tip of the base branch, and the ELFs are measured with `cargo elfsize`. The
+# `report` job then renders the measurements of all examples and MCUs as one report, so
+# that the same change can be compared across chips. The report goes to the job summary and is uploaded as an
+# artifact, from where the `Size comment` workflow (size-comment.yml) posts it as a pull
+# request comment. On pushes to `main` only the sizes of the pushed commit are reported.
 #
 # Both builds run in the same checkout directory on purpose: panic-location strings embed
 # absolute source paths, so building the base in a second directory with a different path
@@ -30,6 +31,8 @@ env:
   CARGO_TERM_COLOR: always
   # Growth above this many percent is marked in the report and annotated on the run
   SIZE_WARN_PERCENT: "0.2"
+  # The examples measured, present in `examples/<family>` of every family
+  SIZE_EXAMPLES: basic_enet basic_udp dns srp
 
 jobs:
   size:
@@ -39,11 +42,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # [family, examples feature, target, example, report label]
+        # [family, examples feature, target, chip label]
         mcu:
-          - [esp, esp32c6, riscv32imac-unknown-none-elf, basic_udp, esp32c6]
-          - [esp, esp32h2, riscv32imac-unknown-none-elf, basic_udp, esp32h2]
-          - [nrf, default, thumbv7em-none-eabi, basic_udp, nrf52840]
+          - [esp, esp32c6, riscv32imac-unknown-none-elf, esp32c6]
+          - [esp, esp32h2, riscv32imac-unknown-none-elf, esp32h2]
+          - [nrf, default, thumbv7em-none-eabi, nrf52840]
 
     steps:
       - uses: actions/checkout@v4
@@ -92,8 +95,10 @@ jobs:
       - name: Build - Head
         run: |
           cd examples/${{ matrix.mcu[0] }}
-          cargo build --release --no-default-features --features ${{ matrix.mcu[1] }},force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort --bin ${{ matrix.mcu[3] }}
-          cp target/${{ matrix.mcu[2] }}/release/${{ matrix.mcu[3] }} "$RUNNER_TEMP/head.elf"
+          cargo build --release --no-default-features --features ${{ matrix.mcu[1] }},force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort --bins
+          for example in $SIZE_EXAMPLES; do
+            cp target/${{ matrix.mcu[2] }}/release/$example "$RUNNER_TEMP/head-$example.elf"
+          done
 
       - name: Check out the base commit
         if: github.event_name == 'pull_request'
@@ -105,28 +110,70 @@ jobs:
         if: github.event_name == 'pull_request'
         run: |
           cd examples/${{ matrix.mcu[0] }}
-          cargo build --release --no-default-features --features ${{ matrix.mcu[1] }},force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort --bin ${{ matrix.mcu[3] }}
-          cp target/${{ matrix.mcu[2] }}/release/${{ matrix.mcu[3] }} "$RUNNER_TEMP/base.elf"
+          cargo build --release --no-default-features --features ${{ matrix.mcu[1] }},force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort --bins
+          for example in $SIZE_EXAMPLES; do
+            cp target/${{ matrix.mcu[2] }}/release/$example "$RUNNER_TEMP/base-$example.elf"
+          done
 
-      - name: Size report
+      - name: Measure
         run: |
-          title="${{ matrix.mcu[3] }} on ${{ matrix.mcu[4] }} (${{ matrix.mcu[2] }})"
-          if [ -f "$RUNNER_TEMP/base.elf" ]; then
-            cargo elfsize --title "$title" --warn "$SIZE_WARN_PERCENT" "$RUNNER_TEMP/base.elf" "$RUNNER_TEMP/head.elf" > "$RUNNER_TEMP/report.txt"
-          else
-            cargo elfsize --title "$title" "$RUNNER_TEMP/head.elf" > "$RUNNER_TEMP/report.txt"
-          fi
+          mkdir -p size
+          # Named example-first so that the chips of one example end up next to each other
+          for example in $SIZE_EXAMPLES; do
+            label="$example on ${{ matrix.mcu[3] }}"
+            out="size/$example-${{ matrix.mcu[3] }}.json"
+            if [ -f "$RUNNER_TEMP/base-$example.elf" ]; then
+              cargo elfsize measure --label "$label" --output "$out" "$RUNNER_TEMP/base-$example.elf" "$RUNNER_TEMP/head-$example.elf"
+            else
+              cargo elfsize measure --label "$label" --output "$out" "$RUNNER_TEMP/head-$example.elf"
+            fi
+          done
+          # This MCU alone, for the job summary; the annotations are left to the `report` job
+          cargo elfsize report --warn "$SIZE_WARN_PERCENT" size/*.json | grep -v '^::' >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the measurement
+        uses: actions/upload-artifact@v4
+        with:
+          name: size-${{ matrix.mcu[3] }}
+          path: size/
+          retention-days: 7
+
+  report:
+    name: Report
+    runs-on: ubuntu-latest
+    needs: size
+    permissions: read-all
+
+    steps:
+      - uses: dtolnay/rust-toolchain@v1
+        with:
+          toolchain: stable
+
+      # Not yet published; until then, built from the `size-check` branch of embuild
+      - name: Install cargo-elfsize
+        run: cargo install --git https://github.com/esp-rs/embuild --branch size-check cargo-elfsize
+
+      - name: Download the measurements
+        uses: actions/download-artifact@v4
+        with:
+          pattern: size-*
+          path: size
+          merge-multiple: true
+
+      - name: Report
+        run: |
+          cargo elfsize report --warn "$SIZE_WARN_PERCENT" size/*.json > "$RUNNER_TEMP/report.txt"
           # Printed as-is so that the runner picks up the `::warning::` annotations;
           # the artifact and summary get the markdown alone
           cat "$RUNNER_TEMP/report.txt"
-          mkdir -p size
-          grep -v '^::' "$RUNNER_TEMP/report.txt" > size/${{ matrix.mcu[4] }}.md
-          cat size/${{ matrix.mcu[4] }}.md >> "$GITHUB_STEP_SUMMARY"
+          mkdir -p report
+          grep -v '^::' "$RUNNER_TEMP/report.txt" > report/size-report.md
+          cat report/size-report.md >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload size report
+      - name: Upload the report
         if: github.event_name == 'pull_request'
         uses: actions/upload-artifact@v4
         with:
-          name: size-${{ matrix.mcu[4] }}
-          path: size/
+          name: size-report
+          path: report/
           retention-days: 7

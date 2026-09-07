@@ -1,11 +1,11 @@
-# Posts the size reports produced by the `Size` workflow (size.yml) as one pull request
+# Posts the size report produced by the `Size` workflow (size.yml) as a pull request
 # comment, updating it on every push.
 #
 # Separate from `size.yml` on purpose: that workflow runs the pull request's code with a
 # read-only token, so it cannot comment on pull requests from forks. This one runs on
 # `workflow_run` in the base repository with a write token, and neither checks out nor
-# runs anything from the pull request. The reports are taken from the artifacts and only
-# ever end up inside the comment body.
+# runs anything from the pull request. The report is taken from the artifact and only
+# ever ends up inside the comment body.
 name: Size comment
 
 on:
@@ -41,13 +41,12 @@ jobs:
           echo "number=${pr% *}" >> "$GITHUB_OUTPUT"
           echo "base=${pr#* }" >> "$GITHUB_OUTPUT"
 
-      - name: Download the size reports
+      - name: Download the size report
         if: steps.pr.outputs.number
         uses: actions/download-artifact@v4
         with:
-          pattern: size-*
-          path: size
-          merge-multiple: true
+          name: size-report
+          path: report
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -65,10 +64,7 @@ jobs:
             echo "Firmware size at ${HEAD_SHA:0:7} compared to the base branch at ${BASE_SHA:0:7}."
             echo "Regions that grew by more than 0.2% are marked. [Workflow run]($RUN_URL)"
             echo
-            for report in size/*.md; do
-              cat "$report"
-              echo
-            done
+            cat report/size-report.md
           } > comment.md
           cat comment.md
 
