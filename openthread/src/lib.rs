@@ -16,6 +16,7 @@ use core::pin::pin;
 use core::ptr::addr_of_mut;
 
 use embassy_futures::select::{select, select3, Either, Either3};
+use embassy_futures::yield_now;
 
 use embassy_time::Instant;
 
@@ -1280,9 +1281,9 @@ impl<'a> OpenThread<'a> {
                             let mut ot = self.activate();
 
                             unsafe { otPlatAlarmMilliFired(ot.state().ot.instance) };
-
-                            ot.process_tasklets();
                         }
+
+                        self.process_tasklets().await;
 
                         break;
                     }
@@ -1343,7 +1344,7 @@ impl<'a> OpenThread<'a> {
         }
 
         loop {
-            self.activate().process_tasklets();
+            self.process_tasklets().await;
 
             let rx_channel = {
                 let mut activated = self.activate();
@@ -1439,7 +1440,15 @@ impl<'a> OpenThread<'a> {
         unwrap_dbg!(radio.set_receive(channel).await);
 
         loop {
-            self.activate().process_tasklets();
+            // One frame per poll. `Radio::receive` returns without ever awaiting
+            // whenever the driver already holds a queued frame (`EspRadio`
+            // buffers 50 by default), so without this yield the loop drains a
+            // backlog frame after frame -- each with a full tasklet cascade --
+            // inside a single poll of `run`, starving every other task on the
+            // executor for the length of the whole backlog.
+            yield_now().await;
+
+            self.process_tasklets().await;
 
             let result = radio.receive(psdu_buf).await;
 
@@ -1697,13 +1706,40 @@ impl<'a> OpenThread<'a> {
         cmd.await
     }
 
+    /// Drain the OpenThread tasklet queue, yielding to the executor between rounds.
+    ///
+    /// One round is one `otTaskletsProcess` call -- see
+    /// [`OtContext::process_tasklets_round`] for why that is the natural unit.
+    /// Yielding between rounds is what keeps [`OpenThread::run`] a cooperative
+    /// future: without it a cascade of tasklets (an MLE exchange, a network-data
+    /// update, a MeshCoP handshake) runs to completion inside a single poll, and
+    /// every other task on the executor waits for the whole cascade rather than
+    /// for one round.
+    ///
+    /// The yield is a plain `yield_now`, so this task is re-queued immediately --
+    /// no work is deferred and no tasklet is delayed by more than one pass of the
+    /// executor's run queue. What changes is only that the pass happens at all.
+    async fn process_tasklets(&self) {
+        loop {
+            // Scoped so the activation guard is dropped before the yield below:
+            // `OtContext` must never be held across an await point.
+            let more = { self.activate().process_tasklets_round() };
+
+            if !more {
+                break;
+            }
+
+            yield_now().await;
+        }
+    }
+
     /// Spins the OpenThread C library loop by processing tasklets if they are pending
     /// or otherwise waiting until notified that there are pending tasklets
     async fn run_tasklets(&self) -> ! {
         loop {
             trace!("About to process Openthread tasklets");
 
-            self.activate().process_tasklets();
+            self.process_tasklets().await;
 
             poll_fn(move |cx| self.activate().state().ot.tasklets.poll_wait(cx)).await;
         }
@@ -2509,17 +2545,35 @@ impl<'a> OtContext<'a> {
         }
     }
 
-    /// Process all pending tasklets.
+    /// Process ONE round of pending tasklets.
     ///
-    /// Loops until no more tasklets are pending, matching the standard
-    /// OpenThread event loop pattern where `otTaskletsProcess` is called
-    /// repeatedly until all deferred work is completed.
-    fn process_tasklets(&mut self) {
+    /// Returns `true` if tasklets are still pending afterwards, i.e. the caller
+    /// should come back for another round.
+    ///
+    /// A "round" is what `otTaskletsProcess` is itself defined to do:
+    /// `Tasklet::Scheduler::ProcessQueuedTasklets` takes the queue as it stands
+    /// on entry, clears it, and runs exactly those tasklets. A tasklet posted
+    /// while the round runs lands on a fresh queue and re-raises
+    /// `otPlatTaskletsSignalPending`. So a round is the unit of work OpenThread
+    /// hands back to the platform, and the platform is expected to come back for
+    /// the next one -- the canonical OpenThread main loop is
+    /// `otTaskletsProcess(); otSysProcessDrivers();`, not
+    /// `while (pending) otTaskletsProcess();`.
+    ///
+    /// This is deliberately NOT a `while pending` loop. Draining every round
+    /// back-to-back makes a single poll of [`OpenThread::run`] as long as the
+    /// whole cascade -- measured at p50 363 us / max 26886 us on an ESP32-C6
+    /// carrying Thread traffic -- which starves every other task on the same
+    /// executor for that whole time. See [`OpenThread::process_tasklets`] for
+    /// the yielding loop that replaces it.
+    fn process_tasklets_round(&mut self) -> bool {
         let instance = self.state().ot.instance;
 
-        while unsafe { otTaskletsArePending(instance) } {
+        if unsafe { otTaskletsArePending(instance) } {
             unsafe { otTaskletsProcess(instance) };
         }
+
+        unsafe { otTaskletsArePending(instance) }
     }
 
     unsafe extern "C" fn plat_c_change_callback(flags: otChangedFlags, context: *mut c_void) {
