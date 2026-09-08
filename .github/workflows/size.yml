@@ -88,7 +88,6 @@ jobs:
           echo "LIBCLANG_PATH=${LIBCLANG_PATH}" >> "$GITHUB_ENV"
           echo "CLANG_PATH=${CLANG_PATH}" >> "$GITHUB_ENV"
 
-      # Not yet published; until then, built from the `size-check` branch of embuild
       - name: Install elfsize
         run: cargo install elfsize
 
@@ -149,7 +148,6 @@ jobs:
         with:
           toolchain: stable
 
-      # Not yet published; until then, built from the `size-check` branch of embuild
       - name: Install elfsize
         run: cargo install elfsize
 

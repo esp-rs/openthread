@@ -62,7 +62,7 @@ jobs:
             echo "<!-- size-report -->"
             echo
             echo "Firmware size at ${HEAD_SHA:0:7} compared to the base branch at ${BASE_SHA:0:7}."
-            echo "Regions that grew by more than 0.2% are marked. [Workflow run]($RUN_URL)"
+            echo "[Workflow run]($RUN_URL)"
             echo
             cat report/size-report.md
           } > comment.md
