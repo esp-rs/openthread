@@ -9,7 +9,9 @@
 #
 # Both builds run in the same checkout directory on purpose: panic-location strings embed
 # absolute source paths, so building the base in a second directory with a different path
-# length shifts `.rodata` by kilobytes.
+# length shifts `.rodata` by kilobytes. They therefore also share one CMake build tree,
+# which the base checkout below drops when `openthread-sys` differs between the two
+# revisions.
 #
 # The examples are built with `force-generate-bindings`, same as in `ci.yml`, so that the
 # OpenThread C libraries reflect the pull request's `openthread-sys` configuration rather
@@ -102,6 +104,17 @@ jobs:
       - name: Check out the base commit
         if: github.event_name == 'pull_request'
         run: |
+          # Both revisions build in this one directory, so they also share one CMake
+          # tree, and an `openthread-sys` change can move what `build.rs` passes to
+          # CMake. CMake answers a changed compiler by deleting its cache and re-running
+          # configure, which OpenThread's `OT_*` options do not survive -- the re-run
+          # dies on `add_subdirectory(examples/platforms/NO)`. Give the base build a
+          # clean OpenThread tree whenever `openthread-sys` differs between the two
+          # revisions; when it does not, both configure identically and the tree (with
+          # its compiled C++) is safe, and worth, keeping.
+          if ! git diff --quiet ${{ github.event.pull_request.base.sha }} -- openthread-sys; then
+            rm -rf examples/${{ matrix.mcu[0] }}/target/${{ matrix.mcu[2] }}/release/build/openthread-sys*
+          fi
           git checkout --detach ${{ github.event.pull_request.base.sha }}
           git submodule update --init --recursive
 

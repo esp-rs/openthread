@@ -76,6 +76,11 @@ jobs:
       - name: Build
         run: cargo build
 
+      # No prebuilt libraries are committed for the host target, so this always compiles
+      # OpenThread from source -- with the system GCC rather than `clang`.
+      - name: Build - GCC
+        run: cargo build --features use-gcc
+
       - name: Fmt Check - STD Examples
         run: cd examples/std; cargo fmt -- --check
 
@@ -292,6 +297,23 @@ jobs:
           echo "${LIBCLANG_PATH}/../bin:$PATH" >> "$GITHUB_PATH"
           echo "LIBCLANG_PATH=${LIBCLANG_PATH}" >> "$GITHUB_ENV"
           echo "CLANG_PATH=${CLANG_PATH}" >> "$GITHUB_ENV"
+
+      # OpenThread is C++, and on Debian/Ubuntu `newlib` and its C++ runtime are packaged apart
+      # from the compiler. The `clang` builds get by without them, on the bundled `gen/sysroot`
+      # plus `-nostdinc++`; the GCC ones do not compile without their headers.
+      - name: Install the ARM bare-metal GCC toolchain
+        if: matrix.mcu[0] == 'nrf'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-arm-none-eabi libnewlib-arm-none-eabi libstdc++-arm-none-eabi-newlib
+
+      # Uses the cross-toolchain installed above: `riscv32-esp-elf-gcc` for the Espressif chips,
+      # `arm-none-eabi-gcc` for the nRF one. The RISC-V one is what `force-esp-riscv-gcc`
+      # selects, in place of the "official" `riscv32-unknown-elf-gcc` that is not installed
+      # here; on the ARM entry the flag only implies `use-gcc`, as there `cc-rs` derives the
+      # compiler from the target triple, so a single invocation covers every entry.
+      - name: Build - GCC
+        run: cargo build -p openthread -p openthread-sys --features=force-generate-bindings,force-esp-riscv-gcc --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
 
       - name: Clippy - Examples
         run: cd examples/${{ matrix.mcu[0] }}; cargo clippy --no-default-features --features ${{ matrix.mcu[1] }},force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
