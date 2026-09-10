@@ -191,6 +191,15 @@ impl OpenThreadBuilder {
         let target_dir = out_path.join("openthread").join("build");
         std::fs::create_dir_all(&target_dir)?;
 
+        // Configure from scratch. CMake cannot reuse a build tree whose compiler
+        // changed: it deletes the cache mid-configure and re-runs, and
+        // OpenThread's `OT_*` options do not survive that reset -- the re-run
+        // dies on `add_subdirectory(examples/platforms/NO)`. This build script
+        // re-runs only when `gen/` or the submodule changed (see `track`), so
+        // the ordinary Rust edit loop never pays for the rebuild. `cmake-rs`
+        // configures in `<out_dir>/build`.
+        let _ = std::fs::remove_dir_all(target_dir.join("build"));
+
         let target_lib_dir = out_path.join("openthread").join("lib");
 
         let lib_dir = copy_path.unwrap_or(&target_lib_dir);
@@ -506,14 +515,19 @@ impl CMakeConfigurer {
         }
 
         if let Some((compiler, _)) = self.derive_forced_c_compiler() {
-            let mut cfg = cc::Build::new();
-            cfg.compiler(&compiler);
+            let cxx_compiler = Self::cxx_counterpart(&compiler);
+
+            let mut c_cfg = cc::Build::new();
+            c_cfg.compiler(&compiler);
+
+            let mut cxx_cfg = cc::Build::new();
+            cxx_cfg.compiler(&cxx_compiler);
 
             config
-                .init_c_cfg(cfg.clone())
-                .init_cxx_cfg(cfg)
+                .init_c_cfg(c_cfg)
+                .init_cxx_cfg(cxx_cfg)
                 .define("CMAKE_C_COMPILER", &compiler)
-                .define("CMAKE_CXX_COMPILER", compiler)
+                .define("CMAKE_CXX_COMPILER", &cxx_compiler)
                 .define("CMAKE_TOOLCHAIN_FILE", &self.empty_toolchain_file);
         } else if let Some(target) = &self.cmake_rust_target {
             let mut split = target.split('-');
@@ -688,7 +702,13 @@ impl CMakeConfigurer {
 
     fn derive_forced_c_compiler(&self) -> Option<(PathBuf, bool)> {
         if self.force_clang {
-            Some((PathBuf::from("clang"), false))
+            Some((
+                std::env::var_os("CLANG_PATH")
+                    .filter(|path| !path.is_empty())
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("clang")),
+                false,
+            ))
         } else {
             match self.target().as_str() {
                 "xtensa-esp32-none-elf" | "xtensa-esp32-espidf" => {
@@ -715,6 +735,31 @@ impl CMakeConfigurer {
                 _ => None,
             }
         }
+    }
+
+    /// Maps a C compiler binary onto its C++ counterpart, keeping any directory
+    /// part: `<prefix>gcc` -> `<prefix>g++`, `<prefix>clang` -> `<prefix>clang++`.
+    /// Anything else is returned unchanged.
+    ///
+    /// OpenThread is C++, and the two drivers are not interchangeable: `gcc`
+    /// does compile a `.cpp` correctly (it dispatches on the file extension),
+    /// but it does not link the C++ runtime, so passing the C driver as
+    /// `CMAKE_CXX_COMPILER` only holds while the build stops at static
+    /// archives. The C++ driver is what CMake expects, so give it that.
+    fn cxx_counterpart(c_compiler: &Path) -> PathBuf {
+        let Some(name) = c_compiler.file_name().and_then(|name| name.to_str()) else {
+            return c_compiler.to_path_buf();
+        };
+
+        let cxx_name = if let Some(prefix) = name.strip_suffix("clang") {
+            format!("{prefix}clang++")
+        } else if let Some(prefix) = name.strip_suffix("gcc") {
+            format!("{prefix}g++")
+        } else {
+            return c_compiler.to_path_buf();
+        };
+
+        c_compiler.with_file_name(cxx_name)
     }
 
     fn derive_c_args(&self) -> Vec<String> {
@@ -754,7 +799,7 @@ impl CMakeConfigurer {
                 "riscv32imafc-unknown-none-elf" | "riscv32imafc-esp-espidf" => &[
                     "--target=riscv32-esp-elf",
                     "-march=rv32imafc",
-                    "-mabi=ilp32",
+                    "-mabi=ilp32f",
                 ],
                 "xtensa-esp32-none-elf" | "xtensa-esp32-espidf" => {
                     &["--target=xtensa-esp-elf", "-mcpu=esp32"]
@@ -776,7 +821,7 @@ impl CMakeConfigurer {
                     &["-march=rv32imac", "-mabi=ilp32"]
                 }
                 "riscv32imafc-unknown-none-elf" | "riscv32imafc-esp-espidf" => {
-                    &["-march=rv32imafc", "-mabi=ilp32"]
+                    &["-march=rv32imafc", "-mabi=ilp32f"]
                 }
                 "xtensa-esp32-none-elf" | "xtensa-esp32-espidf" => &["-mlongcalls"],
                 "xtensa-esp32s2-none-elf" | "xtensa-esp32s2-espidf" => &["-mlongcalls"],

@@ -6,6 +6,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+* Pass the C++ driver (`<prefix>g++` / `clang++`) as `CMAKE_CXX_COMPILER` instead of the C one; OpenThread is C++, and the C driver compiles it but does not link the C++ runtime
+* Build `riscv32imafc` with the hard-float ABI (`-mabi=ilp32f`) that rustc uses for that target, in both the clang and the GCC branch
+* Honour `CLANG_PATH` when clang is the forced compiler
+* Reconfigure CMake from scratch when the compiler changed since the last build, rather than letting CMake half-reset its own cache (which loses OpenThread's `OT_*` options)
 * Update MSRV to 1.85
 
 ## [0.3.0] - 2026-08-20
