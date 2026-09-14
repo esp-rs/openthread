@@ -9,7 +9,7 @@ keywords = ["thread", "openthread", "embedded", "test"]
 description = "The ESP32-C6/H2 firmware node of `openthread`'s hardware-in-the-loop test tier: the full stack on the MCU, driven through its USB-Serial-JTAG console by the upstream OpenThread test harness"
 repository = "https://github.com/esp-rs/openthread"
 license = "MIT OR Apache-2.0"
-rust-version = "1.84"
+rust-version = "1.95"
 
 [profile.dev]
 # Rust debug is too slow for a radio with real deadlines.
@@ -50,14 +50,14 @@ embassy-executor = "0.10"
 embassy-sync = "0.8"
 embassy-futures = "0.1"
 embassy-time = "0.5"
-esp-hal = { version = "~1.1", features = ["log-04", "unstable", "exception-handler"] }
-esp-rtos = { version = "0.3", features = ["esp-radio", "embassy"] }
-esp-alloc = { version = "0.10" }
-esp-backtrace = { version = "0.19", features = ["panic-handler", "println"] }
-esp-println = { version = "0.17", features = ["log-04"] }
+esp-hal = { version = "~1.2", features = ["log-04", "unstable", "exception-handler"] }
+esp-rtos = { version = "0.4", features = ["esp-radio", "embassy"] }
+esp-alloc = { version = "0.11" }
+esp-backtrace = { version = "0.20", features = ["panic-handler", "println"] }
+esp-println = { version = "0.18", features = ["log-04"] }
 esp-radio = { version = "1.0.0-beta.0", features = ["unstable", "ieee802154"] }
-esp-bootloader-esp-idf = { version = "0.5", features = ["log-04"] }
-esp-storage = "0.9"
+esp-bootloader-esp-idf = { version = "0.6", features = ["log-04"] }
+esp-storage = "0.10"
 log = "0.4"
 heapless = "0.9"
 critical-section = "1.2"
@@ -131,17 +131,17 @@ path = "./src/bin/cli_node.rs"
 name = "cli_node"
 harness = false
 
-# The released esp family lacks four fixes we need, all merged upstream:
-# - https://github.com/esp-rs/esp-hal/pull/6090
-# - https://github.com/esp-rs/esp-hal/pull/6089
-# - https://github.com/esp-rs/esp-hal/pull/6097
-# - https://github.com/esp-rs/esp-hal/pull/6104
+# The released `esp-radio` 1.0.0-beta.0 is still built against `esp-hal` 1.1 / `esp-rtos` 0.3,
+# which the rest of the released esp family (`esp-rtos` 0.4, `esp-hal` 1.2) has moved past;
+# esp-hal `main` has the whole family on `esp-hal` 1.2. Drop once an `esp-radio` compatible
+# with `esp-hal` 1.2 is released.
 [patch.crates-io]
-esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
-esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
-esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
-esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
-esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
-esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
-esp-storage = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
-esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "ab45d33cf69f941e5bd8b939b9a4ad0e68bd6b7d" }
+esp-hal = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }
+esp-rtos = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }
+esp-radio = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }
+esp-println = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }
+esp-backtrace = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }
+esp-alloc = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }
+esp-storage = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }
+esp-bootloader-esp-idf = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }
+esp-metadata-generated = { git = "https://github.com/esp-rs/esp-hal", rev = "0fed45c84c0723ed4e0b7d19c7f3078ed79090c6" }

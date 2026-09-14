@@ -34,8 +34,8 @@ nix = { version = "0.30", default-features = false }
 esp-radio = { version = "1.0.0-beta.0", default-features = false }
 embassy-nrf = { version = "0.11", default-features = false }
 
-mbedtls-rs-sys = { version = "0.2", default-features = false }
-openthread-sys = { version = "0.3", path = "openthread-sys", default-features = false }
+mbedtls-rs-sys = { version = "0.3", default-features = false }
+openthread-sys = { version = "0.4", path = "openthread-sys", default-features = false }
 
 # build dependencies
 anyhow = { version = "1", default-features = false }

@@ -95,12 +95,7 @@ async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
-    esp_rtos::start(
-        timg0.timer0,
-        #[cfg(target_arch = "riscv32")]
-        esp_hal::interrupt::software::SoftwareInterruptControl::new(peripherals.SW_INTERRUPT)
-            .software_interrupt0,
-    );
+    esp_rtos::start(timg0.timer0, peripherals.FROM_CPU_INTR0);
 
     // The chip's factory base MAC, expanded to an EUI-64 the standard way
     // (OUI half ++ FF:FE ++ device half): unique per chip, stable across

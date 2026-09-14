@@ -5,7 +5,8 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.4.0] - 2026-09-14
+* (Breaking) Update to mbedtls-rs-sys v0.3
 * Pass the C++ driver (`<prefix>g++` / `clang++`) as `CMAKE_CXX_COMPILER` instead of the C one; OpenThread is C++, and the C driver compiles it but does not link the C++ runtime
 * Build `riscv32imafc` with the hard-float ABI (`-mabi=ilp32f`) that rustc uses for that target, in both the clang and the GCC branch
 * Honour `CLANG_PATH` when clang is the forced compiler
