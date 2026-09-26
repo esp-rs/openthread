@@ -115,6 +115,14 @@ jobs:
           if ! git diff --quiet ${{ github.event.pull_request.base.sha }} -- openthread-sys; then
             rm -rf examples/${{ matrix.mcu[0] }}/target/${{ matrix.mcu[2] }}/release/build/openthread-sys*
           fi
+          # `Cargo.lock` is gitignored, so the head build's lockfile survives the checkout
+          # and would seed the base build. The two revisions may declare different
+          # dependency sources (registry versus `[patch.crates-io]` git pins), and a
+          # lockfile from one only partially re-resolves under the other: a patch replaces
+          # just the crates whose locked version it matches, leaving the rest on the
+          # registry, so the graph ends up with two copies of a family of crates that
+          # share `links` keys and fails to resolve. Let the base resolve from scratch.
+          rm -f examples/${{ matrix.mcu[0] }}/Cargo.lock
           git checkout --detach ${{ github.event.pull_request.base.sha }}
           git submodule update --init --recursive
 
