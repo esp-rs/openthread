@@ -190,7 +190,7 @@ The crate mirrors this split literally in `OpenThread::run_radio`.
 | Driver | MAC | Ob.1 (tx=full seq) | Ob.2 (rx continuity) | Ob.4 (auto-RX) | Ob.5 (`set_sleep` drops) |
 | --- | --- | --- | --- | --- | --- |
 | `nrf-802154` | driver IRQ layer | yes | yes (IRQ queue) | yes (`rx_when_idle`) | yes |
-| `EspRadio` | esp-radio HW/blob | yes | yes (driver queue) | yes | needs check |
+| `EspRadio` | esp-radio HW/blob | yes | yes (driver queue) | yes | yes (`stop_receive`) |
 | `SpinelRadio` | RCP firmware | yes | yes (`rx_queue`) | yes (RCP) | needs check |
 | `embassy-nrf` + `MacRadio` | software - **fails hard ACK timing on air; to be replaced by `nrf-802154`** (`the-case-with-nrf-radio.md`) | via wrapper | via parking queue | runner (done) | runner parks |
 | `SimRadio`/`VtRadio` + `MacRadio` | software (fine: no real deadlines) | via wrapper | via parking queue | runner (done) | yes (flush-on-wake) |

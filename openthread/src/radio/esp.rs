@@ -189,13 +189,8 @@ impl Radio for EspRadio<'_> {
     }
 
     async fn set_sleep(&mut self) -> Result<(), Self::Error> {
-        // TODO: Upstream in `esp-radio` a `stop_receive` counterpart to the existing `start_receive`
-        // and call it here.
-        //
-        // Until that gap is closed: the receiver stays on while OpenThread believes this node is asleep,
-        // so a sleepy end device neither saves the power it parked for, nor genuinely misses the traffic
-        // the stack assumes it missed (see `docs/radio-contract.md`, C6) - frames keep accumulating in
-        // the driver queue and are delivered late on the next `receive`.
+        self.driver.stop_receive();
+
         Ok(())
     }
 
