@@ -9,7 +9,8 @@ use embassy_time::Instant;
 use crate::fmt::Bytes;
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 use crate::{
-    Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig,
+    Config, MacCapabilities, PsduRxInfo, Radio, RadioCaps, RadioError, RadioErrorKind,
+    SrcMatchConfig,
 };
 
 pub(crate) use mac_utils::MacHeader;
@@ -329,7 +330,7 @@ where
 
                 // A software-generated ACK is complete as built: nothing for
                 // the radio to finish.
-                let mut ack_tx = crate::TxInfo {
+                let mut ack_psdu_tx = crate::PsduTxInfo {
                     security_processed: true,
                     header_updated: true,
                     ..Default::default()
@@ -338,7 +339,7 @@ where
                 self.radio
                     .transmit(
                         &mut self.ack_psdu_buf[..ack_len],
-                        &mut ack_tx,
+                        &mut ack_psdu_tx,
                         self.channel,
                         self.power,
                         // An ACK is sent in the inter-frame gap, without CCA:
@@ -450,12 +451,12 @@ where
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        tx: &mut crate::TxInfo,
+        psdu_tx: &mut crate::PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
         trace!("MacRadio, about to transmit");
 
         // A transmit puts the radio on this channel, and the ACKs this
@@ -466,7 +467,7 @@ where
         if self.mac_caps.contains(MacCapabilities::TX_ACK) {
             let result = self
                 .radio
-                .transmit(psdu, tx, channel, power, cca_threshold, ack_psdu_buf)
+                .transmit(psdu, psdu_tx, channel, power, cca_threshold, ack_psdu_buf)
                 .await
                 .map_err(Self::Error::Io);
 
@@ -475,7 +476,7 @@ where
             result
         } else {
             self.radio
-                .transmit(psdu, tx, channel, power, cca_threshold, None)
+                .transmit(psdu, psdu_tx, channel, power, cca_threshold, None)
                 .await
                 .map_err(Self::Error::Io)?;
 
@@ -561,7 +562,7 @@ where
         }
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         // A frame screened - and already ACKed - during a transmission's ACK
         // wait is delivered first.
         if let Some(psdu_meta) = self.pending_rx.pop_front(psdu_buf) {
@@ -651,7 +652,7 @@ impl MacRadioTimer for EmbassyTimeTimer {
 /// A frame parked in the [`MacRadio`] pending-RX queue.
 struct PendingRxFrame {
     /// The meta-data of the parked frame
-    meta: PsduMeta,
+    meta: PsduRxInfo,
     /// The PSDU of the parked frame, valid up to `meta.len`
     psdu: [u8; OT_RADIO_FRAME_MAX_SIZE as _],
 }
@@ -660,7 +661,7 @@ impl PendingRxFrame {
     /// Create a new, empty parked frame.
     const fn new() -> Self {
         Self {
-            meta: PsduMeta {
+            meta: PsduRxInfo {
                 len: 0,
                 channel: 0,
                 rssi: None,
@@ -697,7 +698,7 @@ impl<'a> PendingRx<'a> {
     ///
     /// Returns `false` - and drops the frame, like a saturated real radio -
     /// if the queue is full.
-    fn push_back(&mut self, meta: PsduMeta, psdu: &[u8]) -> bool {
+    fn push_back(&mut self, meta: PsduRxInfo, psdu: &[u8]) -> bool {
         if self.len == self.frames.len() {
             return false;
         }
@@ -713,7 +714,7 @@ impl<'a> PendingRx<'a> {
     }
 
     /// Take the oldest parked frame, if any, into `psdu_buf`.
-    fn pop_front(&mut self, psdu_buf: &mut [u8]) -> Option<PsduMeta> {
+    fn pop_front(&mut self, psdu_buf: &mut [u8]) -> Option<PsduRxInfo> {
         if self.len == 0 {
             return None;
         }

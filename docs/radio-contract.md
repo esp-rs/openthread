@@ -155,16 +155,16 @@ and only exercised when the radio advertises `Capabilities::RECEIVE_TIMING`:
   receiver on for good - a radio whose `receive` enters receive mode has to
   notice it is inside a window and only drain its queue.
 - **A radio clock** (`RadioCaps::clock`, `otPlatRadioGetNow`) shared by the
-  window start, the frame timestamps (`PsduMeta::timestamp_us`) and the CSL
+  window start, the frame timestamps (`PsduRxInfo::timestamp_us`) and the CSL
   sample time (`CslConfig::sample_time_us`). OpenThread's own microsecond
   alarm runs on it too, so all of its CSL arithmetic is in one time base.
   The crate reads it synchronously from contexts that cannot reach the
   `Radio` instance, hence a plain function.
 - **Enhanced-ACK security** (`Radio::set_mac_keys`, `Radio::set_mac_frame_counter`,
-  `PsduMeta::ack_security`): the parent's frames are secured, so the ACKs -
+  `PsduRxInfo::ack_security`): the parent's frames are secured, so the ACKs -
   which the radio generates, with the CSL IE from `Radio::set_csl` inside -
   must be secured too, with the child's own key and frame counter.
-- **Transmit-time frame finishing** (`Capabilities::TRANSMIT_SEC`, `TxInfo`):
+- **Transmit-time frame finishing** (`Capabilities::TRANSMIT_SEC`, `PsduTxInfo`):
   a CSL child's own frames (its data polls, its Child Update Requests) carry
   a CSL IE whose phase is meaningful only relative to the moment the frame
   goes on the air. OpenThread therefore never fills that IE itself: it leaves
@@ -172,7 +172,7 @@ and only exercised when the radio advertises `Capabilities::RECEIVE_TIMING`:
   (`OT_RADIO_CAPS_TRANSMIT_SEC`), to be done as the frame is transmitted.
   The crate advertises that capability unconditionally and honours it in one
   of two ways. A radio that advertises `TRANSMIT_SEC` on the trait gets the
-  raw frame plus a `TxInfo` and finishes it in its own buffer, at the true
+  raw frame plus a `PsduTxInfo` and finishes it in its own buffer, at the true
   transmit time (the nRF driver's security and IE writers); it writes the
   finished frame back and marks the header updated, since OpenThread reads
   the frame counter it used from it. Every other radio gets the frame already
@@ -246,7 +246,7 @@ The crate mirrors this split literally in `OpenThread::run_radio`.
 
 - Whether to tolerate (ignore) a late `TxDone` after a C5 abort in the
   crate's glue, for robustness against drivers that report one anyway.
-- RX timestamps: `PsduMeta::timestamp_us` now carries the radio's own
+- RX timestamps: `PsduRxInfo::timestamp_us` now carries the radio's own
   arrival time (C9), and the glue only falls back to stamping at delivery -
   up to ~20 ms late for a frame parked during a transmit sequence - for
   radios without one. Those cannot run CSL anyway; Link Metrics and time-sync

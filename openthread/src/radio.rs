@@ -98,7 +98,7 @@ bitflags! {
         /// Radio supports direct transition from sleep to TX.
         const SLEEP_TO_TX = OT_RADIO_CAPS_SLEEP_TO_TX as u16;
         /// Radio finishes the frames it transmits itself: frame counter,
-        /// CSL IE and AES-CCM* at transmit time (see [`TxInfo`]), with the
+        /// CSL IE and AES-CCM* at transmit time (see [`PsduTxInfo`]), with the
         /// keys from [`Radio::set_mac_keys`]. A CSL child needs this from its
         /// radio to advertise an accurate phase; for every other radio the
         /// glue does the same work in software before `transmit`.
@@ -360,7 +360,7 @@ impl Default for SrcMatchConfig {
 /// Meta-data associated with the received IEEE 802.15.4 frame
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct PsduMeta {
+pub struct PsduRxInfo {
     /// Length of the PSDU in the frame
     pub len: usize,
     /// Channel on which the frame was received
@@ -407,7 +407,7 @@ pub struct PsduMeta {
 /// by the OpenThread glue, with both flags set, and can ignore this.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct TxInfo {
+pub struct PsduTxInfo {
     /// The frame is already secured (or needs no security).
     pub security_processed: bool,
     /// The frame counter and the CSL IE are already assigned - a
@@ -420,7 +420,7 @@ pub struct TxInfo {
 }
 
 /// The security material a radio used for a secured enhanced ACK
-/// (see [`PsduMeta::ack_security`]).
+/// (see [`PsduRxInfo::ack_security`]).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct AckSecurity {
@@ -431,7 +431,7 @@ pub struct AckSecurity {
 }
 
 /// A microsecond clock shared by everything timing-related in a radio: its
-/// frame timestamps ([`PsduMeta::timestamp_us`]), its timed receive
+/// frame timestamps ([`PsduRxInfo::timestamp_us`]), its timed receive
 /// ([`Radio::receive_at`]) and the CSL sample times ([`CslConfig`]).
 ///
 /// A plain function, because OpenThread reads the clock synchronously
@@ -527,7 +527,7 @@ impl Default for CslConfig {
 
 /// The MAC keys OpenThread hands the radio, so that the radio can secure the
 /// enhanced ACKs it sends on the child's behalf (see
-/// [`PsduMeta::ack_security`]).
+/// [`PsduRxInfo::ack_security`]).
 ///
 /// All three keys use key ID mode 1: `key_id` is the index of `curr`, and
 /// `prev` / `next` carry the neighboring indices (wrapping within `1..=128`),
@@ -804,8 +804,8 @@ pub trait Radio {
     ///
     /// Arguments:
     /// - `psdu`: The PSDU to transmit as part of the frame. A radio advertising
-    ///   [`Capabilities::TRANSMIT_SEC`] finishes it in place (see [`TxInfo`]).
-    /// - `tx`: What is already done to the frame, and what the radio did to it.
+    ///   [`Capabilities::TRANSMIT_SEC`] finishes it in place (see [`PsduTxInfo`]).
+    /// - `psdu_tx`: What is already done to the frame, and what the radio did to it.
     /// - `channel`: The channel to transmit the frame on.
     /// - `cca_threshold`: The CCA threshold to use before transmitting the frame. If `None`, CCA is not performed.
     /// - `ack_psdu_buf`: The buffer to store the received ACK PSDU if the radio is capable of reporting received ACKs.
@@ -816,12 +816,12 @@ pub trait Radio {
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        tx: &mut TxInfo,
+        psdu_tx: &mut PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error>;
+    ) -> Result<Option<PsduRxInfo>, Self::Error>;
 
     /// Retrieve an already received radio frame, or wait for one to arrive.
     ///
@@ -838,7 +838,7 @@ pub trait Radio {
     ///
     /// Returns:
     /// - The meta-data associated with the received frame.
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error>;
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error>;
 }
 
 impl<T> Radio for &mut T
@@ -874,16 +874,25 @@ where
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        tx: &mut TxInfo,
+        psdu_tx: &mut PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
-        T::transmit(self, psdu, tx, channel, power, cca_threshold, ack_psdu_buf).await
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
+        T::transmit(
+            self,
+            psdu,
+            psdu_tx,
+            channel,
+            power,
+            cca_threshold,
+            ack_psdu_buf,
+        )
+        .await
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         T::receive(self, psdu_buf).await
     }
 

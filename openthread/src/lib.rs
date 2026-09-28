@@ -1768,7 +1768,7 @@ impl<'a> OpenThread<'a> {
     where
         R: Radio,
     {
-        let (cca_threshold, channel, power, psdu_len, mut tx) = {
+        let (cca_threshold, channel, power, psdu_len, mut psdu_tx) = {
             let mut ot = self.activate();
             let now = ot.radio_now_us();
             let state = ot.state();
@@ -1820,7 +1820,7 @@ impl<'a> OpenThread<'a> {
             }
 
             let tx_info = unsafe { state.ot.radio_resources.snd_frame.mInfo.mTxInfo };
-            let tx = radio::TxInfo {
+            let psdu_tx = radio::PsduTxInfo {
                 security_processed: tx_info.mIsSecurityProcessed(),
                 header_updated: tx_info.mIsHeaderUpdated(),
                 csl_present: tx_info.mCslPresent(),
@@ -1842,7 +1842,7 @@ impl<'a> OpenThread<'a> {
                 channel,
                 state.ot.radio_tx_power,
                 psdu_len,
-                tx,
+                psdu_tx,
             )
         };
 
@@ -1861,7 +1861,7 @@ impl<'a> OpenThread<'a> {
         let result = radio
             .transmit(
                 &mut psdu_buf[..psdu_len],
-                &mut tx,
+                &mut psdu_tx,
                 channel,
                 power,
                 cca_threshold,
@@ -1879,7 +1879,7 @@ impl<'a> OpenThread<'a> {
 
             let radio_resources = &mut state.ot.radio_resources;
 
-            if tx.header_updated {
+            if psdu_tx.header_updated {
                 // The frame went out as the radio finished it: hand that back
                 // to OpenThread, which reads the frame counter used from it.
                 radio_resources.snd_psdu[..psdu_len].copy_from_slice(&psdu_buf[..psdu_len]);
@@ -2125,7 +2125,7 @@ impl<'a> OpenThread<'a> {
     fn fill_frame(
         frame: &mut otRadioFrame,
         frame_psdu: &mut [u8; OT_RADIO_FRAME_MAX_SIZE as _],
-        psdu_meta: PsduMeta,
+        psdu_meta: PsduRxInfo,
         psdu: &[u8],
         acked_with_fp: bool,
     ) {
