@@ -8,7 +8,11 @@ use embassy_sync::blocking_mutex::Mutex;
 
 use openthread_sys::otError_OT_ERROR_NONE;
 
-use crate::sys::{otError, otInstance, otLogLevel, otLogRegion, otRadioCaps, otRadioFrame};
+use crate::radio::MacKeys;
+use crate::sys::{
+    otError, otExtAddress, otInstance, otLogLevel, otLogRegion, otMacKeyMaterial, otRadioCaps,
+    otRadioFrame, otRadioKeyType, otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY,
+};
 use crate::{IntoOtCode, OtActiveState, OtContext};
 
 /// A hack so that we can store a mutable reference to the active state in a global static variable
@@ -61,6 +65,114 @@ extern "C" fn otPlatAlarmMilliStop(instance: *const otInstance) -> otError {
     OtContext::callback(instance)
         .plat_alarm_clear()
         .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroGetNow() -> u32 {
+    OtContext::callback(core::ptr::null()).plat_now_micros()
+}
+
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroStartAt(instance: *mut otInstance, at0: u32, adt: u32) {
+    OtContext::callback(instance).plat_alarm_micro_set(at0, adt);
+}
+
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroStop(instance: *const otInstance) {
+    OtContext::callback(instance).plat_alarm_micro_clear();
+}
+
+// --- CSL (Synchronized Sleepy End Device) and enhanced-ACK security ---
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetNow(instance: *const otInstance) -> u64 {
+    OtContext::callback(instance).plat_radio_now()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioReceiveAt(
+    instance: *const otInstance,
+    channel: u8,
+    start: u32,
+    duration: u32,
+) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_receive_at(channel, start, duration)
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioEnableCsl(
+    instance: *const otInstance,
+    csl_period: u32,
+    short_addr: u16,
+    ext_addr: *const otExtAddress,
+) -> otError {
+    let ext_addr = unsafe { ext_addr.as_ref() }.map(|addr| u64::from_le_bytes(addr.m8));
+
+    OtContext::callback(instance)
+        .plat_radio_enable_csl(csl_period, short_addr, ext_addr)
+        .into_ot_code()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioUpdateCslSampleTime(instance: *const otInstance, csl_sample_time: u32) {
+    OtContext::callback(instance).plat_radio_update_csl_sample_time(csl_sample_time);
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetCslAccuracy(instance: *const otInstance) -> u8 {
+    OtContext::callback(instance).plat_radio_csl_accuracy()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioGetCslUncertainty(instance: *const otInstance) -> u8 {
+    OtContext::callback(instance).plat_radio_csl_uncertainty()
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetMacKey(
+    instance: *const otInstance,
+    key_id_mode: u8,
+    key_id: u8,
+    prev_key: *const otMacKeyMaterial,
+    curr_key: *const otMacKeyMaterial,
+    next_key: *const otMacKeyMaterial,
+    key_type: otRadioKeyType,
+) {
+    // Only literal keys can be handed to a radio; key references (PSA) are not
+    // supported by this crate's OpenThread build.
+    let literal = |key: *const otMacKeyMaterial| -> Option<[u8; 16]> {
+        (key_type == otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY)
+            .then(|| unsafe { key.as_ref() }.map(|key| unsafe { key.mKeyMaterial.mKey.m8 }))
+            .flatten()
+    };
+
+    let keys = match (literal(prev_key), literal(curr_key), literal(next_key)) {
+        (Some(prev), Some(curr), Some(next)) => Some(MacKeys {
+            key_id_mode,
+            key_id,
+            prev,
+            curr,
+            next,
+        }),
+        _ => None,
+    };
+
+    OtContext::callback(instance).plat_radio_set_mac_keys(keys);
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetMacFrameCounter(instance: *const otInstance, frame_counter: u32) {
+    OtContext::callback(instance).plat_radio_set_mac_frame_counter(frame_counter, false);
+}
+
+#[no_mangle]
+extern "C" fn otPlatRadioSetMacFrameCounterIfLarger(
+    instance: *const otInstance,
+    frame_counter: u32,
+) {
+    OtContext::callback(instance).plat_radio_set_mac_frame_counter(frame_counter, true);
 }
 
 #[no_mangle]

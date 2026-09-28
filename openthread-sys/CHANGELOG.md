@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+* Breaking: OpenThread is now compiled with CSL Receiver support enabled
+* Breaking: the prebuilt libraries are regenerated (the microsecond alarm handler is now required at link time)
+
 ## [0.4.0] - 2026-09-14
 * (Breaking) Update to mbedtls-rs-sys v0.3
 * Pass the C++ driver (`<prefix>g++` / `clang++`) as `CMAKE_CXX_COMPILER` instead of the C one; OpenThread is C++, and the C driver compiles it but does not link the C++ runtime

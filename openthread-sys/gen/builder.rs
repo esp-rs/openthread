@@ -250,26 +250,30 @@ impl OpenThreadBuilder {
         // internal C++ behaviors (a more thorough parent search at attach,
         // delay-aware tx-queue management). See `thread-version-and-frame-support`.
         //
-        // The two CSL flags below are the important part of pinning ">=1.2
-        // WITHOUT the CSL machinery". `OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE`
-        // otherwise DEFAULTS ON at >= 1.2 (see the vendored `src/core/config/mac.h`)
-        // and is a SEPARATE axis from the receiver: the transmitter is the
-        // *parent* side (an FTD scheduling indirect frames to CSL children),
-        // the receiver is the *child* (SSED) side. We want neither yet:
-        //   - CSL_RECEIVER off  -> this node is never a CSL sleepy child.
-        //   - CSL_TRANSMITTER off -> an FTD here never tries to parent CSL
-        //     children, so OT never calls the CSL-parent radio hooks
-        //     (`otPlatRadioGetCslAccuracy`/`GetCslUncertainty`) at runtime.
-        // Together they keep the radio-platform contract identical to 1.1: no
-        // `EnableCsl`/`ReceiveAt`/`GetCsl*` callbacks are referenced or invoked,
-        // so every existing `Radio` driver keeps working unchanged. Enabling CSL
-        // (low-power SSED) is a deliberate future opt-in that also needs the
-        // `Radio` trait to grow the CSL/enh-ACK-security surface.
+        // CSL (Coordinated Sampled Listening, the Thread >= 1.2 Synchronized
+        // Sleepy End Device) has two SEPARATE axes in OpenThread:
+        //   - CSL_RECEIVER: the *child* (SSED) side. ON: a sleepy child may
+        //     announce a CSL schedule and sample the channel at its parent's
+        //     transmit times instead of polling. Whether it actually does is a
+        //     runtime decision (`OpenThread::set_csl_period`), and only a `Radio`
+        //     advertising `Capabilities::RECEIVE_TIMING` (timed receive, a
+        //     radio clock, enhanced-ACK security) can. Every other radio keeps
+        //     working unchanged: the CSL callbacks are never invoked for it.
+        //     Compiling it in costs a little flash for the CSL sub-MAC and
+        //     requires the microsecond platform timer (`otPlatAlarmMicro*`,
+        //     served by this crate from `embassy-time` or the radio clock).
+        //   - CSL_TRANSMITTER: the *parent* side (an FTD scheduling indirect
+        //     frames to CSL children). It DEFAULTS ON at >= 1.2 (see the
+        //     vendored `src/core/config/mac.h`) and is kept OFF: an FTD here
+        //     never parents CSL children, so OT never calls the CSL-parent
+        //     radio hooks at runtime.
         config
             .define("OT_THREAD_VERSION", "1.4")
             .cflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
             .cxxflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
-            .define("OT_CSL_RECEIVER", "OFF")
+            .cflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
+            .cxxflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
+            .define("OT_CSL_RECEIVER", "ON")
             .define("OT_LOG_LEVEL", "NOTE")
             // Build BOTH device types so the prebuilt cache covers MTD and FTD.
             // The actual archives shipped/linked are chosen by the umbrella

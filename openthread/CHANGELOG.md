@@ -6,8 +6,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
-* Fix: OpenThread refcount underflow in the new_with_* constructors on drop
+* Breaking: CSL (Thread 1.2 Synchronized Sleepy End Device) support (#122):
+  * New CSL and enhanced ACKs APIs
+  * `Radio` trait: new defaulted CSL and enhanced ACK methods; a radio advertising `Capabilities::RECEIVE_TIMING` **must** implement them
+  * `otPlatRadioGetNow` and the microsecond alarm run on the radio clock when the radio has one
+* Fix: OpenThread refcount underflow in the new_with_* constructors on drop (#123)
 
 ## [0.4.0] - 2026-09-14
 * (Breaking) Update to `rand_core` 0.10; `OpenThread` now needs a CSPRNG

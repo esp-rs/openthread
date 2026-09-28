@@ -172,6 +172,9 @@ impl Radio for EspRadio<'_> {
             receive_sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
             default_tx_power: Self::DEFAULT_TX_POWER,
             default_cca_threshold: Self::DEFAULT_CCA_THRESHOLD,
+            clock: None,
+            csl_accuracy_ppm: u8::MAX,
+            csl_uncertainty: u8::MAX,
         })
     }
 
@@ -260,6 +263,8 @@ impl Radio for EspRadio<'_> {
                                 channel: ack_frame.channel,
                                 rssi,
                                 lqi,
+                                timestamp_us: None,
+                                ack_security: None,
                             }));
                         } else {
                             trace!(
@@ -329,6 +334,8 @@ impl Radio for EspRadio<'_> {
             channel: raw.channel,
             rssi,
             lqi,
+            timestamp_us: None,
+            ack_security: None,
         })
     }
 }
