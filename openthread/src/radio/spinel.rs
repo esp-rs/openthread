@@ -1468,6 +1468,9 @@ where
             receive_sensitivity: self.sensitivity,
             default_tx_power: self.default_tx_power,
             default_cca_threshold: self.default_cca_threshold,
+            clock: None,
+            csl_accuracy_ppm: u8::MAX,
+            csl_uncertainty: u8::MAX,
         })
     }
 
@@ -1691,6 +1694,8 @@ where
                     channel: ack_channel.unwrap_or(channel),
                     rssi: ack_rssi,
                     lqi: ack_lqi,
+                    timestamp_us: None,
+                    ack_security: None,
                 }))
             }
             // The caller didn't ask for the ACK PSDU (didn't expect an ACK), so
@@ -1725,6 +1730,8 @@ where
                     channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
                     lqi,
+                    timestamp_us: None,
+                    ack_security: None,
                 });
             }
             // Unparseable stashed frame — skip and try the next.
@@ -1752,6 +1759,8 @@ where
                     channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
                     lqi,
+                    timestamp_us: None,
+                    ack_security: None,
                 });
             }
             // Other frames (matched responses to a concurrent op, status) — ignore.
