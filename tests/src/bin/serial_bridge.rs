@@ -356,6 +356,35 @@ fn pump(mut device: Device) -> ! {
     }
 }
 
+/// How long the console has to stay silent after the reset before the device
+/// counts as rebooted, and the most the wait is allowed to take.
+const REBOOT_QUIET: Duration = Duration::from_millis(500);
+const REBOOT_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// The prompt that answers the reset command is not the one to hand the
+/// harness: a firmware node prints it *before* it reboots (the CLI answers,
+/// then the firmware persists what it must and resets the chip), so the
+/// device is about to go away, and its boot-time prompt is still to come.
+/// Forwarding from here races the reboot: the harness's first command lands
+/// on a console that is not there yet - lost, or answered late - and the
+/// boot prompt turns up in the harness's stream as a stray line. Seen on the
+/// XIAO nRF54L15, whose serial chip adds enough latency to lose the race.
+///
+/// So wait the reboot out (the wire goes quiet once the boot output, prompt
+/// included, is through), then prove the console is back with a command that
+/// has to answer, and drain that answer. A device whose console dropped off
+/// the bus during the reboot has already been through `reconnect`, which
+/// scrubs; the readiness probe still applies.
+fn await_reboot(device: &mut Device) {
+    device.discard_until_quiet(REBOOT_QUIET, REBOOT_TIMEOUT);
+
+    device.write(b"state\r\n");
+    if !await_prompt(device, RESET_ATTEMPT_TIMEOUT) {
+        eprintln!("serial_bridge: the device did not answer after its reset; carrying on");
+    }
+    device.discard_until_quiet(Duration::from_millis(200), Duration::from_secs(1));
+}
+
 /// Put the device back into a factory-fresh state, and wait until its CLI is
 /// answering again.
 ///
@@ -446,6 +475,7 @@ fn reset_device(device: &mut Device) {
         device.write(format!("{command}\r\n").as_bytes());
 
         if await_prompt(device, RESET_ATTEMPT_TIMEOUT) {
+            await_reboot(device);
             return;
         }
 
