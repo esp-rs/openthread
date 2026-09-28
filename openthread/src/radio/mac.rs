@@ -327,9 +327,18 @@ where
                     self.timer.wait(ack_at).await;
                 }
 
+                // A software-generated ACK is complete as built: nothing for
+                // the radio to finish.
+                let mut ack_tx = crate::TxInfo {
+                    security_processed: true,
+                    header_updated: true,
+                    ..Default::default()
+                };
+
                 self.radio
                     .transmit(
-                        &self.ack_psdu_buf[..ack_len],
+                        &mut self.ack_psdu_buf[..ack_len],
+                        &mut ack_tx,
                         self.channel,
                         self.power,
                         // An ACK is sent in the inter-frame gap, without CCA:
@@ -440,7 +449,8 @@ where
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        tx: &mut crate::TxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
@@ -456,7 +466,7 @@ where
         if self.mac_caps.contains(MacCapabilities::TX_ACK) {
             let result = self
                 .radio
-                .transmit(psdu, channel, power, cca_threshold, ack_psdu_buf)
+                .transmit(psdu, tx, channel, power, cca_threshold, ack_psdu_buf)
                 .await
                 .map_err(Self::Error::Io);
 
@@ -465,7 +475,7 @@ where
             result
         } else {
             self.radio
-                .transmit(psdu, channel, power, cca_threshold, None)
+                .transmit(psdu, tx, channel, power, cca_threshold, None)
                 .await
                 .map_err(Self::Error::Io)?;
 

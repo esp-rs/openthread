@@ -1577,7 +1577,8 @@ where
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        _tx: &mut crate::TxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
