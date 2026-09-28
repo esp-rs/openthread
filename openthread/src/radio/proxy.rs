@@ -246,6 +246,8 @@ impl Radio for ProxyRadio<'_> {
             channel: response.psdu_channel,
             rssi: response.psdu_rssi,
             lqi: response.psdu_lqi,
+            timestamp_us: None,
+            ack_security: None,
         });
 
         if let Some(ack_psdu_buf) = ack_psdu_buf {
@@ -707,6 +709,8 @@ impl ProxyRadioFrame {
                 channel: 0,
                 rssi: None,
                 lqi: None,
+                timestamp_us: None,
+                ack_security: None,
             }),
             psdu: [0; PSDU_LEN],
         }

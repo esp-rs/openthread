@@ -655,6 +655,8 @@ impl PendingRxFrame {
                 channel: 0,
                 rssi: None,
                 lqi: None,
+                timestamp_us: None,
+                ack_security: None,
             },
             psdu: [0; OT_RADIO_FRAME_MAX_SIZE as _],
         }
