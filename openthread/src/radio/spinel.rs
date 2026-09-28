@@ -52,7 +52,7 @@ use core::mem::MaybeUninit;
 use embassy_time::{Duration, Timer};
 
 use crate::radio::{
-    Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
+    Capabilities, Config, MacCapabilities, PsduRxInfo, Radio, RadioCaps, RadioErrorKind,
     SrcMatchConfig,
 };
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
@@ -1578,12 +1578,12 @@ where
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        _tx: &mut crate::TxInfo,
+        _psdu_tx: &mut crate::PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
         self.ensure_init().await?;
         self.flush_src_match().await?;
 
@@ -1690,7 +1690,7 @@ where
             Some(buf) => {
                 let copy = ack_psdu.len().min(buf.len());
                 buf[..copy].copy_from_slice(&ack_psdu[..copy]);
-                Ok(Some(PsduMeta {
+                Ok(Some(PsduRxInfo {
                     len: copy,
                     channel: ack_channel.unwrap_or(channel),
                     rssi: ack_rssi,
@@ -1705,7 +1705,7 @@ where
         }
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         self.ensure_init().await?;
         self.flush_src_match().await?;
         // Normally already done by `set_receive`; re-asserted here because a
@@ -1726,7 +1726,7 @@ where
             if let Some((psdu, rssi, rx_channel, lqi)) = parse_radio_frame(&stashed) {
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
-                return Ok(PsduMeta {
+                return Ok(PsduRxInfo {
                     len: copy,
                     channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,
@@ -1755,7 +1755,7 @@ where
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
 
-                return Ok(PsduMeta {
+                return Ok(PsduRxInfo {
                     len: copy,
                     channel: rx_channel.unwrap_or(cfg_channel),
                     rssi,

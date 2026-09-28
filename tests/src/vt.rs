@@ -21,7 +21,9 @@ use std::net::{Ipv4Addr, UdpSocket};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::sync::Arc;
 
-use openthread::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig};
+use openthread::{
+    Config, PsduRxInfo, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig,
+};
 
 use crate::sim::{patch_fcs, port_base_from_env, PSDU_MAX, SIM_RSSI};
 
@@ -352,12 +354,12 @@ impl Radio for VtRadio {
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        _tx: &mut openthread::TxInfo,
+        _psdu_tx: &mut openthread::PsduTxInfo,
         channel: u8,
         _power: i8,                 // The simulated medium is lossless
         _cca_threshold: Option<i8>, // ... and always idle
         _ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
         if !(2..=PSDU_MAX).contains(&psdu.len()) {
             return Err(VtRadioError::TxInvalid);
         }
@@ -391,7 +393,7 @@ impl Radio for VtRadio {
         Ok(None)
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         loop {
             let frame = VT_RX.receive().await;
 
@@ -426,7 +428,7 @@ impl Radio for VtRadio {
 
             psdu_buf[..frame.len].copy_from_slice(psdu);
 
-            break Ok(PsduMeta {
+            break Ok(PsduRxInfo {
                 len: frame.len,
                 channel: frame.channel,
                 rssi: Some(SIM_RSSI),

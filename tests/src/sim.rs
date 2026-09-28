@@ -37,7 +37,9 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 
 use async_io::Async;
 
-use openthread::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig};
+use openthread::{
+    Config, PsduRxInfo, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig,
+};
 
 use socket2::{Domain, Protocol, Socket, Type};
 
@@ -260,12 +262,12 @@ impl Radio for SimRadio {
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        _tx: &mut openthread::TxInfo,
+        _psdu_tx: &mut openthread::PsduTxInfo,
         channel: u8,
         _power: i8,                 // The simulated medium is lossless
         _cca_threshold: Option<i8>, // ... and always idle
         _ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
         if !(2..=PSDU_MAX).contains(&psdu.len()) {
             return Err(SimRadioError::TxInvalid);
         }
@@ -292,7 +294,7 @@ impl Radio for SimRadio {
         Ok(None)
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         loop {
             let mut msg = [0; PSDU_MAX + 1];
 
@@ -324,7 +326,7 @@ impl Radio for SimRadio {
 
             psdu_buf[..psdu_len].copy_from_slice(&msg[1..len]);
 
-            break Ok(PsduMeta {
+            break Ok(PsduRxInfo {
                 len: psdu_len,
                 channel,
                 rssi: Some(SIM_RSSI),
