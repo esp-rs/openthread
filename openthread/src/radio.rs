@@ -97,7 +97,11 @@ bitflags! {
         const CSMA_BACKOFF = OT_RADIO_CAPS_CSMA_BACKOFF as u16;
         /// Radio supports direct transition from sleep to TX.
         const SLEEP_TO_TX = OT_RADIO_CAPS_SLEEP_TO_TX as u16;
-        /// Radio supports frame security processing (encryption/decryption).
+        /// Radio finishes the frames it transmits itself: frame counter,
+        /// CSL IE and AES-CCM* at transmit time (see [`PsduTxInfo`]), with the
+        /// keys from [`Radio::set_mac_keys`]. A CSL child needs this from its
+        /// radio to advertise an accurate phase; for every other radio the
+        /// glue does the same work in software before `transmit`.
         const TRANSMIT_SEC = OT_RADIO_CAPS_TRANSMIT_SEC as u16;
         /// Radio supports precise TX timing.
         const TRANSMIT_TIMING = OT_RADIO_CAPS_TRANSMIT_TIMING as u16;
@@ -206,6 +210,17 @@ pub struct RadioCaps {
     pub default_tx_power: i8,
     /// The radio's default CCA threshold, in dBm.
     pub default_cca_threshold: i8,
+    /// The radio's microsecond clock, if it has one. Required for
+    /// [`Capabilities::RECEIVE_TIMING`]; without it OpenThread's own (coarser)
+    /// clock is used for the timing it reports to peers.
+    pub clock: Option<RadioClock>,
+    /// The accuracy of the radio clock, in PPM, as reported to a CSL parent so
+    /// it can size the window it transmits in. `u8::MAX` if unknown (the
+    /// parent then assumes the worst).
+    pub csl_accuracy_ppm: u8,
+    /// The fixed uncertainty (jitter) of the radio's timed receive, in units of
+    /// 10 µs, as reported to a CSL parent. `u8::MAX` if unknown.
+    pub csl_uncertainty: u8,
 }
 
 impl RadioCaps {
@@ -228,6 +243,9 @@ impl Default for RadioCaps {
             receive_sensitivity: Self::DEFAULT_RECEIVE_SENSITIVITY,
             default_tx_power: Self::DEFAULT_TX_POWER,
             default_cca_threshold: Self::DEFAULT_CCA_THRESHOLD,
+            clock: None,
+            csl_accuracy_ppm: u8::MAX,
+            csl_uncertainty: u8::MAX,
         }
     }
 }
@@ -342,7 +360,7 @@ impl Default for SrcMatchConfig {
 /// Meta-data associated with the received IEEE 802.15.4 frame
 #[derive(Copy, Clone, Debug, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-pub struct PsduMeta {
+pub struct PsduRxInfo {
     /// Length of the PSDU in the frame
     pub len: usize,
     /// Channel on which the frame was received
@@ -354,6 +372,221 @@ pub struct PsduMeta {
     /// radio; `None` if the radio does not report one, in which case the
     /// OpenThread glue synthesizes an LQI from the RSSI.
     pub lqi: Option<u8>,
+    /// When the frame arrived: the time the end of its SFD (i.e. the start of
+    /// the PHR) was at the antenna, in microseconds of the radio clock
+    /// ([`RadioCaps::clock`]). `None` if the radio does not timestamp frames,
+    /// in which case the OpenThread glue stamps the frame at delivery.
+    ///
+    /// Consumed by CSL synchronization (and Link Metrics / time-sync IEs), so
+    /// a radio advertising [`Capabilities::RECEIVE_TIMING`] must report it.
+    pub timestamp_us: Option<u64>,
+    /// The security material the radio used for the *secured enhanced ACK* it
+    /// sent for this frame, if it sent one. `None` for an immediate ACK, an
+    /// unsecured enhanced ACK, or no ACK at all.
+    ///
+    /// OpenThread secures the data frames in software with its own frame
+    /// counter, while the enhanced ACKs of a CSL child are secured by the radio
+    /// with the same key: reporting the counter each ACK consumed is what
+    /// keeps the two from colliding. A radio advertising
+    /// [`Capabilities::RECEIVE_TIMING`] must report it.
+    pub ack_security: Option<AckSecurity>,
+}
+
+/// What OpenThread knows about a frame it hands to [`Radio::transmit`], and
+/// what the radio may have done to it.
+///
+/// A radio advertising [`Capabilities::TRANSMIT_SEC`] finishes the frame at
+/// transmit time: unless `header_updated`, it assigns the frame counter (and
+/// key index) and, when `csl_present`, fills the CSL IE with the phase of its
+/// next receive window as of the moment the frame goes on the air; unless
+/// `security_processed`, it then secures the frame (AES-CCM*) with the key
+/// it was handed through [`Radio::set_mac_keys`]. It writes the finished
+/// frame back into the PSDU buffer and sets `header_updated`.
+///
+/// Every other radio receives frames that are already finished and secured
+/// by the OpenThread glue, with both flags set, and can ignore this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct PsduTxInfo {
+    /// The frame is already secured (or needs no security).
+    pub security_processed: bool,
+    /// The frame counter and the CSL IE are already assigned - a
+    /// retransmission, or a frame the glue finished itself.
+    pub header_updated: bool,
+    /// The frame carries a CSL IE (a CSL child's own transmissions).
+    pub csl_present: bool,
+    /// The frame is a retransmission of a frame sent before.
+    pub retransmission: bool,
+}
+
+/// The security material a radio used for a secured enhanced ACK
+/// (see [`PsduRxInfo::ack_security`]).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct AckSecurity {
+    /// The frame counter of the ACK.
+    pub frame_counter: u32,
+    /// The key index (key ID mode 1) the ACK was secured with.
+    pub key_id: u8,
+}
+
+/// A microsecond clock shared by everything timing-related in a radio: its
+/// frame timestamps ([`PsduRxInfo::timestamp_us`]), its timed receive
+/// ([`Radio::receive_at`]) and the CSL sample times ([`CslConfig`]).
+///
+/// A plain function, because OpenThread reads the clock synchronously
+/// (`otPlatRadioGetNow`) from contexts where the `Radio` instance - owned by
+/// the radio runner - is not reachable. A radio backed by a global driver
+/// (the usual case for an SoC radio) simply hands out its driver's time
+/// function.
+#[derive(Clone, Copy)]
+pub struct RadioClock(pub fn() -> u64);
+
+impl RadioClock {
+    /// The current time, in microseconds.
+    pub fn now_us(&self) -> u64 {
+        (self.0)()
+    }
+}
+
+impl core::fmt::Debug for RadioClock {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.write_str("RadioClock")
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for RadioClock {
+    fn format(&self, f: defmt::Formatter<'_>) {
+        defmt::write!(f, "RadioClock")
+    }
+}
+
+// Two clocks are the same clock if they are the same function. The lint is
+// about *identity* comparisons being unreliable across codegen units, which
+// does not matter here: a false "different" only means a spurious re-apply.
+#[allow(unpredictable_function_pointer_comparisons)]
+impl PartialEq for RadioClock {
+    fn eq(&self, other: &Self) -> bool {
+        core::ptr::fn_addr_eq(self.0, other.0)
+    }
+}
+
+impl Eq for RadioClock {}
+
+impl core::hash::Hash for RadioClock {
+    fn hash<H: core::hash::Hasher>(&self, state: &mut H) {
+        (self.0 as usize).hash(state)
+    }
+}
+
+/// The CSL (Coordinated Sampled Listening) schedule of a Synchronized Sleepy
+/// End Device, as OpenThread configures it in the radio.
+///
+/// The radio needs it to fill the CSL IE of the enhanced ACKs it sends to the
+/// parent: the IE tells the parent when the child's next sample window is,
+/// which is how the two stay synchronized without the child ever polling.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct CslConfig {
+    /// The CSL period, in units of 10 symbols (160 µs); `0` means CSL is off.
+    pub period: u32,
+    /// The short address of the parent (the peer the CSL IE is for).
+    pub short_addr: u16,
+    /// The extended address of the parent.
+    pub ext_addr: u64,
+    /// The time of the next CSL sample window, in microseconds of the radio
+    /// clock (its low 32 bits, as OpenThread hands it out); the anchor from
+    /// which the radio computes the CSL phase in each enhanced ACK. Updated by
+    /// OpenThread before every sample window.
+    pub sample_time_us: u32,
+}
+
+impl CslConfig {
+    /// CSL off.
+    pub const fn new() -> Self {
+        Self {
+            period: 0,
+            short_addr: 0xfffe,
+            ext_addr: 0,
+            sample_time_us: 0,
+        }
+    }
+
+    /// Whether CSL is enabled.
+    pub const fn enabled(&self) -> bool {
+        self.period != 0
+    }
+}
+
+impl Default for CslConfig {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// The MAC keys OpenThread hands the radio, so that the radio can secure the
+/// enhanced ACKs it sends on the child's behalf (see
+/// [`PsduRxInfo::ack_security`]).
+///
+/// All three keys use key ID mode 1: `key_id` is the index of `curr`, and
+/// `prev` / `next` carry the neighboring indices (wrapping within `1..=128`),
+/// so that an ACK to a frame secured with the previous or next rotation of the
+/// network key can still be secured.
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub struct MacKeys {
+    /// The key ID mode (always 1 for Thread).
+    pub key_id_mode: u8,
+    /// The key index of `curr`.
+    pub key_id: u8,
+    /// The previous key.
+    pub prev: [u8; 16],
+    /// The current key.
+    pub curr: [u8; 16],
+    /// The next key.
+    pub next: [u8; 16],
+}
+
+impl MacKeys {
+    /// The key index of `prev`.
+    pub const fn prev_key_id(&self) -> u8 {
+        if self.key_id <= 1 {
+            128
+        } else {
+            self.key_id - 1
+        }
+    }
+
+    /// The key index of `next`.
+    pub const fn next_key_id(&self) -> u8 {
+        if self.key_id >= 128 {
+            1
+        } else {
+            self.key_id + 1
+        }
+    }
+}
+
+// The key material never goes to a log.
+impl core::fmt::Debug for MacKeys {
+    fn fmt(&self, f: &mut core::fmt::Formatter<'_>) -> core::fmt::Result {
+        f.debug_struct("MacKeys")
+            .field("key_id_mode", &self.key_id_mode)
+            .field("key_id", &self.key_id)
+            .finish_non_exhaustive()
+    }
+}
+
+#[cfg(feature = "defmt")]
+impl defmt::Format for MacKeys {
+    fn format(&self, f: defmt::Formatter<'_>) {
+        defmt::write!(
+            f,
+            "MacKeys {{ key_id_mode: {}, key_id: {}, .. }}",
+            self.key_id_mode,
+            self.key_id
+        )
+    }
 }
 
 /// The IEEE 802.15.4 PHY Radio trait.
@@ -472,6 +705,69 @@ pub trait Radio {
     /// mode to save power, as they only receive when the `receive` method is called anyway.
     async fn set_sleep(&mut self) -> Result<(), Self::Error>;
 
+    /// Schedule a receive window: turn the receiver on for `channel` at `start_us`
+    /// (radio clock, see [`RadioCaps::clock`]) for `duration_us`, then off again.
+    ///
+    /// This is how a CSL child samples the channel at its parent's transmit
+    /// times. Frames received during the window are delivered through
+    /// [`receive`](Radio::receive), which the runner keeps calling meanwhile -
+    /// and which must NOT force the receiver on beyond the window (a radio that
+    /// enters receive mode from `receive` has to notice it is in a timed window).
+    /// The window is cancelled by [`set_sleep`](Radio::set_sleep) /
+    /// [`set_receive`](Radio::set_receive) / [`transmit`](Radio::transmit).
+    ///
+    /// Only called on radios advertising [`Capabilities::RECEIVE_TIMING`]; the
+    /// default is for the others and does nothing.
+    async fn receive_at(
+        &mut self,
+        channel: u8,
+        start_us: u64,
+        duration_us: u32,
+    ) -> Result<(), Self::Error> {
+        let _ = (channel, start_us, duration_us);
+
+        warn!("Timed receive is not supported by this radio");
+
+        Ok(())
+    }
+
+    /// Set the CSL schedule the radio advertises in its enhanced ACKs.
+    ///
+    /// Only called on radios advertising [`Capabilities::RECEIVE_TIMING`], and
+    /// then again before every sample window (the sample time moves). The
+    /// default is for the others and does nothing.
+    async fn set_csl(&mut self, csl: &CslConfig) -> Result<(), Self::Error> {
+        let _ = csl;
+
+        Ok(())
+    }
+
+    /// Hand the radio the MAC keys it secures its enhanced ACKs with, or take
+    /// them away (`None`).
+    ///
+    /// Called on every radio whenever the network key rotates; only a radio
+    /// that secures ACKs itself needs them. The default does nothing.
+    async fn set_mac_keys(&mut self, keys: Option<&MacKeys>) -> Result<(), Self::Error> {
+        let _ = keys;
+
+        Ok(())
+    }
+
+    /// Set the MAC frame counter the radio secures its next enhanced ACK with
+    /// (only if larger than its current one, when `if_larger` is set).
+    ///
+    /// OpenThread pushes its own counter here, so the ACK counters never run
+    /// behind the data-frame counters. The default does nothing.
+    async fn set_mac_frame_counter(
+        &mut self,
+        frame_counter: u32,
+        if_larger: bool,
+    ) -> Result<(), Self::Error> {
+        let _ = (frame_counter, if_larger);
+
+        Ok(())
+    }
+
     /// Perform an energy scan on `channel`: measure the energy observed over
     /// `duration_millis` and return the maximum RSSI, in dBm.
     ///
@@ -507,7 +803,9 @@ pub trait Radio {
     ///   support `MacCapabilities::RX_ACK` as well. Support for one but not the other is typically not very useful.
     ///
     /// Arguments:
-    /// - `psdu`: The PSDU to transmit as part of the frame.
+    /// - `psdu`: The PSDU to transmit as part of the frame. A radio advertising
+    ///   [`Capabilities::TRANSMIT_SEC`] finishes it in place (see [`PsduTxInfo`]).
+    /// - `psdu_tx`: What is already done to the frame, and what the radio did to it.
     /// - `channel`: The channel to transmit the frame on.
     /// - `cca_threshold`: The CCA threshold to use before transmitting the frame. If `None`, CCA is not performed.
     /// - `ack_psdu_buf`: The buffer to store the received ACK PSDU if the radio is capable of reporting received ACKs.
@@ -517,12 +815,13 @@ pub trait Radio {
     ///   and an ACK was expected and received for the transmitted frame.
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        psdu_tx: &mut PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error>;
+    ) -> Result<Option<PsduRxInfo>, Self::Error>;
 
     /// Retrieve an already received radio frame, or wait for one to arrive.
     ///
@@ -539,7 +838,7 @@ pub trait Radio {
     ///
     /// Returns:
     /// - The meta-data associated with the received frame.
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error>;
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error>;
 }
 
 impl<T> Radio for &mut T
@@ -574,16 +873,51 @@ where
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        psdu_tx: &mut PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
-        T::transmit(self, psdu, channel, power, cca_threshold, ack_psdu_buf).await
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
+        T::transmit(
+            self,
+            psdu,
+            psdu_tx,
+            channel,
+            power,
+            cca_threshold,
+            ack_psdu_buf,
+        )
+        .await
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         T::receive(self, psdu_buf).await
+    }
+
+    async fn receive_at(
+        &mut self,
+        channel: u8,
+        start_us: u64,
+        duration_us: u32,
+    ) -> Result<(), Self::Error> {
+        T::receive_at(self, channel, start_us, duration_us).await
+    }
+
+    async fn set_csl(&mut self, csl: &CslConfig) -> Result<(), Self::Error> {
+        T::set_csl(self, csl).await
+    }
+
+    async fn set_mac_keys(&mut self, keys: Option<&MacKeys>) -> Result<(), Self::Error> {
+        T::set_mac_keys(self, keys).await
+    }
+
+    async fn set_mac_frame_counter(
+        &mut self,
+        frame_counter: u32,
+        if_larger: bool,
+    ) -> Result<(), Self::Error> {
+        T::set_mac_frame_counter(self, frame_counter, if_larger).await
     }
 }

@@ -7,7 +7,7 @@ use esp_radio::ieee802154::Config as EspConfig;
 
 use crate::fmt::Bytes;
 use crate::{
-    Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
+    Capabilities, Config, MacCapabilities, PsduRxInfo, Radio, RadioCaps, RadioErrorKind,
     SrcMatchConfig,
 };
 
@@ -172,6 +172,9 @@ impl Radio for EspRadio<'_> {
             receive_sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
             default_tx_power: Self::DEFAULT_TX_POWER,
             default_cca_threshold: Self::DEFAULT_CCA_THRESHOLD,
+            clock: None,
+            csl_accuracy_ppm: u8::MAX,
+            csl_uncertainty: u8::MAX,
         })
     }
 
@@ -212,12 +215,13 @@ impl Radio for EspRadio<'_> {
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        _psdu_tx: &mut crate::PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
         TX_SIGNAL.reset();
 
         // The threshold only matters when CCA is performed at all; keep the
@@ -260,11 +264,13 @@ impl Radio for EspRadio<'_> {
                                 None
                             };
 
-                            return Ok(Some(PsduMeta {
+                            return Ok(Some(PsduRxInfo {
                                 len: ack_psdu_len,
                                 channel: ack_frame.channel,
                                 rssi,
                                 lqi: None,
+                                timestamp_us: None,
+                                ack_security: None,
                             }));
                         } else {
                             trace!(
@@ -285,7 +291,7 @@ impl Radio for EspRadio<'_> {
         }
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         RX_SIGNAL.reset();
 
         trace!("802.15.4: About to RX on ch{}", self.channel);
@@ -333,11 +339,13 @@ impl Radio for EspRadio<'_> {
             rssi
         );
 
-        Ok(PsduMeta {
+        Ok(PsduRxInfo {
             len: psdu_len,
             channel: raw.channel,
             rssi,
             lqi: None,
+            timestamp_us: None,
+            ack_security: None,
         })
     }
 }

@@ -139,6 +139,53 @@ Radios without the capability get the core's software fallback (which needs a sy
 
 Active scan is NOT a distinct radio state: it is an ordinary Receive on the scan channel plus a Beacon Request transmit - which is exactly why it depends on C4.
 
+### C9. A CSL child's receive windows are the radio's to time, and its enhanced ACKs are the radio's to secure
+
+Thread 1.2 CSL (a Synchronized Sleepy End Device) replaces data polling
+with a listening schedule: the child samples the channel for a short window
+once per CSL period, and the parent transmits into that window. OpenThread
+drives it through three platform surfaces, all optional on the `Radio` trait
+and only exercised when the radio advertises `Capabilities::RECEIVE_TIMING`:
+
+- **Timed receive** (`Radio::receive_at`, `otPlatRadioReceiveAt`): "receiver
+  on at `start` for `duration`, then off". The window is a fifth commanded
+  state next to Sleep/Receive/Transmit/EnergyScan, entered from Sleep and
+  left by the next command (OpenThread's `Sleep` at the window's end). While
+  it lasts the runner keeps calling `receive`, which MUST NOT switch the
+  receiver on for good - a radio whose `receive` enters receive mode has to
+  notice it is inside a window and only drain its queue.
+- **A radio clock** (`RadioCaps::clock`, `otPlatRadioGetNow`) shared by the
+  window start, the frame timestamps (`PsduRxInfo::timestamp_us`) and the CSL
+  sample time (`CslConfig::sample_time_us`). OpenThread's own microsecond
+  alarm runs on it too, so all of its CSL arithmetic is in one time base.
+  The crate reads it synchronously from contexts that cannot reach the
+  `Radio` instance, hence a plain function.
+- **Enhanced-ACK security** (`Radio::set_mac_keys`, `Radio::set_mac_frame_counter`,
+  `PsduRxInfo::ack_security`): the parent's frames are secured, so the ACKs -
+  which the radio generates, with the CSL IE from `Radio::set_csl` inside -
+  must be secured too, with the child's own key and frame counter.
+- **Transmit-time frame finishing** (`Capabilities::TRANSMIT_SEC`, `PsduTxInfo`):
+  a CSL child's own frames (its data polls, its Child Update Requests) carry
+  a CSL IE whose phase is meaningful only relative to the moment the frame
+  goes on the air. OpenThread therefore never fills that IE itself: it leaves
+  the frame counter, the CSL IE and the AES-CCM* to the platform
+  (`OT_RADIO_CAPS_TRANSMIT_SEC`), to be done as the frame is transmitted.
+  The crate advertises that capability unconditionally and honours it in one
+  of two ways. A radio that advertises `TRANSMIT_SEC` on the trait gets the
+  raw frame plus a `PsduTxInfo` and finishes it in its own buffer, at the true
+  transmit time (the nRF driver's security and IE writers); it writes the
+  finished frame back and marks the header updated, since OpenThread reads
+  the frame counter it used from it. Every other radio gets the frame already
+  finished by the crate, right before `transmit`, with OpenThread's own
+  platform helper (`otMacFrameProcessTxSfd`) and a phase computed as of then -
+  a CSMA backoff earlier than the truth, which the receive window's trailing
+  edge absorbs. The keys and counters for that come from the same
+  `otPlatRadioSetMacKey` / `otPlatRadioSetMacFrameCounter` calls the radio
+  gets; the crate mirrors them into the helper's context.
+
+The MAC keys and the frame counter are pushed to every radio (OpenThread
+does not know which ones secure ACKs); the trait defaults ignore them.
+
 ## The radio state machine
 
 ```
@@ -189,7 +236,7 @@ The crate mirrors this split literally in `OpenThread::run_radio`.
 
 | Driver | MAC | Ob.1 (tx=full seq) | Ob.2 (rx continuity) | Ob.4 (auto-RX) | Ob.5 (`set_sleep` drops) |
 | --- | --- | --- | --- | --- | --- |
-| `nrf-802154` | driver IRQ layer | yes | yes (IRQ queue) | yes (`rx_when_idle`) | yes |
+| `nrf-802154` | driver IRQ layer | yes | yes (IRQ queue) | yes (`rx_when_idle`) | yes; C9 (CSL): yes |
 | `EspRadio` | esp-radio HW/blob | yes | yes (driver queue) | yes | needs check |
 | `SpinelRadio` | RCP firmware | yes | yes (`rx_queue`) | yes (RCP) | needs check |
 | `embassy-nrf` + `MacRadio` | software - **fails hard ACK timing on air; to be replaced by `nrf-802154`** (`the-case-with-nrf-radio.md`) | via wrapper | via parking queue | runner (done) | runner parks |
@@ -199,11 +246,8 @@ The crate mirrors this split literally in `OpenThread::run_radio`.
 
 - Whether to tolerate (ignore) a late `TxDone` after a C5 abort in the
   crate's glue, for robustness against drivers that report one anyway.
-- RX timestamps: the glue stamps `mRxInfo.mTimestamp` at *delivery*
-  (`Instant::now()` in `plat_radio_receive_done`, already marked "not
-  precise"), and `PsduMeta` has no arrival-time field, so frames parked
-  during a transmit sequence get stamped up to ~20 ms late. Unused by
-  anything the stack does today (MLE-level operation ignores it), but CSL
-  sync, Link Metrics and time-sync IEs all consume it - when any of those
-  land, `PsduMeta` needs an arrival timestamp captured below the trait,
-  independent of (but amplified by) the parked-delivery latency.
+- RX timestamps: `PsduRxInfo::timestamp_us` now carries the radio's own
+  arrival time (C9), and the glue only falls back to stamping at delivery -
+  up to ~20 ms late for a frame parked during a transmit sequence - for
+  radios without one. Those cannot run CSL anyway; Link Metrics and time-sync
+  IEs would still see the imprecision on them.

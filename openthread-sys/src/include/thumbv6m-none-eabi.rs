@@ -28666,3 +28666,379 @@ unsafe extern "C" {
     /// @param[in] aInstance  The OpenThread instance structure.
     pub fn otPlatSettingsWipe(aInstance: *mut otInstance);
 }
+///< No address.
+pub const otMacAddressType_OT_MAC_ADDRESS_TYPE_NONE: otMacAddressType = 0;
+///< IEEE 802.15.4 Short Address.
+pub const otMacAddressType_OT_MAC_ADDRESS_TYPE_SHORT: otMacAddressType = 1;
+///< IEEE 802.15.4 Extended Address.
+pub const otMacAddressType_OT_MAC_ADDRESS_TYPE_EXTENDED: otMacAddressType = 2;
+/// Specifies the IEEE 802.15.4 Address type.
+pub type otMacAddressType = ::core::ffi::c_uchar;
+/// Represents an IEEE 802.15.4 short or extended Address.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otMacAddress {
+    pub mAddress: otMacAddress__bindgen_ty_1,
+    ///< The address type (short, extended, or none).
+    pub mType: otMacAddressType,
+}
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub union otMacAddress__bindgen_ty_1 {
+    ///< The IEEE 802.15.4 Short Address.
+    pub mShortAddress: otShortAddress,
+    ///< The IEEE 802.15.4 Extended Address.
+    pub mExtAddress: otExtAddress,
+}
+impl Default for otMacAddress__bindgen_ty_1 {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+impl Default for otMacAddress {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+unsafe extern "C" {
+    /// Check if @p aFrame is an Ack frame.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @retval  true    It is an ACK frame.
+    /// @retval  false   It is not an ACK frame.
+    pub fn otMacFrameIsAck(aFrame: *const otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Check if @p aFrame is a Data frame.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @retval  true    It is a Data frame.
+    /// @retval  false   It is not a Data frame.
+    pub fn otMacFrameIsData(aFrame: *const otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Check if @p aFrame is a Command frame.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @retval  true    It is a Command frame.
+    /// @retval  false   It is not a Command frame.
+    pub fn otMacFrameIsCommand(aFrame: *const otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Check if @p aFrame is a Data Request Command.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame. For 802.15.4-2015 and above frame,
+    ///                              the frame should be already decrypted.
+    ///
+    /// @retval  true    It is a Data Request Command frame.
+    /// @retval  false   It is not a Data Request Command frame.
+    pub fn otMacFrameIsDataRequest(aFrame: *const otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Check if @p aFrame requests ACK.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @retval  true    It requests ACK.
+    /// @retval  false   It does not request ACK.
+    pub fn otMacFrameIsAckRequested(aFrame: *const otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Check if @p aFrame matches the @p aPandId and @p aShortAddress or @p aExtAddress.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    /// @param[in]   aPanId          The PAN id to match with.
+    /// @param[in]   aShortAddress   The short address to match with.
+    /// @param[in]   aExtAddress     The extended address to match with.
+    ///
+    /// @retval  true    It is a broadcast or matches with the PAN id and one of the addresses.
+    /// @retval  false   It doesn't match.
+    pub fn otMacFrameDoesAddrMatch(
+        aFrame: *const otRadioFrame,
+        aPanId: otPanId,
+        aShortAddress: otShortAddress,
+        aExtAddress: *const otExtAddress,
+    ) -> bool;
+}
+unsafe extern "C" {
+    /// Check if @p aFrame matches the @p aPandId and @p aShortAddress, or @p aAltShortAddress or @p aExtAddress.
+    ///
+    /// @param[in]   aFrame            A pointer to the frame.
+    /// @param[in]   aPanId            The PAN id to match with.
+    /// @param[in]   aShortAddress     The short address to match with.
+    /// @param[in]   aAltShortAddress  The alternate short address to match with. Can be `OT_RADIO_INVALID_SHORT_ADDR` if
+    ///                                there is no alternate address.
+    /// @param[in]   aExtAddress       The extended address to match with.
+    ///
+    /// @retval  true    It is a broadcast or matches with the PAN id and one of the addresses.
+    /// @retval  false   It doesn't match.
+    pub fn otMacFrameDoesAddrMatchAny(
+        aFrame: *const otRadioFrame,
+        aPanId: otPanId,
+        aShortAddress: otShortAddress,
+        aAltShortAddress: otShortAddress,
+        aExtAddress: *const otExtAddress,
+    ) -> bool;
+}
+unsafe extern "C" {
+    /// Get source MAC address.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    /// @param[out]  aMacAddress     A pointer to MAC address.
+    ///
+    /// @retval  OT_ERROR_NONE   Successfully got the source MAC address.
+    /// @retval  OT_ERROR_PARSE  Failed to parse the source MAC address.
+    pub fn otMacFrameGetSrcAddr(
+        aFrame: *const otRadioFrame,
+        aMacAddress: *mut otMacAddress,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get destination MAC address.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    /// @param[out]  aMacAddress     A pointer to MAC address.
+    ///
+    /// @retval  OT_ERROR_NONE   Successfully got the destination MAC address.
+    /// @retval  OT_ERROR_PARSE  Failed to parse the destination MAC address.
+    pub fn otMacFrameGetDstAddr(
+        aFrame: *const otRadioFrame,
+        aMacAddress: *mut otMacAddress,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Get the sequence of @p aFrame.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    /// @param[out]  aSequence       A pointer to the sequence.
+    ///
+    /// @retval  OT_ERROR_NONE   Successfully got the sequence.
+    /// @retval  OT_ERROR_PARSE  Failed to parse the sequence.
+    pub fn otMacFrameGetSequence(aFrame: *const otRadioFrame, aSequence: *mut u8) -> otError;
+}
+unsafe extern "C" {
+    /// Performs AES CCM on the frame which is going to be sent.
+    ///
+    /// @param[in]  aFrame       A pointer to the MAC frame buffer that is going to be sent.
+    /// @param[in]  aExtAddress  A pointer to the extended address, which will be used to generate nonce
+    ///                          for AES CCM computation.
+    pub fn otMacFrameProcessTransmitAesCcm(
+        aFrame: *mut otRadioFrame,
+        aExtAddress: *const otExtAddress,
+    );
+}
+unsafe extern "C" {
+    /// Tell if the version of @p aFrame is 2015.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @retval  true    It is a version 2015 frame.
+    /// @retval  false   It is not a version 2015 frame.
+    pub fn otMacFrameIsVersion2015(aFrame: *const otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Generate Imm-Ack for @p aFrame.
+    ///
+    /// @param[in]    aFrame             A pointer to the frame.
+    /// @param[in]    aIsFramePending    Value of the ACK's frame pending bit.
+    /// @param[out]   aAckFrame          A pointer to the ack frame to be generated.
+    pub fn otMacFrameGenerateImmAck(
+        aFrame: *const otRadioFrame,
+        aIsFramePending: bool,
+        aAckFrame: *mut otRadioFrame,
+    );
+}
+unsafe extern "C" {
+    /// Generate Enh-Ack for @p aFrame.
+    ///
+    /// @param[in]    aFrame             A pointer to the frame.
+    /// @param[in]    aIsFramePending    Value of the ACK's frame pending bit.
+    /// @param[in]    aIeData            A pointer to the IE data portion of the ACK to be sent.
+    /// @param[in]    aIeLength          The length of IE data portion of the ACK to be sent.
+    /// @param[out]   aAckFrame          A pointer to the ack frame to be generated.
+    ///
+    /// @retval  OT_ERROR_NONE           Successfully generated Enh Ack in @p aAckFrame.
+    /// @retval  OT_ERROR_PARSE          @p aFrame has incorrect format.
+    pub fn otMacFrameGenerateEnhAck(
+        aFrame: *const otRadioFrame,
+        aIsFramePending: bool,
+        aIeData: *const u8,
+        aIeLength: u8,
+        aAckFrame: *mut otRadioFrame,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Set CSL IE content into the frame.
+    ///
+    /// @param[in,out]   aFrame         A pointer to the frame to be modified.
+    /// @param[in]       aCslPeriod     CSL Period in CSL IE.
+    /// @param[in]       aCslPhase      CSL Phase in CSL IE.
+    pub fn otMacFrameSetCslIe(aFrame: *mut otRadioFrame, aCslPeriod: u16, aCslPhase: u16);
+}
+unsafe extern "C" {
+    /// Tell if the security of @p aFrame is enabled.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @retval  true    The frame has security enabled.
+    /// @retval  false   The frame does not have security enabled.
+    pub fn otMacFrameIsSecurityEnabled(aFrame: *mut otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Tell if the key ID mode of @p aFrame is 1.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @retval  true    The frame key ID mode is 1.
+    /// @retval  false   The frame security is not enabled or key ID mode is not 1.
+    pub fn otMacFrameIsKeyIdMode1(aFrame: *mut otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Tell if the key ID mode of @p aFrame is 2.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @retval  true    The frame key ID mode is 2.
+    /// @retval  false   The frame security is not enabled or key ID mode is not 2.
+    pub fn otMacFrameIsKeyIdMode2(aFrame: *mut otRadioFrame) -> bool;
+}
+unsafe extern "C" {
+    /// Get the key ID of @p aFrame.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @returns The key ID of the frame with key ID mode 1. Returns 0 if failed.
+    pub fn otMacFrameGetKeyId(aFrame: *mut otRadioFrame) -> u8;
+}
+unsafe extern "C" {
+    /// Set key ID to @p aFrame with key ID mode 1.
+    ///
+    /// @param[in,out]   aFrame     A pointer to the frame to be modified.
+    /// @param[in]       aKeyId     Key ID to be set to the frame.
+    pub fn otMacFrameSetKeyId(aFrame: *mut otRadioFrame, aKeyId: u8);
+}
+unsafe extern "C" {
+    /// Get the frame counter of @p aFrame.
+    ///
+    /// @param[in]   aFrame          A pointer to the frame.
+    ///
+    /// @returns The frame counter of the frame. Returns UINT32_MAX if failed.
+    pub fn otMacFrameGetFrameCounter(aFrame: *mut otRadioFrame) -> u32;
+}
+unsafe extern "C" {
+    /// Set frame counter to @p aFrame.
+    ///
+    /// @param[in,out]   aFrame         A pointer to the frame to be modified.
+    /// @param[in]       aFrameCounter  Frame counter to be set to the frame.
+    pub fn otMacFrameSetFrameCounter(aFrame: *mut otRadioFrame, aFrameCounter: u32);
+}
+unsafe extern "C" {
+    /// Write CSL IE to a buffer (without setting IE value).
+    ///
+    /// @param[out]  aDest    A pointer to the output buffer.
+    ///
+    /// @returns  The total count of bytes (total length of CSL IE) written to the buffer.
+    pub fn otMacFrameGenerateCslIeTemplate(aDest: *mut u8) -> u8;
+}
+unsafe extern "C" {
+    /// Write Enh-ACK Probing IE (Vendor IE with THREAD OUI) to a buffer.
+    ///
+    /// @p aIeData could be `NULL`. If @p aIeData is `NULL`, this method generates the IE with the data unset. This allows
+    /// users to generate the pattern first and update value later. (For example, using `otMacFrameSetEnhAckProbingIe`)
+    ///
+    /// @param[out]  aDest          A pointer to the output buffer.
+    /// @param[in]   aIeData        A pointer to the Link Metrics data.
+    /// @param[in]   aIeDataLength  The length of Link Metrics data value. Should be `1` or `2`. (Per spec 4.11.3.4.4.6)
+    ///
+    /// @returns  The total count of bytes (total length of the Vendor IE) written to the buffer.
+    pub fn otMacFrameGenerateEnhAckProbingIe(
+        aDest: *mut u8,
+        aIeData: *const u8,
+        aIeDataLength: u8,
+    ) -> u8;
+}
+unsafe extern "C" {
+    /// Sets the data value of Enh-ACK Probing IE (Vendor IE with THREAD OUI) in a frame.
+    ///
+    /// If no Enh-ACK Probing IE is found in @p aFrame, nothing would be done.
+    ///
+    /// @param[in]  aFrame    The target frame that contains the IE. MUST NOT be `NULL`.
+    /// @param[in]  aData     A pointer to the data value. MUST NOT be `NULL`.
+    /// @param[in]  aDataLen  The length of @p aData.
+    pub fn otMacFrameSetEnhAckProbingIe(aFrame: *mut otRadioFrame, aData: *const u8, aDataLen: u8);
+}
+/// Represents the context for radio layer.
+#[repr(C)]
+#[derive(Copy, Clone)]
+pub struct otRadioContext {
+    ///< In little-endian byte order.
+    pub mExtAddress: otExtAddress,
+    pub mMacFrameCounter: u32,
+    pub mPrevMacFrameCounter: u32,
+    ///< The sample time based on the microsecond timer.
+    pub mCslSampleTime: u32,
+    ///< In unit of 10 symbols.
+    pub mCslPeriod: u16,
+    pub mShortAddress: otShortAddress,
+    pub mAlternateShortAddress: otShortAddress,
+    pub mKeyType: otRadioKeyType,
+    pub mKeyId: u8,
+    pub mPrevKey: otMacKeyMaterial,
+    pub mCurrKey: otMacKeyMaterial,
+    pub mNextKey: otMacKeyMaterial,
+}
+impl Default for otRadioContext {
+    fn default() -> Self {
+        let mut s = ::core::mem::MaybeUninit::<Self>::uninit();
+        unsafe {
+            ::core::ptr::write_bytes(s.as_mut_ptr(), 0, 1);
+            s.assume_init()
+        }
+    }
+}
+unsafe extern "C" {
+    /// Perform processing of SFD callback from ISR.
+    ///
+    /// This function may do multiple tasks as follows.
+    ///
+    ///  - CSL IE will be populated (if present)
+    ///  - Time IE will be populated (if present)
+    ///  - Tx timestamp will be populated
+    ///  - Tx security will be performed (including assignment of security frame counter and key id if not assigned)
+    ///
+    /// @param[in,out]   aFrame          The target frame. MUST NOT be `NULL`.
+    /// @param[in]       aRadioTime      The radio time when the SFD was at the antenna.
+    /// @param[in,out]   aRadioContext   The radio context accessible in ISR.
+    ///
+    /// @returns the error processing the callback. The caller should abort transmission on failures.
+    pub fn otMacFrameProcessTxSfd(
+        aFrame: *mut otRadioFrame,
+        aRadioTime: u64,
+        aRadioContext: *mut otRadioContext,
+    ) -> otError;
+}
+unsafe extern "C" {
+    /// Process frame tx security.
+    ///
+    /// @param[in,out]   aFrame          The target frame. MUST NOT be `NULL`.
+    /// @param[in,out]   aRadioContext   The radio context accessible in ISR.
+    ///
+    /// @retval OT_ERROR_NONE     Successfully processed security.
+    /// @retval OT_ERROR_FAILED   Failed to processed security.
+    /// @retval OT_ERROR_SECURITY Failed to processed security for missing key.
+    pub fn otMacFrameProcessTransmitSecurity(
+        aFrame: *mut otRadioFrame,
+        aRadioContext: *mut otRadioContext,
+    ) -> otError;
+}
