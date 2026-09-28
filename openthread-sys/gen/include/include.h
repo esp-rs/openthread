@@ -99,3 +99,8 @@
 #ifndef OPENTHREAD_CONFIG_SRP_CLIENT_AUTO_START_API_ENABLE
 #define OPENTHREAD_CONFIG_SRP_CLIENT_AUTO_START_API_ENABLE 1
 #endif
+
+// Platform helpers (`libopenthread-platform-utils`): frame parsing, and the
+// transmit-side security / CSL IE processing a radio platform that advertises
+// `OT_RADIO_CAPS_TRANSMIT_SEC` performs on OpenThread's behalf.
+#include "utils/mac_frame.h"

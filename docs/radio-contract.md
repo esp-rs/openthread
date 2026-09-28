@@ -163,10 +163,25 @@ and only exercised when the radio advertises `Capabilities::RECEIVE_TIMING`:
 - **Enhanced-ACK security** (`Radio::set_mac_keys`, `Radio::set_mac_frame_counter`,
   `PsduMeta::ack_security`): the parent's frames are secured, so the ACKs -
   which the radio generates, with the CSL IE from `Radio::set_csl` inside -
-  must be secured too, with the child's own key and frame counter. OpenThread
-  still secures the *data* frames in software with the same key; the two
-  sides share one counter space only because the radio reports the counter
-  each ACK consumed and OpenThread advances past it.
+  must be secured too, with the child's own key and frame counter.
+- **Transmit-time frame finishing** (`Capabilities::TRANSMIT_SEC`, `TxInfo`):
+  a CSL child's own frames (its data polls, its Child Update Requests) carry
+  a CSL IE whose phase is meaningful only relative to the moment the frame
+  goes on the air. OpenThread therefore never fills that IE itself: it leaves
+  the frame counter, the CSL IE and the AES-CCM* to the platform
+  (`OT_RADIO_CAPS_TRANSMIT_SEC`), to be done as the frame is transmitted.
+  The crate advertises that capability unconditionally and honours it in one
+  of two ways. A radio that advertises `TRANSMIT_SEC` on the trait gets the
+  raw frame plus a `TxInfo` and finishes it in its own buffer, at the true
+  transmit time (the nRF driver's security and IE writers); it writes the
+  finished frame back and marks the header updated, since OpenThread reads
+  the frame counter it used from it. Every other radio gets the frame already
+  finished by the crate, right before `transmit`, with OpenThread's own
+  platform helper (`otMacFrameProcessTxSfd`) and a phase computed as of then -
+  a CSMA backoff earlier than the truth, which the receive window's trailing
+  edge absorbs. The keys and counters for that come from the same
+  `otPlatRadioSetMacKey` / `otPlatRadioSetMacFrameCounter` calls the radio
+  gets; the crate mirrors them into the helper's context.
 
 The MAC keys and the frame counter are pushed to every radio (OpenThread
 does not know which ones secure ACKs); the trait defaults ignore them.

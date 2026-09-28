@@ -1768,11 +1768,66 @@ impl<'a> OpenThread<'a> {
     where
         R: Radio,
     {
-        let (cca_threshold, channel, power, psdu_len) = {
+        let (cca_threshold, channel, power, psdu_len, mut tx) = {
             let mut ot = self.activate();
+            let now = ot.radio_now_us();
             let state = ot.state();
 
-            let cca = unsafe { state.ot.radio_resources.snd_frame.mInfo.mTxInfo }.mCsmaCaEnabled();
+            // A radio that does not finish its own frames gets them finished
+            // here, the way OpenThread's reference platforms do it: frame
+            // counter, key index, CSL IE and AES-CCM*, from the context the
+            // key / counter / CSL callbacks keep up to date. The CSL phase is
+            // computed as of now; the frame is on the air a CSMA backoff
+            // later, which the trailing edge of the receive window absorbs.
+            if !radio::Capabilities::from_bits_truncate(state.ot.radio_caps as _)
+                .contains(radio::Capabilities::TRANSMIT_SEC)
+            {
+                // The helper casts the context's address to the core's
+                // `ExtAddress`, i.e. big-endian as in a frame (the reference
+                // platform reverses the little-endian platform bytes into it,
+                // whatever the field's comment says).
+                let ext_addr = state.ot.radio_conf.ext_addr.unwrap_or(0).to_be_bytes();
+                let short_addr = state.ot.radio_conf.short_addr.unwrap_or(0xfffe);
+                let alt_short_addr = state.ot.radio_conf.alt_short_addr.unwrap_or(0xfffe);
+
+                let ctx = &mut state.ot.radio_tx_ctx;
+                ctx.mExtAddress.m8 = ext_addr;
+                ctx.mShortAddress = short_addr;
+                ctx.mAlternateShortAddress = alt_short_addr;
+
+                let err = unsafe {
+                    sys::otMacFrameProcessTxSfd(
+                        &mut state.ot.radio_resources.snd_frame,
+                        now,
+                        &mut state.ot.radio_tx_ctx,
+                    )
+                };
+
+                if err != otError_OT_ERROR_NONE {
+                    warn!("Transmit security failed (OT error {}), frame dropped", err);
+
+                    unsafe {
+                        otPlatRadioTxDone(
+                            state.ot.instance,
+                            &mut state.ot.radio_resources.snd_frame,
+                            core::ptr::null_mut(),
+                            otError_OT_ERROR_ABORT,
+                        );
+                    }
+
+                    return;
+                }
+            }
+
+            let tx_info = unsafe { state.ot.radio_resources.snd_frame.mInfo.mTxInfo };
+            let tx = radio::TxInfo {
+                security_processed: tx_info.mIsSecurityProcessed(),
+                header_updated: tx_info.mIsHeaderUpdated(),
+                csl_present: tx_info.mCslPresent(),
+                retransmission: tx_info.mIsARetx(),
+            };
+
+            let cca = tx_info.mCsmaCaEnabled();
             let channel = state.ot.radio_resources.snd_frame.mChannel;
 
             let psdu_len = state.ot.radio_resources.snd_frame.mLength as usize;
@@ -1787,6 +1842,7 @@ impl<'a> OpenThread<'a> {
                 channel,
                 state.ot.radio_tx_power,
                 psdu_len,
+                tx,
             )
         };
 
@@ -1804,7 +1860,8 @@ impl<'a> OpenThread<'a> {
 
         let result = radio
             .transmit(
-                &psdu_buf[..psdu_len],
+                &mut psdu_buf[..psdu_len],
+                &mut tx,
                 channel,
                 power,
                 cca_threshold,
@@ -1821,6 +1878,25 @@ impl<'a> OpenThread<'a> {
             }
 
             let radio_resources = &mut state.ot.radio_resources;
+
+            if tx.header_updated {
+                // The frame went out as the radio finished it: hand that back
+                // to OpenThread, which reads the frame counter used from it.
+                radio_resources.snd_psdu[..psdu_len].copy_from_slice(&psdu_buf[..psdu_len]);
+
+                unsafe {
+                    radio_resources
+                        .snd_frame
+                        .mInfo
+                        .mTxInfo
+                        .set_mIsHeaderUpdated(true);
+                    radio_resources
+                        .snd_frame
+                        .mInfo
+                        .mTxInfo
+                        .set_mIsSecurityProcessed(true);
+                }
+            }
 
             match result {
                 Ok(maybe_ack_psdu_meta) => {
@@ -2234,6 +2310,8 @@ impl OtResources {
             radio_keys: None,
             radio_keys_changed: Signal::new(),
             radio_frame_counter: Signal::new(),
+            // A plain-data C struct; all-zero is its "nothing set" state.
+            radio_tx_ctx: unsafe { MaybeUninit::zeroed().assume_init() },
             radio_clock: None,
             radio_csl_accuracy_ppm: u8::MAX,
             radio_csl_uncertainty: u8::MAX,
@@ -2265,9 +2343,17 @@ impl OtResources {
             // whether it may ever run CSL from this snapshot. Whether the actual radio
             // supports it is checked by `set_csl_period`, the only place that can
             // enable CSL - so a radio without timed receive is never asked for it.
+            //
+            // `TRANSMIT_SEC` is advertised for every radio: a radio that does
+            // not finish its own frames (counter, CSL IE, AES-CCM*) gets them
+            // finished by this crate right before transmission, with the
+            // reference platforms' helper - which is what lets a CSL child
+            // advertise a phase computed at transmit time rather than one
+            // frozen into the MIC by the stack long before.
             radio_caps: (OT_RADIO_CAPS_ACK_TIMEOUT
                 | sys::OT_RADIO_CAPS_ENERGY_SCAN
-                | sys::OT_RADIO_CAPS_RECEIVE_TIMING) as otRadioCaps,
+                | sys::OT_RADIO_CAPS_RECEIVE_TIMING
+                | sys::OT_RADIO_CAPS_TRANSMIT_SEC) as otRadioCaps,
             radio_sensitivity: radio::RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
             radio_cca_threshold: radio::RadioCaps::DEFAULT_CCA_THRESHOLD,
             radio_tx_power: radio::RadioCaps::DEFAULT_TX_POWER,
@@ -3101,9 +3187,10 @@ impl<'a> OtContext<'a> {
         short_addr: u16,
         ext_addr: Option<u64>,
     ) -> Result<(), OtError> {
-        info!(
+        trace!(
             "Plat radio CSL callback: period {} (x10 symbols), parent 0x{:04x}",
-            period, short_addr
+            period,
+            short_addr
         );
 
         let state = self.state();
@@ -3112,6 +3199,7 @@ impl<'a> OtContext<'a> {
         state.ot.radio_csl.short_addr = short_addr;
         state.ot.radio_csl.ext_addr = ext_addr.unwrap_or(0);
         state.ot.radio_csl_changed.signal(());
+        state.ot.radio_tx_ctx.mCslPeriod = period.min(u16::MAX as u32) as u16;
 
         Ok(())
     }
@@ -3123,6 +3211,7 @@ impl<'a> OtContext<'a> {
 
         state.ot.radio_csl.sample_time_us = sample_time_us;
         state.ot.radio_csl_changed.signal(());
+        state.ot.radio_tx_ctx.mCslSampleTime = sample_time_us;
     }
 
     fn plat_radio_csl_accuracy(&mut self) -> u8 {
@@ -3140,6 +3229,27 @@ impl<'a> OtContext<'a> {
 
         state.ot.radio_keys = keys;
         state.ot.radio_keys_changed.signal(());
+
+        // Mirror into the software transmit-security context. The frame
+        // counter is OpenThread's to set (`otPlatRadioSetMacFrameCounter`:
+        // zero on a key rotation, the persisted value on a restart), so it is
+        // left alone here.
+        let ctx = &mut state.ot.radio_tx_ctx;
+        ctx.mKeyType = sys::otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY;
+        match keys {
+            Some(keys) => {
+                ctx.mKeyId = keys.key_id;
+                ctx.mPrevKey.mKeyMaterial.mKey.m8 = keys.prev;
+                ctx.mCurrKey.mKeyMaterial.mKey.m8 = keys.curr;
+                ctx.mNextKey.mKeyMaterial.mKey.m8 = keys.next;
+            }
+            None => {
+                ctx.mKeyId = 0;
+                ctx.mPrevKey.mKeyMaterial.mKey.m8 = [0; 16];
+                ctx.mCurrKey.mKeyMaterial.mKey.m8 = [0; 16];
+                ctx.mNextKey.mKeyMaterial.mKey.m8 = [0; 16];
+            }
+        }
     }
 
     fn plat_radio_set_mac_frame_counter(&mut self, frame_counter: u32, if_larger: bool) {
@@ -3149,7 +3259,14 @@ impl<'a> OtContext<'a> {
             if_larger
         );
 
-        self.state()
+        let state = self.state();
+
+        let ctx = &mut state.ot.radio_tx_ctx;
+        if !if_larger || frame_counter > ctx.mMacFrameCounter {
+            ctx.mMacFrameCounter = frame_counter;
+        }
+
+        state
             .ot
             .radio_frame_counter
             .signal((frame_counter, if_larger));
@@ -3193,7 +3310,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_enable(&mut self) -> Result<(), OtError> {
-        info!("Plat radio enable callback");
+        trace!("Plat radio enable callback");
 
         let state = self.state();
         state.ot.radio_enabled = true;
@@ -3204,7 +3321,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_disable(&mut self) -> Result<(), OtError> {
-        info!("Plat radio disable callback");
+        trace!("Plat radio disable callback");
 
         let state = self.state();
         state.ot.radio_enabled = false;
@@ -3229,7 +3346,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_set_promiscuous(&mut self, promiscuous: bool) {
-        info!(
+        trace!(
             "Plat radio set promiscuous callback, promiscuous: {}",
             promiscuous
         );
@@ -3255,7 +3372,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_set_transmit_power(&mut self, power: i8) -> Result<(), OtError> {
-        info!("Plat radio set transmit power callback, power: {}", power);
+        trace!("Plat radio set transmit power callback, power: {}", power);
 
         let state = self.state();
 
@@ -3276,7 +3393,7 @@ impl<'a> OtContext<'a> {
 
         *threshold = state.ot.radio_cca_threshold;
 
-        info!(
+        trace!(
             "Plat radio get/set CCA energy detect threshold callback, threshold: {}",
             *threshold
         );
@@ -3285,7 +3402,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_set_cca_energy_detect_threshold(&mut self, threshold: i8) -> Result<(), OtError> {
-        info!(
+        trace!(
             "Plat radio set CCA energy detect threshold callback, threshold: {}",
             threshold
         );
@@ -3298,7 +3415,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_set_extended_address(&mut self, address: u64) {
-        info!(
+        trace!(
             "Plat radio set extended address callback, addr: 0x{:08x}",
             address
         );
@@ -3312,7 +3429,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_set_short_address(&mut self, address: u16) {
-        info!(
+        trace!(
             "Plat radio set short address callback, addr: 0x{:02x}",
             address
         );
@@ -3331,7 +3448,7 @@ impl<'a> OtContext<'a> {
         // second short address the radio should also accept.
         let alt = (address != crate::sys::OT_RADIO_INVALID_SHORT_ADDR as u16).then_some(address);
 
-        info!(
+        trace!(
             "Plat radio set alternate short address callback, addr: {:?}",
             alt
         );
@@ -3345,7 +3462,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_set_pan_id(&mut self, pan_id: u16) {
-        info!("Plat radio set PAN ID callback, PAN ID: 0x{:02x}", pan_id);
+        trace!("Plat radio set PAN ID callback, PAN ID: 0x{:02x}", pan_id);
 
         let state = self.state();
 
@@ -3356,9 +3473,10 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<(), OtError> {
-        info!(
+        trace!(
             "Plat radio energy scan callback, channel {}, duration {}",
-            channel, duration_millis
+            channel,
+            duration_millis
         );
 
         let state = self.state();
@@ -3376,7 +3494,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_sleep(&mut self) -> Result<(), OtError> {
-        info!("Plat radio sleep callback");
+        trace!("Plat radio sleep callback");
 
         let state = self.state();
 
@@ -3445,7 +3563,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_set_rx_on_when_idle(&mut self, on: bool) {
-        info!("Plat radio set RX on when idle callback, on: {}", on);
+        trace!("Plat radio set RX on when idle callback, on: {}", on);
 
         let state = self.state();
 
@@ -3570,7 +3688,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_settings_init(&mut self, sensitive_keys: &[u16]) {
-        info!(
+        trace!(
             "Plat settings init callback, sensitive keys: {:?}",
             sensitive_keys
         );
@@ -3579,7 +3697,7 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_settings_deinit(&mut self) {
-        info!("Plat settings deinit callback");
+        trace!("Plat settings deinit callback");
         let state = self.state();
         state.ot.settings.deinit();
     }
@@ -3774,6 +3892,12 @@ struct OtState<'a> {
     /// The latest MAC frame counter OpenThread pushed to the radio
     /// (`otPlatRadioSetMacFrameCounter[IfLarger]`): `(counter, if_larger)`.
     radio_frame_counter: Signal<(u32, bool)>,
+    /// The transmit-side security context for radios that do not finish their
+    /// own frames (no `Capabilities::TRANSMIT_SEC`): the keys, frame counters
+    /// and CSL schedule OpenThread pushes to "the radio", consumed by the
+    /// platform helper that finishes a frame right before it is transmitted
+    /// (`otMacFrameProcessTxSfd`), as OpenThread's own reference platforms do.
+    radio_tx_ctx: sys::otRadioContext,
     /// The radio clock, if the radio has one (`RadioCaps::clock`); serves
     /// `otPlatRadioGetNow` and the microsecond alarm.
     radio_clock: Option<radio::RadioClock>,
