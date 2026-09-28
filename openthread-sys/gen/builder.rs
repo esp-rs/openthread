@@ -118,6 +118,19 @@ impl OpenThreadBuilder {
             .allowlist_item("ot.*")
             .allowlist_item("OT_.*")
             .header(include_header.to_string_lossy())
+            // The platform helpers (`examples/platforms/utils`): frame parsing and
+            // the transmit-side security / CSL IE processing the glue performs for
+            // radios that do not do it themselves. They reference the core stack.
+            .clang_args([&format!(
+                "-I{}",
+                canon(
+                    &self
+                        .crate_root_path
+                        .join("openthread")
+                        .join("examples")
+                        .join("platforms")
+                )
+            )])
             .clang_args([&format!(
                 "-I{}",
                 canon(&self.crate_root_path.join("openthread").join("include"))
@@ -273,6 +286,16 @@ impl OpenThreadBuilder {
             .cxxflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
             .cflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
             .cxxflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
+            // How far ahead of a CSL receive window OpenThread asks the
+            // platform to schedule it. The upstream default (320 us) is sized
+            // for a platform that arms the radio synchronously from the CSL
+            // timer; here the request travels from the micro alarm through the
+            // OpenThread task to the radio task before it reaches the driver,
+            // and a request that arrives after the window start is refused by
+            // a timed-receive radio. 3 ms covers that path with margin; it
+            // only moves the timer, not the window.
+            .cflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000")
+            .cxxflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000")
             .define("OT_CSL_RECEIVER", "ON")
             .define("OT_LOG_LEVEL", "NOTE")
             // Build BOTH device types so the prebuilt cache covers MTD and FTD.

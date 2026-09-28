@@ -224,7 +224,8 @@ impl Radio for ProxyRadio<'_> {
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        _tx: &mut crate::TxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
@@ -491,9 +492,21 @@ impl PhyRadioRunner<'_> {
             } => {
                 unwrap!(response.psdu.resize_default(response.psdu.capacity()));
 
+                // The frame arrives here finished by the stack side: nothing
+                // for the radio to do to it.
+                let mut tx = crate::TxInfo {
+                    security_processed: true,
+                    header_updated: true,
+                    ..Default::default()
+                };
+
+                let mut psdu_buf = [0; PSDU_LEN];
+                psdu_buf[..psdu.len()].copy_from_slice(psdu);
+
                 let result = radio
                     .transmit(
-                        psdu,
+                        &mut psdu_buf[..psdu.len()],
+                        &mut tx,
                         *channel,
                         *power,
                         *cca_threshold,

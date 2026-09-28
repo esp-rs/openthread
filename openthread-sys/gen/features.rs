@@ -319,6 +319,11 @@ pub fn device_link_libs() -> Vec<&'static str> {
         });
     }
 
+    // The platform helpers (`examples/platforms/utils`): frame parsing and
+    // the transmit-side security / CSL IE processing the glue performs for
+    // radios that do not do it themselves. They reference the core stack.
+    libs.push("openthread-platform-utils-static");
+
     libs.push(core);
 
     // TCPlp (OpenThread's TCP implementation) is its own archive and is only

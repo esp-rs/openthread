@@ -10,6 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * New CSL and enhanced ACKs APIs
   * `Radio` trait: new defaulted CSL and enhanced ACK methods; a radio advertising `Capabilities::RECEIVE_TIMING` **must** implement them
   * `otPlatRadioGetNow` and the microsecond alarm run on the radio clock when the radio has one
+  * `Radio::transmit` takes the PSDU mutably now plus a `TxInfo` extra struct
+* `serial_bridge`: wait out the reboot an acknowledged `factoryreset` still has ahead of it before talking to the device
 * Fix: OpenThread refcount underflow in the new_with_* constructors on drop (#123)
 
 ## [0.4.0] - 2026-09-14

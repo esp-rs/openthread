@@ -97,7 +97,11 @@ bitflags! {
         const CSMA_BACKOFF = OT_RADIO_CAPS_CSMA_BACKOFF as u16;
         /// Radio supports direct transition from sleep to TX.
         const SLEEP_TO_TX = OT_RADIO_CAPS_SLEEP_TO_TX as u16;
-        /// Radio supports frame security processing (encryption/decryption).
+        /// Radio finishes the frames it transmits itself: frame counter,
+        /// CSL IE and AES-CCM* at transmit time (see [`TxInfo`]), with the
+        /// keys from [`Radio::set_mac_keys`]. A CSL child needs this from its
+        /// radio to advertise an accurate phase; for every other radio the
+        /// glue does the same work in software before `transmit`.
         const TRANSMIT_SEC = OT_RADIO_CAPS_TRANSMIT_SEC as u16;
         /// Radio supports precise TX timing.
         const TRANSMIT_TIMING = OT_RADIO_CAPS_TRANSMIT_TIMING as u16;
@@ -386,6 +390,33 @@ pub struct PsduMeta {
     /// keeps the two from colliding. A radio advertising
     /// [`Capabilities::RECEIVE_TIMING`] must report it.
     pub ack_security: Option<AckSecurity>,
+}
+
+/// What OpenThread knows about a frame it hands to [`Radio::transmit`], and
+/// what the radio may have done to it.
+///
+/// A radio advertising [`Capabilities::TRANSMIT_SEC`] finishes the frame at
+/// transmit time: unless `header_updated`, it assigns the frame counter (and
+/// key index) and, when `csl_present`, fills the CSL IE with the phase of its
+/// next receive window as of the moment the frame goes on the air; unless
+/// `security_processed`, it then secures the frame (AES-CCM*) with the key
+/// it was handed through [`Radio::set_mac_keys`]. It writes the finished
+/// frame back into the PSDU buffer and sets `header_updated`.
+///
+/// Every other radio receives frames that are already finished and secured
+/// by the OpenThread glue, with both flags set, and can ignore this.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct TxInfo {
+    /// The frame is already secured (or needs no security).
+    pub security_processed: bool,
+    /// The frame counter and the CSL IE are already assigned - a
+    /// retransmission, or a frame the glue finished itself.
+    pub header_updated: bool,
+    /// The frame carries a CSL IE (a CSL child's own transmissions).
+    pub csl_present: bool,
+    /// The frame is a retransmission of a frame sent before.
+    pub retransmission: bool,
 }
 
 /// The security material a radio used for a secured enhanced ACK
@@ -772,7 +803,9 @@ pub trait Radio {
     ///   support `MacCapabilities::RX_ACK` as well. Support for one but not the other is typically not very useful.
     ///
     /// Arguments:
-    /// - `psdu`: The PSDU to transmit as part of the frame.
+    /// - `psdu`: The PSDU to transmit as part of the frame. A radio advertising
+    ///   [`Capabilities::TRANSMIT_SEC`] finishes it in place (see [`TxInfo`]).
+    /// - `tx`: What is already done to the frame, and what the radio did to it.
     /// - `channel`: The channel to transmit the frame on.
     /// - `cca_threshold`: The CCA threshold to use before transmitting the frame. If `None`, CCA is not performed.
     /// - `ack_psdu_buf`: The buffer to store the received ACK PSDU if the radio is capable of reporting received ACKs.
@@ -782,7 +815,8 @@ pub trait Radio {
     ///   and an ACK was expected and received for the transmitted frame.
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        tx: &mut TxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
@@ -839,16 +873,42 @@ where
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        tx: &mut TxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
     ) -> Result<Option<PsduMeta>, Self::Error> {
-        T::transmit(self, psdu, channel, power, cca_threshold, ack_psdu_buf).await
+        T::transmit(self, psdu, tx, channel, power, cca_threshold, ack_psdu_buf).await
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
         T::receive(self, psdu_buf).await
+    }
+
+    async fn receive_at(
+        &mut self,
+        channel: u8,
+        start_us: u64,
+        duration_us: u32,
+    ) -> Result<(), Self::Error> {
+        T::receive_at(self, channel, start_us, duration_us).await
+    }
+
+    async fn set_csl(&mut self, csl: &CslConfig) -> Result<(), Self::Error> {
+        T::set_csl(self, csl).await
+    }
+
+    async fn set_mac_keys(&mut self, keys: Option<&MacKeys>) -> Result<(), Self::Error> {
+        T::set_mac_keys(self, keys).await
+    }
+
+    async fn set_mac_frame_counter(
+        &mut self,
+        frame_counter: u32,
+        if_larger: bool,
+    ) -> Result<(), Self::Error> {
+        T::set_mac_frame_counter(self, frame_counter, if_larger).await
     }
 }

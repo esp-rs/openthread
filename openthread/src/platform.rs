@@ -108,7 +108,9 @@ extern "C" fn otPlatRadioEnableCsl(
     short_addr: u16,
     ext_addr: *const otExtAddress,
 ) -> otError {
-    let ext_addr = unsafe { ext_addr.as_ref() }.map(|addr| u64::from_le_bytes(addr.m8));
+    // Unlike the source-match entries, OpenThread hands this one out in
+    // big-endian byte order: the numeric EUI-64, as `ext_address()` reads it.
+    let ext_addr = unsafe { ext_addr.as_ref() }.map(|addr| u64::from_be_bytes(addr.m8));
 
     OtContext::callback(instance)
         .plat_radio_enable_csl(csl_period, short_addr, ext_addr)
@@ -150,7 +152,9 @@ extern "C" fn otPlatRadioSetMacKey(
 
     let keys = match (literal(prev_key), literal(curr_key), literal(next_key)) {
         (Some(prev), Some(curr), Some(next)) => Some(MacKeys {
-            key_id_mode,
+            // OpenThread passes the mode as it sits in the frame's security
+            // control byte (`kKeyIdMode1 == 1 << 3`); the radio wants 0..=3.
+            key_id_mode: key_id_mode >> 3,
             key_id,
             prev,
             curr,
