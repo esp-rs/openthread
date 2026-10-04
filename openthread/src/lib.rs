@@ -158,21 +158,17 @@ pub struct OpenThread<'a> {
 }
 
 impl<'a> OpenThread<'a> {
-    /// Create a new OpenThread instance.
+    /// Acquire the single global OpenThread instance on behalf of a new
+    /// `OpenThread` handle, enforcing that only one handle tree exists at a
+    /// time and seeding the reference count that [`Clone`] and [`Drop`]
+    /// maintain.
     ///
-    /// Arguments:
-    /// - `ieee_eui64`: The IEEE EUI-64 address of the Radio device.
-    /// - `rng`: A mutable reference to a random number generator that will be used by OpenThread.
-    /// - `resources`: A mutable reference to the OpenThread resources.
-    ///
-    /// Returns:
-    /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
-    pub fn new(
-        ieee_eui64: [u8; 8],
-        rng: &'a mut dyn OtRng,
-        settings: &'a mut dyn Settings,
-        resources: &'a mut OtResources,
-    ) -> Result<Self, OtError> {
+    /// Every constructor must call this before touching the OpenThread C
+    /// library: [`Clone`] increments `OT_REFCNT` and [`Drop`] decrements it
+    /// (finalizing the C instance on the `1 -> 0` transition), so a constructor
+    /// that skips the initial acquisition leaves the count one short of the
+    /// number of live handles and makes the final `Drop` underflow.
+    fn acquire() -> Result<(), OtError> {
         let acquired = OT_REFCNT.lock(|refcnt| {
             let acquired = refcnt.get() == 0;
 
@@ -188,6 +184,26 @@ impl<'a> OpenThread<'a> {
             // until all `OpenThread` instances are dropped
             Err(OtError::new(otError_OT_ERROR_NO_BUFS))?;
         }
+
+        Ok(())
+    }
+
+    /// Create a new OpenThread instance.
+    ///
+    /// Arguments:
+    /// - `ieee_eui64`: The IEEE EUI-64 address of the Radio device.
+    /// - `rng`: A mutable reference to a random number generator that will be used by OpenThread.
+    /// - `resources`: A mutable reference to the OpenThread resources.
+    ///
+    /// Returns:
+    /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
+    pub fn new(
+        ieee_eui64: [u8; 8],
+        rng: &'a mut dyn OtRng,
+        settings: &'a mut dyn Settings,
+        resources: &'a mut OtResources,
+    ) -> Result<Self, OtError> {
+        Self::acquire()?;
 
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
@@ -231,6 +247,8 @@ impl<'a> OpenThread<'a> {
         resources: &'a mut OtResources,
         udp_resources: &'a mut OtUdpResources<UDP_SOCKETS, UDP_RX_SZ>,
     ) -> Result<Self, OtError> {
+        Self::acquire()?;
+
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
@@ -281,6 +299,8 @@ impl<'a> OpenThread<'a> {
         resources: &'a mut OtResources,
         srp_resources: &'a mut OtSrpResources<SRP_SVCS, SRP_BUF_SZ>,
     ) -> Result<Self, OtError> {
+        Self::acquire()?;
+
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
@@ -337,6 +357,8 @@ impl<'a> OpenThread<'a> {
         udp_resources: &'a mut OtUdpResources<UDP_SOCKETS, UDP_RX_SZ>,
         srp_resources: &'a mut OtSrpResources<SRP_SVCS, SRP_BUF_SZ>,
     ) -> Result<Self, OtError> {
+        Self::acquire()?;
+
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
