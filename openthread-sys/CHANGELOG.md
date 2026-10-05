@@ -6,8 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-* Breaking: OpenThread is now compiled with CSL Receiver support enabled
-* Breaking: the prebuilt libraries are regenerated (the microsecond alarm handler is now required at link time)
+* New `csl-receiver` feature: compiles OpenThread with CSL Receiver support (and the microsecond platform alarm it needs). Off by default
 
 ## [0.4.0] - 2026-09-14
 * (Breaking) Update to mbedtls-rs-sys v0.3

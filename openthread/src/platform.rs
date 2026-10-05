@@ -8,11 +8,13 @@ use embassy_sync::blocking_mutex::Mutex;
 
 use openthread_sys::otError_OT_ERROR_NONE;
 
+#[cfg(feature = "_csl")]
 use crate::radio::MacKeys;
-use crate::sys::{
-    otError, otExtAddress, otInstance, otLogLevel, otLogRegion, otMacKeyMaterial, otRadioCaps,
-    otRadioFrame, otRadioKeyType, otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY,
-};
+#[cfg(feature = "csl-receiver")]
+use crate::sys::otExtAddress;
+use crate::sys::{otError, otInstance, otLogLevel, otLogRegion, otRadioCaps, otRadioFrame};
+#[cfg(feature = "_csl")]
+use crate::sys::{otMacKeyMaterial, otRadioKeyType, otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY};
 use crate::{IntoOtCode, OtActiveState, OtContext};
 
 /// A hack so that we can store a mutable reference to the active state in a global static variable
@@ -67,16 +69,19 @@ extern "C" fn otPlatAlarmMilliStop(instance: *const otInstance) -> otError {
         .into_ot_code()
 }
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatAlarmMicroGetNow() -> u32 {
     OtContext::callback(core::ptr::null()).plat_now_micros()
 }
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatAlarmMicroStartAt(instance: *mut otInstance, at0: u32, adt: u32) {
     OtContext::callback(instance).plat_alarm_micro_set(at0, adt);
 }
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatAlarmMicroStop(instance: *const otInstance) {
     OtContext::callback(instance).plat_alarm_micro_clear();
@@ -84,11 +89,13 @@ extern "C" fn otPlatAlarmMicroStop(instance: *const otInstance) {
 
 // --- CSL (Synchronized Sleepy End Device) and enhanced-ACK security ---
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatRadioGetNow(instance: *const otInstance) -> u64 {
     OtContext::callback(instance).plat_radio_now()
 }
 
+#[cfg(feature = "csl-receiver")]
 #[no_mangle]
 extern "C" fn otPlatRadioReceiveAt(
     instance: *const otInstance,
@@ -101,6 +108,7 @@ extern "C" fn otPlatRadioReceiveAt(
         .into_ot_code()
 }
 
+#[cfg(feature = "csl-receiver")]
 #[no_mangle]
 extern "C" fn otPlatRadioEnableCsl(
     instance: *const otInstance,
@@ -117,21 +125,25 @@ extern "C" fn otPlatRadioEnableCsl(
         .into_ot_code()
 }
 
+#[cfg(feature = "csl-receiver")]
 #[no_mangle]
 extern "C" fn otPlatRadioUpdateCslSampleTime(instance: *const otInstance, csl_sample_time: u32) {
     OtContext::callback(instance).plat_radio_update_csl_sample_time(csl_sample_time);
 }
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatRadioGetCslAccuracy(instance: *const otInstance) -> u8 {
     OtContext::callback(instance).plat_radio_csl_accuracy()
 }
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatRadioGetCslUncertainty(instance: *const otInstance) -> u8 {
     OtContext::callback(instance).plat_radio_csl_uncertainty()
 }
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatRadioSetMacKey(
     instance: *const otInstance,
@@ -166,11 +178,13 @@ extern "C" fn otPlatRadioSetMacKey(
     OtContext::callback(instance).plat_radio_set_mac_keys(keys);
 }
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatRadioSetMacFrameCounter(instance: *const otInstance, frame_counter: u32) {
     OtContext::callback(instance).plat_radio_set_mac_frame_counter(frame_counter, false);
 }
 
+#[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatRadioSetMacFrameCounterIfLarger(
     instance: *const otInstance,

@@ -265,16 +265,16 @@ impl OpenThreadBuilder {
         //
         // CSL (Coordinated Sampled Listening, the Thread >= 1.2 Synchronized
         // Sleepy End Device) has two SEPARATE axes in OpenThread:
-        //   - CSL_RECEIVER: the *child* (SSED) side. ON: a sleepy child may
-        //     announce a CSL schedule and sample the channel at its parent's
-        //     transmit times instead of polling. Whether it actually does is a
-        //     runtime decision (`OpenThread::set_csl_period`), and only a `Radio`
-        //     advertising `Capabilities::RECEIVE_TIMING` (timed receive, a
-        //     radio clock, enhanced-ACK security) can. Every other radio keeps
-        //     working unchanged: the CSL callbacks are never invoked for it.
-        //     Compiling it in costs a little flash for the CSL sub-MAC and
-        //     requires the microsecond platform timer (`otPlatAlarmMicro*`,
-        //     served by this crate from `embassy-time` or the radio clock).
+        //   - CSL_RECEIVER: the *child* (SSED) side, the `csl-receiver`
+        //     feature (`OT_CSL_RECEIVER` knob, see `features.rs`). With it a
+        //     sleepy child may announce a CSL schedule and sample the channel
+        //     at its parent's transmit times instead of polling. Whether it
+        //     actually does is a runtime decision (`OpenThread::set_csl_period`),
+        //     and only a `Radio` advertising `Capabilities::RECEIVE_TIMING`
+        //     (timed receive, a radio clock, enhanced-ACK security) can. It
+        //     also needs the microsecond platform timer (`otPlatAlarmMicro*`,
+        //     served by this crate from `embassy-time` or the radio clock) and
+        //     the receive-window lead time below.
         //   - CSL_TRANSMITTER: the *parent* side (an FTD scheduling indirect
         //     frames to CSL children). It DEFAULTS ON at >= 1.2 (see the
         //     vendored `src/core/config/mac.h`) and is kept OFF: an FTD here
@@ -284,19 +284,6 @@ impl OpenThreadBuilder {
             .define("OT_THREAD_VERSION", "1.4")
             .cflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
             .cxxflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
-            .cflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
-            .cxxflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
-            // How far ahead of a CSL receive window OpenThread asks the
-            // platform to schedule it. The upstream default (320 us) is sized
-            // for a platform that arms the radio synchronously from the CSL
-            // timer; here the request travels from the micro alarm through the
-            // OpenThread task to the radio task before it reaches the driver,
-            // and a request that arrives after the window start is refused by
-            // a timed-receive radio. 3 ms covers that path with margin; it
-            // only moves the timer, not the window.
-            .cflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000")
-            .cxxflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000")
-            .define("OT_CSL_RECEIVER", "ON")
             .define("OT_LOG_LEVEL", "NOTE")
             // Build BOTH device types so the prebuilt cache covers MTD and FTD.
             // The actual archives shipped/linked are chosen by the umbrella
@@ -412,6 +399,22 @@ impl OpenThreadBuilder {
         // turned `ON` per active cargo feature. See `gen/features.rs`.
         for setting in features::active_knob_settings() {
             config.define(setting.knob, if setting.on { "ON" } else { "OFF" });
+        }
+
+        if features::csl_receiver_active() {
+            config
+                .cflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
+                .cxxflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
+                // How far ahead of a CSL receive window OpenThread asks the
+                // platform to schedule it. The upstream default (320 us) is
+                // sized for a platform that arms the radio synchronously from
+                // the CSL timer; here the request travels from the micro alarm
+                // through the OpenThread task to the radio task before it
+                // reaches the driver, and a request that arrives after the
+                // window start is refused by a timed-receive radio. 3 ms covers
+                // that path with margin; it only moves the timer, not the window.
+                .cflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000")
+                .cxxflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000");
         }
 
         // The C CLI is a build-structure toggle rather than an `OT_*` config

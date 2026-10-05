@@ -60,6 +60,7 @@ pub const KNOB_UNIVERSE: &[&str] = &[
     "OT_PING_SENDER",
     "OT_LINK_METRICS_INITIATOR",
     "OT_LINK_METRICS_SUBJECT",
+    "OT_CSL_RECEIVER",
     "OT_MAC_FILTER",
     "OT_JAM_DETECTION",
     "OT_CHILD_SUPERVISION",
@@ -116,6 +117,7 @@ pub const FEATURE_DEFINES: &[(&str, &[&str])] = &[
     ("PING_SENDER", &["OT_PING_SENDER"]),
     ("LINK_METRICS_INITIATOR", &["OT_LINK_METRICS_INITIATOR"]),
     ("LINK_METRICS_SUBJECT", &["OT_LINK_METRICS_SUBJECT"]),
+    ("CSL_RECEIVER", &["OT_CSL_RECEIVER"]),
     ("MAC_FILTER", &["OT_MAC_FILTER"]),
     ("JAM_DETECTION", &["OT_JAM_DETECTION"]),
     ("CHILD_SUPERVISION", &["OT_CHILD_SUPERVISION"]),
@@ -189,6 +191,13 @@ pub fn dtls_active() -> bool {
     ["COAPS", "JOINER", "COMMISSIONER"]
         .iter()
         .any(|f| std::env::var_os(format!("CARGO_FEATURE_{f}")).is_some())
+}
+
+/// Whether the `csl-receiver` feature is active. Besides its `OT_CSL_RECEIVER`
+/// knob, the CSL receiver needs a few plain compile definitions (the
+/// microsecond platform timer, the receive-window lead time); see builder.
+pub fn csl_receiver_active() -> bool {
+    std::env::var_os("CARGO_FEATURE_CSL_RECEIVER").is_some()
 }
 
 /// Whether the `cli` feature is active: build OpenThread's C CLI libraries
