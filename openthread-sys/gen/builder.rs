@@ -276,14 +276,21 @@ impl OpenThreadBuilder {
         //     served by this crate from `embassy-time` or the radio clock) and
         //     the receive-window lead time below.
         //   - CSL_TRANSMITTER: the *parent* side (an FTD scheduling indirect
-        //     frames to CSL children). It DEFAULTS ON at >= 1.2 (see the
-        //     vendored `src/core/config/mac.h`) and is kept OFF: an FTD here
-        //     never parents CSL children, so OT never calls the CSL-parent
-        //     radio hooks at runtime.
+        //     frames into its CSL children's receive windows). Not optional for
+        //     an FTD: a Thread >= 1.2 child decides that its parent does CSL
+        //     from the parent's Thread version alone (`Mle::IsCslSupported`),
+        //     so an FTD speaking 1.4 without it would take CSL children whose
+        //     downlink then waits for their CSL-timeout poll. It is code an MTD
+        //     can never use, though (it never has children) - and compiling it
+        //     in would still cost an MTD flash and the radio-clock hooks. So it
+        //     follows the device type: the switch is defined as `OPENTHREAD_FTD`,
+        //     which OpenThread sets per archive (`1` for `openthread-ftd`, `0`
+        //     for `openthread-mtd` and the spinel libraries) and which the
+        //     vendored sources only ever test in `#if`s.
         config
             .define("OT_THREAD_VERSION", "1.4")
-            .cflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
-            .cxxflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
+            .cflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=OPENTHREAD_FTD")
+            .cxxflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=OPENTHREAD_FTD")
             .define("OT_LOG_LEVEL", "NOTE")
             // Build BOTH device types so the prebuilt cache covers MTD and FTD.
             // The actual archives shipped/linked are chosen by the umbrella

@@ -45,7 +45,9 @@ srp-client = ["openthread-sys/srp-client"]
 #              NOTE: `rcp` changes the platform integration — instead of a local
 #              `Radio` implementation, the user supplies a spinel transport (see
 #              the crate docs / `OpenThread` RCP-host API).
-ftd = ["openthread-sys/ftd"]
+#   An FTD always parents CSL children (the CSL transmitter is compiled into the
+#   FTD library), hence the CSL radio plumbing (`_csl`).
+ftd = ["openthread-sys/ftd", "_csl"]
 rcp = ["openthread-sys/rcp", "dep:embedded-io-async", "dep:embedded-hal", "dep:embedded-hal-async"]
 # The OpenThread C CLI, surfaced on the Rust API.
 cli = ["openthread-sys/cli"]
@@ -131,8 +133,8 @@ ping-sender = ["openthread-sys/ping-sender"]
 link-metrics-initiator = ["openthread-sys/link-metrics-initiator"]
 link-metrics-subject = ["openthread-sys/link-metrics-subject"]
 csl-receiver = ["_csl", "openthread-sys/csl-receiver"]
-# Internal: the radio-clock, microsecond-alarm and enhanced-ACK security
-# plumbing shared by the CSL roles.
+# Internal: the radio-clock and enhanced-ACK security plumbing shared by the CSL
+# roles (the receiver of `csl-receiver`, the transmitter of every `ftd`).
 _csl = []
 mac-filter = ["openthread-sys/mac-filter"]
 jam-detection = ["openthread-sys/jam-detection"]

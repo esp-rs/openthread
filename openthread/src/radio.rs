@@ -103,7 +103,10 @@ bitflags! {
         /// radio to advertise an accurate phase; for every other radio the
         /// glue does the same work in software before `transmit`.
         const TRANSMIT_SEC = OT_RADIO_CAPS_TRANSMIT_SEC as u16;
-        /// Radio supports precise TX timing.
+        /// Radio transmits a frame at a given time of its clock
+        /// ([`PsduTxInfo::tx_at_us`]), as an FTD does into the receive windows
+        /// of its CSL children. Without it the glue waits for that time itself
+        /// and hands the frame over just before it, which is less precise.
         const TRANSMIT_TIMING = OT_RADIO_CAPS_TRANSMIT_TIMING as u16;
         /// Radio supports precise RX timing.
         const RECEIVE_TIMING = OT_RADIO_CAPS_RECEIVE_TIMING as u16;
@@ -221,6 +224,11 @@ pub struct RadioCaps {
     /// The fixed uncertainty (jitter) of the radio's timed receive, in units of
     /// 10 µs, as reported to a CSL parent. `u8::MAX` if unknown.
     pub csl_uncertainty: u8,
+    /// The speed of the link between the stack and the radio, in bits per
+    /// second, for a radio behind one (e.g. an RCP on a UART); `0` for a radio
+    /// on the same chip. An FTD hands the frames for its CSL children over
+    /// that much earlier, so that they reach the radio before their time.
+    pub bus_speed: u32,
 }
 
 impl RadioCaps {
@@ -246,6 +254,7 @@ impl Default for RadioCaps {
             clock: None,
             csl_accuracy_ppm: u8::MAX,
             csl_uncertainty: u8::MAX,
+            bus_speed: 0,
         }
     }
 }
@@ -377,18 +386,23 @@ pub struct PsduRxInfo {
     /// ([`RadioCaps::clock`]). `None` if the radio does not timestamp frames,
     /// in which case the OpenThread glue stamps the frame at delivery.
     ///
-    /// Consumed by CSL synchronization (and Link Metrics / time-sync IEs), so
-    /// a radio advertising [`Capabilities::RECEIVE_TIMING`] must report it.
+    /// Consumed by CSL synchronization (and Link Metrics / time-sync IEs): a
+    /// CSL child times its receive windows by its parent's frames, and an FTD
+    /// times its transmissions to a CSL child by the child's frames. So a radio
+    /// advertising [`Capabilities::RECEIVE_TIMING`], and any radio of an FTD
+    /// that is to parent CSL children, must report it.
     pub timestamp_us: Option<u64>,
     /// The security material the radio used for the *secured enhanced ACK* it
     /// sent for this frame, if it sent one. `None` for an immediate ACK, an
     /// unsecured enhanced ACK, or no ACK at all.
     ///
     /// OpenThread secures the data frames in software with its own frame
-    /// counter, while the enhanced ACKs of a CSL child are secured by the radio
-    /// with the same key: reporting the counter each ACK consumed is what
-    /// keeps the two from colliding. A radio advertising
-    /// [`Capabilities::RECEIVE_TIMING`] must report it.
+    /// counter, while the enhanced ACKs are secured by the radio with the same
+    /// key: reporting the counter each ACK consumed is what keeps the two from
+    /// colliding. Enhanced ACKs are what a CSL child sends its parent, and
+    /// what an FTD sends its CSL children (whose frames are 802.15.4-2015
+    /// ones), so a radio advertising [`Capabilities::RECEIVE_TIMING`], and any
+    /// radio of an FTD that is to parent CSL children, must report it.
     pub ack_security: Option<AckSecurity>,
 }
 
@@ -400,8 +414,11 @@ pub struct PsduRxInfo {
 /// key index) and, when `csl_present`, fills the CSL IE with the phase of its
 /// next receive window as of the moment the frame goes on the air; unless
 /// `security_processed`, it then secures the frame (AES-CCM*) with the key
-/// it was handed through [`Radio::set_mac_keys`]. It writes the finished
-/// frame back into the PSDU buffer and sets `header_updated`.
+/// it was handed through [`Radio::set_mac_keys`]. It then writes what it
+/// assigned back into the PSDU buffer and sets `header_updated` - and
+/// `security_processed` too if the buffer now holds the secured frame (a
+/// radio that only writes back the frame counter and key index leaves it
+/// unset, and secures a retransmission again).
 ///
 /// Every other radio receives frames that are already finished and secured
 /// by the OpenThread glue, with both flags set, and can ignore this.
@@ -417,6 +434,21 @@ pub struct PsduTxInfo {
     pub csl_present: bool,
     /// The frame is a retransmission of a frame sent before.
     pub retransmission: bool,
+    /// When the frame has to go out: the time the end of its SFD must be at
+    /// the antenna, in microseconds of the radio clock ([`RadioCaps::clock`]).
+    /// Only ever set for a radio advertising [`Capabilities::TRANSMIT_TIMING`]
+    /// (for the others the glue waits for the time itself). `None` means as
+    /// soon as possible.
+    ///
+    /// A timed frame gets at most a single CCA right before it - it never
+    /// backs off (`max_csma_backoffs` is `Some(0)`).
+    pub tx_at_us: Option<u64>,
+    /// How many CSMA-CA backoffs the radio may take before giving up on a busy
+    /// channel, as OpenThread wants it for this frame. `Some(0)` means a single
+    /// CCA (if `cca_threshold` asks for one) and no backoff at all, which is
+    /// what a frame timed into a CSL child's receive window needs: a backoff
+    /// would push it past the window. `None` leaves it to the radio.
+    pub max_csma_backoffs: Option<u8>,
 }
 
 /// The security material a radio used for a secured enhanced ACK

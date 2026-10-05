@@ -73,7 +73,7 @@ impl<'a> OperationalDataset<'a> {
             network_name: components.network_name_present.then(|| {
                 let name = unsafe {
                     core::slice::from_raw_parts(
-                        raw.mNetworkName.m8.as_ptr() as *const u8,
+                        raw.mNetworkName.m8.as_ptr().cast::<u8>(),
                         raw.mNetworkName.m8.len(),
                     )
                 };

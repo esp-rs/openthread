@@ -69,19 +69,19 @@ extern "C" fn otPlatAlarmMilliStop(instance: *const otInstance) -> otError {
         .into_ot_code()
 }
 
-#[cfg(feature = "_csl")]
+#[cfg(feature = "csl-receiver")]
 #[no_mangle]
 extern "C" fn otPlatAlarmMicroGetNow() -> u32 {
     OtContext::callback(core::ptr::null()).plat_now_micros()
 }
 
-#[cfg(feature = "_csl")]
+#[cfg(feature = "csl-receiver")]
 #[no_mangle]
 extern "C" fn otPlatAlarmMicroStartAt(instance: *mut otInstance, at0: u32, adt: u32) {
     OtContext::callback(instance).plat_alarm_micro_set(at0, adt);
 }
 
-#[cfg(feature = "_csl")]
+#[cfg(feature = "csl-receiver")]
 #[no_mangle]
 extern "C" fn otPlatAlarmMicroStop(instance: *const otInstance) {
     OtContext::callback(instance).plat_alarm_micro_clear();
@@ -129,6 +129,12 @@ extern "C" fn otPlatRadioEnableCsl(
 #[no_mangle]
 extern "C" fn otPlatRadioUpdateCslSampleTime(instance: *const otInstance, csl_sample_time: u32) {
     OtContext::callback(instance).plat_radio_update_csl_sample_time(csl_sample_time);
+}
+
+#[cfg(feature = "ftd")]
+#[no_mangle]
+extern "C" fn otPlatRadioGetBusSpeed(instance: *const otInstance) -> u32 {
+    OtContext::callback(instance).plat_radio_bus_speed()
 }
 
 #[cfg(feature = "_csl")]

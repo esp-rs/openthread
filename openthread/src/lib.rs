@@ -1059,10 +1059,14 @@ impl<'a> OpenThread<'a> {
 
     /// The PHY capabilities of a radio this build has no use for, and so
     /// reports neither to OpenThread nor in [`Self::radio_caps`]: timed receive
-    /// without the `csl-receiver` feature, and transmit security without any
-    /// CSL role (OpenThread then secures every frame itself).
+    /// without the `csl-receiver` feature, timed transmit on an MTD (it never
+    /// parents CSL children), and transmit security without any CSL role
+    /// (OpenThread then secures every frame itself).
     const UNUSED_RADIO_CAPS: Capabilities = {
         let caps = Capabilities::empty();
+
+        #[cfg(not(feature = "ftd"))]
+        let caps = caps.union(Capabilities::TRANSMIT_TIMING);
 
         #[cfg(not(feature = "csl-receiver"))]
         let caps = caps.union(Capabilities::RECEIVE_TIMING);
@@ -1299,7 +1303,7 @@ impl<'a> OpenThread<'a> {
         let mut alarm = pin!(self.run_alarm());
         let mut openthread = pin!(self.run_tasklets());
 
-        #[cfg(feature = "_csl")]
+        #[cfg(feature = "csl-receiver")]
         {
             use embassy_futures::select::{select4, Either4};
 
@@ -1314,7 +1318,7 @@ impl<'a> OpenThread<'a> {
             }
         }
 
-        #[cfg(not(feature = "_csl"))]
+        #[cfg(not(feature = "csl-receiver"))]
         {
             let result = select3(&mut radio, &mut alarm, &mut openthread).await;
 
@@ -1492,7 +1496,7 @@ impl<'a> OpenThread<'a> {
     /// for with `embassy-time`, whose resolution only has to be good enough for
     /// the ~2 ms lead OpenThread gives itself before each window: the window
     /// itself is timed by the radio (`Radio::receive_at`).
-    #[cfg(feature = "_csl")]
+    #[cfg(feature = "csl-receiver")]
     async fn run_alarm_micro(&self) -> ! {
         let alarm = || poll_fn(move |cx| self.activate().state().ot.alarm_micro.poll_wait(cx));
 
@@ -1585,6 +1589,16 @@ impl<'a> OpenThread<'a> {
             }
             state.ot.radio_initialized = true;
             state.ot.radio_ready.signal(());
+
+            // OpenThread sizes how early it hands an FTD's frames for CSL
+            // children over by the bus speed, which it read at construction,
+            // before the radio was known.
+            #[cfg(feature = "ftd")]
+            {
+                state.ot.radio_bus_speed = caps.bus_speed;
+
+                unsafe { sys::otPlatRadioBusLatencyChanged(state.ot.instance) };
+            }
 
             #[cfg(feature = "csl-receiver")]
             if caps.phy.contains(radio::Capabilities::RECEIVE_TIMING) && caps.clock.is_none() {
@@ -1810,6 +1824,33 @@ impl<'a> OpenThread<'a> {
         }
     }
 
+    /// How long before the end of a timed frame's SFD is due the glue hands
+    /// the frame to a radio without timed transmit: a CCA (8 symbols, 128 µs),
+    /// the synchronization header (5 octets, 160 µs) and OpenThread's own
+    /// allowance for the platform to start transmitting (40 µs) - the lead its
+    /// software-timed transmit uses too.
+    #[cfg(feature = "ftd")]
+    const GLUE_TIMED_TX_LEAD_US: u64 = 128 + 160 + 40;
+
+    /// What the glue adds to a radio's reported timing uncertainty when it
+    /// times transmissions itself (a radio without timed transmit, on an FTD):
+    /// the jitter of waking up the radio runner at the right time, which an
+    /// FTD reports to its CSL children so that they widen their windows by it.
+    /// An estimate for a runner on an otherwise idle executor, in units of
+    /// 10 µs.
+    #[cfg(feature = "ftd")]
+    const GLUE_TIMED_TX_UNCERTAINTY: u8 = 10;
+
+    /// Wait until `at_us` of the radio clock (returns right away if it has passed).
+    #[cfg(feature = "ftd")]
+    async fn wait_radio_time(&self, at_us: u64) {
+        let now_us = self.activate().radio_now_us();
+
+        if at_us > now_us {
+            embassy_time::Timer::after(embassy_time::Duration::from_micros(at_us - now_us)).await;
+        }
+    }
+
     /// Schedule a timed receive window on the radio and deliver whatever it
     /// receives until the stack issues its next radio command (typically the
     /// `Sleep` that ends the window).
@@ -1842,7 +1883,7 @@ impl<'a> OpenThread<'a> {
     where
         R: Radio,
     {
-        let (cca_threshold, channel, power, psdu_len, mut psdu_tx) = {
+        let (cca_threshold, channel, power, psdu_len, mut psdu_tx, glue_tx_at_us) = {
             let mut ot = self.activate();
             #[cfg(feature = "_csl")]
             let now = ot.radio_now_us();
@@ -1898,11 +1939,39 @@ impl<'a> OpenThread<'a> {
             }
 
             let tx_info = unsafe { state.ot.radio_resources.snd_frame.mInfo.mTxInfo };
+
+            // An FTD times its frames to a CSL child into the child's receive
+            // window: OpenThread hands such a frame over ahead of time, with
+            // the time the end of its SFD is due at as `mTxDelayBaseTime` (the
+            // low 32 bits of the radio clock, at the child's last frame) plus
+            // `mTxDelay`.
+            #[cfg(feature = "ftd")]
+            let tx_at_us = (tx_info.mTxDelay != 0 || tx_info.mTxDelayBaseTime != 0).then(|| {
+                let since_base = (now as u32).wrapping_sub(tx_info.mTxDelayBaseTime) as u64;
+
+                now - since_base + tx_info.mTxDelay as u64
+            });
+            #[cfg(not(feature = "ftd"))]
+            let tx_at_us: Option<u64> = None;
+
+            // A radio with timed transmit is handed the time; for any other
+            // radio the glue waits for it before handing the frame over.
+            let timed_by_radio = radio::Capabilities::from_bits_truncate(state.ot.radio_caps as _)
+                .contains(radio::Capabilities::TRANSMIT_TIMING);
+
             let psdu_tx = radio::PsduTxInfo {
                 security_processed: tx_info.mIsSecurityProcessed(),
                 header_updated: tx_info.mIsHeaderUpdated(),
                 csl_present: tx_info.mCslPresent(),
                 retransmission: tx_info.mIsARetx(),
+                tx_at_us: tx_at_us.filter(|_| timed_by_radio),
+                // A timed frame takes a single CCA and no backoff, whatever
+                // the frame says (`mMaxCsmaBackoffs` is to be ignored then).
+                max_csma_backoffs: Some(if tx_at_us.is_some() {
+                    0
+                } else {
+                    tx_info.mMaxCsmaBackoffs
+                }),
             };
 
             let cca = tx_info.mCsmaCaEnabled();
@@ -1921,8 +1990,17 @@ impl<'a> OpenThread<'a> {
                 state.ot.radio_tx_power,
                 psdu_len,
                 psdu_tx,
+                tx_at_us.filter(|_| !timed_by_radio),
             )
         };
+
+        #[cfg(feature = "ftd")]
+        if let Some(tx_at_us) = glue_tx_at_us {
+            self.wait_radio_time(tx_at_us.saturating_sub(Self::GLUE_TIMED_TX_LEAD_US))
+                .await;
+        }
+        #[cfg(not(feature = "ftd"))]
+        let _ = glue_tx_at_us;
 
         trace!(
             "About to Tx 802.15.4 frame {}",
@@ -1959,8 +2037,9 @@ impl<'a> OpenThread<'a> {
 
             #[cfg(feature = "_csl")]
             if psdu_tx.header_updated {
-                // The frame went out as the radio finished it: hand that back
-                // to OpenThread, which reads the frame counter used from it.
+                // The radio finished the frame: hand that back to OpenThread,
+                // which reads the frame counter used from it - and resends it
+                // as is, or secures it again, on a retransmission.
                 radio_resources.snd_psdu[..psdu_len].copy_from_slice(&psdu_buf[..psdu_len]);
 
                 unsafe {
@@ -1973,7 +2052,7 @@ impl<'a> OpenThread<'a> {
                         .snd_frame
                         .mInfo
                         .mTxInfo
-                        .set_mIsSecurityProcessed(true);
+                        .set_mIsSecurityProcessed(psdu_tx.security_processed);
                 }
             }
 
@@ -2351,6 +2430,12 @@ impl OtResources {
         #[cfg(feature = "_csl")]
         let caps = caps | sys::OT_RADIO_CAPS_TRANSMIT_SEC as otRadioCaps;
 
+        // An FTD's frames to its CSL children are handed over ahead of time and
+        // timed either by the radio or by the glue (see `process_radio_tx`),
+        // rather than by OpenThread's own (millisecond-timer) emulation.
+        #[cfg(feature = "ftd")]
+        let caps = caps | sys::OT_RADIO_CAPS_TRANSMIT_TIMING as otRadioCaps;
+
         caps
     };
 
@@ -2412,7 +2497,7 @@ impl OtResources {
             radio_conf_src_match: radio::SrcMatchConfig::default(),
             radio_conf_src_match_changed: Signal::new(),
             radio_cmd: Signal::new(),
-            #[cfg(feature = "_csl")]
+            #[cfg(feature = "csl-receiver")]
             alarm_micro: Signal::new(),
             #[cfg(feature = "csl-receiver")]
             radio_csl: radio::CslConfig::new(),
@@ -2433,6 +2518,8 @@ impl OtResources {
             radio_csl_accuracy_ppm: u8::MAX,
             #[cfg(feature = "_csl")]
             radio_csl_uncertainty: u8::MAX,
+            #[cfg(feature = "ftd")]
+            radio_bus_speed: 0,
             radio_initialized: false,
             radio_ready: Signal::new(),
             radio_timed_rx: false,
@@ -3225,12 +3312,12 @@ impl<'a> OtContext<'a> {
         }
     }
 
-    #[cfg(feature = "_csl")]
+    #[cfg(feature = "csl-receiver")]
     fn plat_now_micros(&mut self) -> u32 {
         self.radio_now_us() as u32
     }
 
-    #[cfg(feature = "_csl")]
+    #[cfg(feature = "csl-receiver")]
     fn plat_alarm_micro_set(&mut self, at0_us: u32, adt_us: u32) {
         trace!("Plat micro alarm set callback: {}, {}", at0_us, adt_us);
 
@@ -3252,7 +3339,7 @@ impl<'a> OtContext<'a> {
         self.state().ot.alarm_micro.signal(Some(instant));
     }
 
-    #[cfg(feature = "_csl")]
+    #[cfg(feature = "csl-receiver")]
     fn plat_alarm_micro_clear(&mut self) {
         trace!("Plat micro alarm clear callback");
         self.state().ot.alarm_micro.signal(None);
@@ -3345,9 +3432,28 @@ impl<'a> OtContext<'a> {
         self.state().ot.radio_csl_accuracy_ppm
     }
 
+    #[cfg(feature = "ftd")]
+    fn plat_radio_bus_speed(&mut self) -> u32 {
+        self.state().ot.radio_bus_speed
+    }
+
     #[cfg(feature = "_csl")]
     fn plat_radio_csl_uncertainty(&mut self) -> u8 {
-        self.state().ot.radio_csl_uncertainty
+        let state = self.state();
+        let uncertainty = state.ot.radio_csl_uncertainty;
+
+        // An FTD times its transmissions to CSL children with the glue's
+        // jitter on top, unless the radio times them itself.
+        #[cfg(feature = "ftd")]
+        let uncertainty = if radio::Capabilities::from_bits_truncate(state.ot.radio_caps as _)
+            .contains(radio::Capabilities::TRANSMIT_TIMING)
+        {
+            uncertainty
+        } else {
+            uncertainty.saturating_add(OpenThread::GLUE_TIMED_TX_UNCERTAINTY)
+        };
+
+        uncertainty
     }
 
     #[cfg(feature = "_csl")]
@@ -4008,7 +4114,7 @@ struct OtState<'a> {
     radio_cmd: Signal<RadioCommand>,
     /// `Some` in case there is a pending OpenThread microsecond alarm which is not due yet
     /// `None` if the existing microsecond alarm needs to be cancelled
-    #[cfg(feature = "_csl")]
+    #[cfg(feature = "csl-receiver")]
     alarm_micro: Signal<Option<embassy_time::Instant>>,
     /// The CSL schedule from the POV of OpenThread (`otPlatRadioEnableCsl` /
     /// `otPlatRadioUpdateCslSampleTime`).
@@ -4045,6 +4151,9 @@ struct OtState<'a> {
     /// `RadioCaps::csl_uncertainty` (`otPlatRadioGetCslUncertainty`).
     #[cfg(feature = "_csl")]
     radio_csl_uncertainty: u8,
+    /// `RadioCaps::bus_speed` (`otPlatRadioGetBusSpeed`).
+    #[cfg(feature = "ftd")]
+    radio_bus_speed: u32,
     /// Whether `run_radio` has brought the radio up and stored its capabilities.
     radio_initialized: bool,
     /// Raised once `radio_initialized` becomes `true`.
@@ -4128,7 +4237,7 @@ enum RadioAction {
     FrameCounter((u32, bool)),
 }
 
-#[cfg(feature = "_csl")]
+#[cfg(feature = "csl-receiver")]
 extern "C" {
     // Declared here rather than taken from the prebuilt bindings, which predate
     // the microsecond alarm.

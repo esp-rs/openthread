@@ -193,8 +193,11 @@ pub fn radio(device: &str, baud: u32) -> HwRadio {
     let serial = SerialPort::open(device, baud)
         .unwrap_or_else(|err| panic!("open RCP serial port {device}: {err}"));
 
+    // The baud rate is the bus speed an FTD needs to hand its CSL children's
+    // frames over in time.
     SpinelRadio::new(
         UartSpinelTransport::new(serial, UART_RESOURCES.take()),
         RADIO_RESOURCES.take(),
     )
+    .with_bus_speed(baud)
 }
