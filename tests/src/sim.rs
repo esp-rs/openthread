@@ -336,6 +336,7 @@ impl Radio for SimRadio {
                 lqi: Some(0),
                 timestamp_us: None,
                 ack_security: None,
+                acked_with_frame_pending: None,
             });
         }
     }

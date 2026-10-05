@@ -137,6 +137,12 @@ extern "C" fn otPlatRadioGetBusSpeed(instance: *const otInstance) -> u32 {
     OtContext::callback(instance).plat_radio_bus_speed()
 }
 
+#[cfg(feature = "ftd")]
+#[no_mangle]
+extern "C" fn otPlatRadioGetBusLatency(instance: *const otInstance) -> u32 {
+    OtContext::callback(instance).plat_radio_bus_latency()
+}
+
 #[cfg(feature = "_csl")]
 #[no_mangle]
 extern "C" fn otPlatRadioGetCslAccuracy(instance: *const otInstance) -> u8 {

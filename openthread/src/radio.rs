@@ -229,6 +229,10 @@ pub struct RadioCaps {
     /// on the same chip. An FTD hands the frames for its CSL children over
     /// that much earlier, so that they reach the radio before their time.
     pub bus_speed: u32,
+    /// The latency of that link on top of its speed, in microseconds (e.g. a
+    /// USB serial bridge, moving data at the host's polling interval); `0` for
+    /// a radio on the same chip.
+    pub bus_latency_us: u32,
 }
 
 impl RadioCaps {
@@ -255,6 +259,7 @@ impl Default for RadioCaps {
             csl_accuracy_ppm: u8::MAX,
             csl_uncertainty: u8::MAX,
             bus_speed: 0,
+            bus_latency_us: 0,
         }
     }
 }
@@ -404,6 +409,13 @@ pub struct PsduRxInfo {
     /// ones), so a radio advertising [`Capabilities::RECEIVE_TIMING`], and any
     /// radio of an FTD that is to parent CSL children, must report it.
     pub ack_security: Option<AckSecurity>,
+    /// Whether the ACK the radio sent for this frame had its Frame Pending bit
+    /// set, if the radio knows. OpenThread serves a sleepy child's data poll
+    /// from its indirect queue only when the poll was acknowledged that way.
+    /// `None` leaves the glue to work the bit out from the source match table
+    /// (see [`Radio::set_src_match_config`]) - which is what a radio acking in
+    /// hardware decides it by too, unless the table changed in between.
+    pub acked_with_frame_pending: Option<bool>,
 }
 
 /// What OpenThread knows about a frame it hands to [`Radio::transmit`], and

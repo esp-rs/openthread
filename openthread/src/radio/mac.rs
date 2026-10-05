@@ -668,6 +668,7 @@ impl PendingRxFrame {
                 lqi: None,
                 timestamp_us: None,
                 ack_security: None,
+                acked_with_frame_pending: None,
             },
             psdu: [0; OT_RADIO_FRAME_MAX_SIZE as _],
         }

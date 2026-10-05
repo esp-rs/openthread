@@ -13,6 +13,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * `Radio::transmit` takes the PSDU mutably now plus a `PsduTxInfo` extra struct
   * `PsduMeta` renamed to `PsduRxInfo`
   * CSL transmitter for FTDs: `PsduTxInfo` gains `tx_at_us` (handed to radios advertising `Capabilities::TRANSMIT_TIMING`; the glue times the frame itself for the others) and `max_csma_backoffs`
+  * `PsduRxInfo` gains `acked_with_frame_pending`: the Frame Pending bit of the ACK the radio sent
+  * `RadioCaps` gains `bus_speed` and `bus_latency_us`, for an FTD to hand frames for its CSL children to a remote radio early enough
+  * `SpinelRadio`: CSL transmitter support (timed transmission in the RCP clock, MAC keys and frame counter handed to the RCP)
+* Fix: `SpinelRadio` reported failed transmissions (no ACK, CCA failure) as successes, so OpenThread never retried or counted them
+* Fix: `SpinelRadio` read the radio capabilities from the wrong property, and retuned the RCP to a frame's channel instead of returning to the receive channel after it
+* Fix: a data poll in an 802.15.4-2015 frame (as a CSL child polls) was not recognized as acknowledged with Frame Pending, so the parent never answered it from its indirect queue
+* Fix: a CSL child on a timed-receive radio kept its receiver on after its own transmissions, and indefinitely once CSL was turned off
 * `serial_bridge`: wait out the reboot an acknowledged `factoryreset` still has ahead of it before talking to the device
 * Fix: OpenThread refcount underflow in the new_with_* constructors on drop (#123)
 

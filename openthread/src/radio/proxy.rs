@@ -252,6 +252,7 @@ impl Radio for ProxyRadio<'_> {
                 lqi: response.psdu_lqi,
                 timestamp_us: None,
                 ack_security: None,
+                acked_with_frame_pending: None,
             });
 
         if let Some(ack_psdu_buf) = ack_psdu_buf {
@@ -727,6 +728,7 @@ impl ProxyRadioFrame {
                 lqi: None,
                 timestamp_us: None,
                 ack_security: None,
+                acked_with_frame_pending: None,
             }),
             psdu: [0; PSDU_LEN],
         }

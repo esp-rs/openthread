@@ -1591,11 +1591,12 @@ impl<'a> OpenThread<'a> {
             state.ot.radio_ready.signal(());
 
             // OpenThread sizes how early it hands an FTD's frames for CSL
-            // children over by the bus speed, which it read at construction,
-            // before the radio was known.
+            // children over by the bus speed and latency, which it read at
+            // construction, before the radio was known.
             #[cfg(feature = "ftd")]
             {
                 state.ot.radio_bus_speed = caps.bus_speed;
+                state.ot.radio_bus_latency_us = caps.bus_latency_us;
 
                 unsafe { sys::otPlatRadioBusLatencyChanged(state.ot.instance) };
             }
@@ -1786,10 +1787,6 @@ impl<'a> OpenThread<'a> {
                         state.ot.last_rssi = rssi;
                     }
 
-                    // Computed before `radio_resources`
-                    // takes its mutable borrow.
-                    let acked_with_fp =
-                        Self::acked_with_frame_pending(rcv_psdu, &state.ot.radio_conf_src_match);
                     let radio_resources = &mut state.ot.radio_resources;
 
                     Self::fill_frame(
@@ -1797,8 +1794,28 @@ impl<'a> OpenThread<'a> {
                         &mut radio_resources.rcv_psdu,
                         rcv_psdu_meta,
                         rcv_psdu,
-                        acked_with_fp,
                     );
+
+                    // The flag is what makes the stack serve a sleepy child's
+                    // data poll from its indirect queue - without it the child
+                    // is presumed asleep and nothing is sent.
+                    let acked_with_fp =
+                        rcv_psdu_meta.acked_with_frame_pending.unwrap_or_else(|| {
+                            Self::acked_with_frame_pending(
+                                &state.ot.radio_resources.rcv_frame,
+                                &state.ot.radio_conf_src_match,
+                            )
+                        });
+
+                    let radio_resources = &mut state.ot.radio_resources;
+
+                    unsafe {
+                        radio_resources
+                            .rcv_frame
+                            .mInfo
+                            .mRxInfo
+                            .set_mAckedWithFramePending(acked_with_fp);
+                    }
 
                     unsafe {
                         otPlatRadioReceiveDone(
@@ -2072,9 +2089,6 @@ impl<'a> OpenThread<'a> {
                             &mut radio_resources.ack_psdu,
                             ack_psdu_meta,
                             ack_psdu,
-                            // A received ACK is never
-                            // itself acked.
-                            false,
                         );
 
                         &mut radio_resources.ack_frame
@@ -2284,14 +2298,36 @@ impl<'a> OpenThread<'a> {
         }
     }
 
-    /// Whether the ACK sent back for `psdu` carried Frame Pending
-    fn acked_with_frame_pending(psdu: &[u8], src_match: &radio::SrcMatchConfig) -> bool {
-        let mut hdr = radio::MacHeader::new();
+    /// Whether the ACK sent back for `frame` carried Frame Pending, as a radio
+    /// acking in hardware decides it: for an ACK-requesting MAC command frame
+    /// (a data poll) from a source in the source match table. Parsed with
+    /// OpenThread's own helpers, which know the 802.15.4-2015 frames a CSL
+    /// child polls with.
+    fn acked_with_frame_pending(frame: &otRadioFrame, src_match: &radio::SrcMatchConfig) -> bool {
+        if !unsafe { sys::otMacFrameIsCommand(frame) && sys::otMacFrameIsAckRequested(frame) } {
+            return false;
+        }
 
-        hdr.load(psdu).is_some()
-            && hdr.is_command()
-            && hdr.needs_ack()
-            && src_match.ack_frame_pending(hdr.src_short_addr, hdr.src_ext_addr)
+        let mut src = sys::otMacAddress::default();
+
+        if unsafe { sys::otMacFrameGetSrcAddr(frame, &mut src) } != otError_OT_ERROR_NONE {
+            return false;
+        }
+
+        // The helper hands extended addresses over big-endian, while the table
+        // keeps them in the little-endian frame order (see
+        // `otPlatRadioAddSrcMatchExtEntry`).
+        match src.mType {
+            sys::otMacAddressType_OT_MAC_ADDRESS_TYPE_SHORT => src_match.ack_frame_pending(
+                unsafe { src.mAddress.mShortAddress },
+                radio::MacHeader::BROADCAST_EXT_ADDR,
+            ),
+            sys::otMacAddressType_OT_MAC_ADDRESS_TYPE_EXTENDED => src_match.ack_frame_pending(
+                radio::MacHeader::BROADCAST_SHORT_ADDR,
+                u64::from_be_bytes(unsafe { src.mAddress.mExtAddress.m8 }),
+            ),
+            _ => false,
+        }
     }
 
     /// Fill the OpenThread frame structure based on the PSDU data returned by the radio
@@ -2300,7 +2336,6 @@ impl<'a> OpenThread<'a> {
         frame_psdu: &mut [u8; OT_RADIO_FRAME_MAX_SIZE as _],
         psdu_meta: PsduRxInfo,
         psdu: &[u8],
-        acked_with_fp: bool,
     ) {
         /// Convert from RSSI (Received Signal Strength Indicator) to LQI (Link Quality
         /// Indication)
@@ -2343,16 +2378,6 @@ impl<'a> OpenThread<'a> {
                 .mInfo
                 .mRxInfo
                 .set_mAckedWithSecEnhAck(ack_sec.is_some());
-        }
-
-        // The flag is what makes the stack serve a sleepy child's data
-        // poll from its indirect queue - without it the child is presumed
-        // asleep and nothing is sent (see `acked_with_frame_pending`).
-        unsafe {
-            frame
-                .mInfo
-                .mRxInfo
-                .set_mAckedWithFramePending(acked_with_fp);
         }
     }
 }
@@ -2520,6 +2545,8 @@ impl OtResources {
             radio_csl_uncertainty: u8::MAX,
             #[cfg(feature = "ftd")]
             radio_bus_speed: 0,
+            #[cfg(feature = "ftd")]
+            radio_bus_latency_us: 0,
             radio_initialized: false,
             radio_ready: Signal::new(),
             radio_timed_rx: false,
@@ -3382,6 +3409,10 @@ impl<'a> OtContext<'a> {
             Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
         }
 
+        // OpenThread schedules a window only from its sample state, where the
+        // radio is meant to sleep between windows, so the window supersedes
+        // any earlier `Receive`: the radio sleeps once it is over.
+        state.ot.radio_receive_channel = None;
         state.ot.radio_timed_rx = true;
         state.ot.radio_cmd.signal(RadioCommand::ReceiveAt {
             channel,
@@ -3390,6 +3421,18 @@ impl<'a> OtContext<'a> {
         });
 
         Ok(())
+    }
+
+    /// Whether OpenThread runs the CSL receiver on a timed-receive radio: it
+    /// then samples the channel through receive windows, and treats the radio
+    /// as asleep between them without commanding it to `Sleep`.
+    #[cfg(feature = "csl-receiver")]
+    fn csl_sampling(&mut self) -> bool {
+        let state = self.state();
+
+        state.ot.radio_csl.period > 0
+            && radio::Capabilities::from_bits_truncate(state.ot.radio_caps as _)
+                .contains(radio::Capabilities::RECEIVE_TIMING)
     }
 
     #[cfg(feature = "csl-receiver")]
@@ -3435,6 +3478,11 @@ impl<'a> OtContext<'a> {
     #[cfg(feature = "ftd")]
     fn plat_radio_bus_speed(&mut self) -> u32 {
         self.state().ot.radio_bus_speed
+    }
+
+    #[cfg(feature = "ftd")]
+    fn plat_radio_bus_latency(&mut self) -> u32 {
+        self.state().ot.radio_bus_latency_us
     }
 
     #[cfg(feature = "_csl")]
@@ -3761,6 +3809,9 @@ impl<'a> OtContext<'a> {
             frame.mChannel
         );
 
+        #[cfg(feature = "csl-receiver")]
+        let csl_sampling = self.csl_sampling();
+
         let state = self.state();
 
         if !state.ot.radio_enabled {
@@ -3773,6 +3824,19 @@ impl<'a> OtContext<'a> {
         state.ot.radio_resources.snd_psdu[..psdu.len()].copy_from_slice(psdu);
         state.ot.radio_resources.snd_frame.mPsdu =
             addr_of_mut!(state.ot.radio_resources.snd_psdu) as *mut _;
+
+        // While sampling, OpenThread commands `Receive` ahead of each
+        // transmission (the radio is not known to go from sleep straight to
+        // transmit), but after it only moves its own state back to sampling,
+        // never commanding the radio to `Sleep`. So the transmission
+        // supersedes that `Receive`; OpenThread commands another one when it
+        // does want to receive afterwards (a frame pending after a data poll).
+        // Otherwise the radio would keep receiving until the next window - or
+        // for good, once CSL is turned off.
+        #[cfg(feature = "csl-receiver")]
+        if csl_sampling {
+            state.ot.radio_receive_channel = None;
+        }
 
         state.ot.radio_cmd.signal(RadioCommand::Tx);
 
@@ -4154,6 +4218,9 @@ struct OtState<'a> {
     /// `RadioCaps::bus_speed` (`otPlatRadioGetBusSpeed`).
     #[cfg(feature = "ftd")]
     radio_bus_speed: u32,
+    /// `RadioCaps::bus_latency_us` (`otPlatRadioGetBusLatency`).
+    #[cfg(feature = "ftd")]
+    radio_bus_latency_us: u32,
     /// Whether `run_radio` has brought the radio up and stored its capabilities.
     radio_initialized: bool,
     /// Raised once `radio_initialized` becomes `true`.

@@ -36,10 +36,14 @@
 //! An FTD on a `SpinelRadio` parents CSL children the way OpenThread's own
 //! RCP hosts do: the RCP times the frames into the children's receive windows
 //! (`TRANSMIT_TIMING`), timestamps received frames, and sends secured enhanced
-//! ACKs. All times cross the link in the RCP's clock; `SpinelRadio` keeps the
-//! offset to the host clock (`embassy-time`) measured and translates, so the
-//! stack sees host time only (the radio reports no [`RadioCaps::clock`] of its
-//! own).
+//! ACKs. The radio clock ([`RadioCaps::clock`]) is the RCP's: its frame
+//! timestamps and transmit times cross the link untouched, so the schedule of
+//! a CSL child - its last frame's timestamp plus whole CSL periods - is kept in
+//! the clock the RCP transmits by. Only "now" is an estimate (the host clock
+//! plus the offset to the RCP clock, measured every
+//! [`TIME_SYNC_INTERVAL`]), which merely decides how early a frame is handed
+//! over. That clock is a plain function, reading a process-wide offset: one
+//! `SpinelRadio` per process.
 //!
 //! A CSL *child* is not possible on an RCP: spinel has no property to hand the
 //! RCP the CSL schedule it would have to advertise in its enhanced ACKs (the
@@ -66,11 +70,15 @@
 use core::future::Future;
 use core::mem::MaybeUninit;
 
+use core::cell::Cell;
+
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
 
 use crate::radio::{
     AckSecurity, Capabilities, Config, MacCapabilities, MacKeys, PsduRxInfo, Radio, RadioCaps,
-    RadioErrorKind, SrcMatchConfig,
+    RadioClock, RadioErrorKind, SrcMatchConfig,
 };
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 
@@ -212,6 +220,34 @@ const PROP_RCP_CSL_ACCURACY: u32 = 0x804;
 /// `SPINEL_PROP_RCP_CSL_UNCERTAINTY`: the RCP's timing uncertainty, in 10 µs.
 const PROP_RCP_CSL_UNCERTAINTY: u32 = 0x805;
 
+/// `SPINEL_STATUS_NO_ACK`: a transmitted frame was not acknowledged.
+const STATUS_NO_ACK: u32 = 17;
+/// `SPINEL_STATUS_CCA_FAILURE`: a frame was not sent, the channel was busy.
+const STATUS_CCA_FAILURE: u32 = 18;
+/// `SPINEL_STATUS_STACK_NATIVE__BEGIN`: the RCP's own `otError`s are reported
+/// as this plus the error.
+const STATUS_STACK_NATIVE_BEGIN: u32 = 15_360;
+
+/// The error a failed transmission reports, for the status the RCP finished
+/// it with - as the reference host maps it (`SpinelStatusToOtError`): what
+/// OpenThread then does (retransmit, retry in the next CSL window, count a
+/// link failure) depends on it, so a failure must never pass for a success.
+fn tx_status_error(status: u32) -> RadioErrorKind {
+    const NATIVE_NO_ACK: u32 = STATUS_STACK_NATIVE_BEGIN + crate::sys::otError_OT_ERROR_NO_ACK;
+    const NATIVE_CHANNEL_ACCESS_FAILURE: u32 =
+        STATUS_STACK_NATIVE_BEGIN + crate::sys::otError_OT_ERROR_CHANNEL_ACCESS_FAILURE;
+
+    match status {
+        STATUS_NO_ACK | NATIVE_NO_ACK => RadioErrorKind::RxAckTimeout,
+        STATUS_CCA_FAILURE | NATIVE_CHANNEL_ACCESS_FAILURE => RadioErrorKind::TxFailed,
+        _ => RadioErrorKind::Other,
+    }
+}
+
+/// `SPINEL_MD_FLAG_ACKED_FP`: the RCP acknowledged a received frame with
+/// Frame Pending set.
+const MD_FLAG_ACKED_FP: u16 = 0x0010;
+
 /// `SPINEL_MD_FLAG_ACKED_SEC`: the RCP acknowledged a received frame with a
 /// secured enhanced ACK.
 const MD_FLAG_ACKED_SEC: u16 = 0x0020;
@@ -219,6 +255,25 @@ const MD_FLAG_ACKED_SEC: u16 = 0x0020;
 /// How often the offset between the RCP clock and the host clock is measured
 /// again - the reference host's `OPENTHREAD_SPINEL_CONFIG_RCP_TIME_SYNC_INTERVAL`.
 const TIME_SYNC_INTERVAL: Duration = Duration::from_secs(60);
+
+/// The RCP clock minus the host clock (`embassy-time`), in microseconds, as
+/// last measured (`PROP_RCP_TIMESTAMP`); `None` until measured, or if the RCP
+/// cannot tell its time. Process-wide, as the radio clock it serves is a plain
+/// function (see the module docs).
+static RCP_TIME_OFFSET: Mutex<CriticalSectionRawMutex, Cell<Option<i64>>> =
+    Mutex::new(Cell::new(None));
+
+/// The RCP time offset, if measured.
+fn rcp_time_offset() -> Option<i64> {
+    RCP_TIME_OFFSET.lock(Cell::get)
+}
+
+/// The radio clock: the RCP's clock, as estimated from the host clock.
+fn rcp_now_us() -> u64 {
+    let offset = rcp_time_offset().unwrap_or(0);
+
+    (Instant::now().as_micros() as i64 + offset) as u64
+}
 
 /// The RCP capability ids we require (a real RCP in raw-MAC mode).
 const CAP_CONFIG_RADIO: u32 = 34;
@@ -414,6 +469,7 @@ fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], RxMeta)> {
             lqi,
             timestamp,
             ack_security,
+            acked_with_frame_pending: flags & MD_FLAG_ACKED_FP != 0,
             len,
         },
     ))
@@ -440,6 +496,8 @@ struct RxMeta {
     timestamp: Option<u64>,
     /// The secured enhanced ACK the RCP answered the frame with, if any.
     ack_security: Option<AckSecurity>,
+    /// Whether the RCP answered the frame with an ACK with Frame Pending set.
+    acked_with_frame_pending: bool,
     /// How many bytes the metadata took after the PSDU (with its length).
     len: usize,
 }
@@ -678,12 +736,7 @@ pub struct SpinelRadio<'a, T> {
     src_match_dirty: bool,
     /// Whether raw-stream (RX) is currently enabled on the RCP.
     rx_enabled: bool,
-    /// The RCP clock minus the host clock (`embassy-time`), in microseconds,
-    /// as last measured (`PROP_RCP_TIMESTAMP`): what translates the RCP's
-    /// frame timestamps and transmit times to and from the host clock the
-    /// stack runs on. `None` until measured, or if the RCP cannot tell its time.
-    rcp_time_offset: Option<i64>,
-    /// When `rcp_time_offset` is due to be measured (again).
+    /// When the RCP time offset is due to be measured (again).
     time_sync_due: Instant,
     /// The RCP's CSL timing figures (`PROP_RCP_CSL_ACCURACY` /
     /// `PROP_RCP_CSL_UNCERTAINTY`), read during the handshake; `u8::MAX`
@@ -694,6 +747,9 @@ pub struct SpinelRadio<'a, T> {
     /// The speed of the link to the RCP, in bits per second (see
     /// [`Self::with_bus_speed`]).
     bus_speed: u32,
+    /// The latency of the link to the RCP, in microseconds (see
+    /// [`Self::with_bus_latency`]).
+    bus_latency_us: u32,
     /// Next transaction id (1..=15, 0 is reserved for unsolicited notifications).
     next_tid: u8,
     /// Scratch buffer for the raw spinel frame being built for transmission.
@@ -745,11 +801,11 @@ where
             sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
             src_match_dirty: false,
             rx_enabled: false,
-            rcp_time_offset: None,
             time_sync_due: Instant::from_ticks(0),
             csl_accuracy_ppm: u8::MAX,
             csl_uncertainty: u8::MAX,
             bus_speed: 0,
+            bus_latency_us: 0,
             next_tid: 1,
             tx_frame,
             rx_frame,
@@ -759,13 +815,23 @@ where
         }
     }
 
-    /// Tell the radio the speed of the link to the RCP, in bits per second
-    /// (e.g. the UART's baud rate). An FTD needs it to hand the frames for its
-    /// CSL children over early enough to cross the link in time (see
-    /// [`RadioCaps::bus_speed`]); `0` (the default) treats the link as instant.
+    /// Tell the radio the speed of the link to the RCP, in payload bits per
+    /// second - for a UART, its baud rate less the start and stop bits (8/10
+    /// of it). An FTD needs it to hand the frames for its CSL children over
+    /// early enough to cross the link in time (see [`RadioCaps::bus_speed`]);
+    /// `0` (the default) treats the link as instant.
     #[must_use]
     pub fn with_bus_speed(mut self, bits_per_second: u32) -> Self {
         self.bus_speed = bits_per_second;
+        self
+    }
+
+    /// Tell the radio the latency of the link to the RCP on top of its speed,
+    /// in microseconds: e.g. a USB serial bridge, which moves data at the
+    /// host's polling interval (see [`RadioCaps::bus_latency_us`]).
+    #[must_use]
+    pub fn with_bus_latency(mut self, latency_us: u32) -> Self {
+        self.bus_latency_us = latency_us;
         self
     }
 
@@ -798,16 +864,10 @@ where
             Ok(Some(remote)) => {
                 let local = (sent.as_micros() + received.as_micros()) / 2;
 
-                self.rcp_time_offset = Some(remote as i64 - local as i64);
+                RCP_TIME_OFFSET.lock(|offset| offset.set(Some(remote as i64 - local as i64)));
             }
             _ => debug!("RCP: could not read its clock"),
         }
-    }
-
-    /// Translate an RCP-clock time to the host clock.
-    fn host_time(&self, rcp_time: u64) -> Option<u64> {
-        self.rcp_time_offset
-            .map(|offset| (rcp_time as i64 - offset) as u64)
     }
 
     /// If the just-received frame in `rx_frame[..frame_len]` is an *unsolicited*
@@ -1456,7 +1516,7 @@ where
         // clock, so they need its offset to the host clock.
         self.time_sync_due = Instant::from_ticks(0);
         self.ensure_time_sync().await;
-        if self.rcp_time_offset.is_none() {
+        if rcp_time_offset().is_none() {
             self.caps.remove(Capabilities::TRANSMIT_TIMING);
         }
 
@@ -1680,12 +1740,13 @@ where
             receive_sensitivity: self.sensitivity,
             default_tx_power: self.default_tx_power,
             default_cca_threshold: self.default_cca_threshold,
-            // The stack runs on the host clock; this radio translates (see
+            // The RCP's clock, once its offset to the host clock is known (see
             // the module docs).
-            clock: None,
+            clock: rcp_time_offset().map(|_| RadioClock(rcp_now_us)),
             csl_accuracy_ppm: self.csl_accuracy_ppm,
             csl_uncertainty: self.csl_uncertainty,
             bus_speed: self.bus_speed,
+            bus_latency_us: self.bus_latency_us,
         })
     }
 
@@ -1862,24 +1923,25 @@ where
 
         let secured = psdu.first().is_some_and(|fcf| fcf & 0x08 != 0);
 
-        // A frame timed into a CSL child's receive window: the RCP times it, in
-        // its own clock, as a delay from about now. One that could not cross
-        // the link in time any more goes out right away instead, as
-        // OpenThread's own timing would send it.
+        // A frame timed into a CSL child's receive window: the RCP times it, as
+        // a delay from about now - all in the RCP's clock, which is the radio
+        // clock the stack timed the frame by. One that could not cross the
+        // link in time any more goes out right away instead, as OpenThread's
+        // own timing would send it.
         let (tx_delay_base, tx_delay) = psdu_tx
             .tx_at_us
-            .zip(self.rcp_time_offset)
-            .and_then(|(tx_at_us, offset)| {
-                let now = Instant::now().as_micros() as i64 + offset;
-                let at = tx_at_us as i64 + offset;
+            .filter(|_| rcp_time_offset().is_some())
+            .and_then(|tx_at_us| {
+                let now = rcp_now_us() as i64;
+                let at = tx_at_us as i64;
 
-                // The frame's transfer (~10 bits per byte with the spinel and
-                // HDLC overhead) plus a margin for the RCP to schedule it.
+                // The frame's way to the RCP (with the spinel and HDLC
+                // overhead), plus a margin for the RCP to schedule it.
                 let transfer_us = if self.bus_speed > 0 {
-                    (psdu.len() as i64 + 32) * 10 * 1_000_000 / self.bus_speed as i64
+                    (psdu.len() as i64 + 32) * 8 * 1_000_000 / self.bus_speed as i64
                 } else {
                     0
-                };
+                } + self.bus_latency_us as i64;
 
                 let timed =
                     (at - now > transfer_us + 500).then_some((now as u32, (at - now) as u32));
@@ -1976,8 +2038,8 @@ where
         let mut rest = &body[p + 2..];
 
         // status != OK → the transmit failed (no ACK / channel access), and
-        // there is no ACK frame. Report as no ACK; OpenThread maps a missing
-        // ACK to the appropriate retry/failure.
+        // there is no ACK frame; reported as an error below, once the frame
+        // counter it used is handed back.
         let status_ok = status == 0; // SPINEL_STATUS_OK
         if !status_ok && tx_delay != 0 {
             debug!("Timed frame failed on the RCP: spinel status {}", status);
@@ -2016,6 +2078,10 @@ where
             }
         }
 
+        if !status_ok {
+            return Err(tx_status_error(status));
+        }
+
         let Some((ack_psdu, ack_meta, _)) = ack else {
             return Ok(None);
         };
@@ -2029,8 +2095,9 @@ where
                     channel: ack_meta.channel.unwrap_or(channel),
                     rssi: ack_meta.rssi,
                     lqi: ack_meta.lqi,
-                    timestamp_us: ack_meta.timestamp.and_then(|ts| self.host_time(ts)),
+                    timestamp_us: ack_meta.timestamp,
                     ack_security: None,
+                    acked_with_frame_pending: None,
                 }))
             }
             // The caller didn't ask for the ACK PSDU (didn't expect an ACK), so
@@ -2066,8 +2133,9 @@ where
                     channel: meta.channel.unwrap_or(cfg_channel),
                     rssi: meta.rssi,
                     lqi: meta.lqi,
-                    timestamp_us: meta.timestamp.and_then(|ts| self.host_time(ts)),
+                    timestamp_us: meta.timestamp,
                     ack_security: meta.ack_security,
+                    acked_with_frame_pending: Some(meta.acked_with_frame_pending),
                 });
             }
             // Unparseable stashed frame — skip and try the next.
@@ -2095,8 +2163,9 @@ where
                     channel: meta.channel.unwrap_or(cfg_channel),
                     rssi: meta.rssi,
                     lqi: meta.lqi,
-                    timestamp_us: meta.timestamp.and_then(|ts| self.host_time(ts)),
+                    timestamp_us: meta.timestamp,
                     ack_security: meta.ack_security,
+                    acked_with_frame_pending: Some(meta.acked_with_frame_pending),
                 });
             }
             // Other frames (matched responses to a concurrent op, status) — ignore.
