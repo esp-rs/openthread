@@ -15,7 +15,7 @@ use core::net::{Ipv6Addr, SocketAddrV6};
 use core::pin::pin;
 use core::ptr::addr_of_mut;
 
-use embassy_futures::select::{select, select3, select4, Either, Either3, Either4};
+use embassy_futures::select::{select, select3, Either, Either3};
 
 use embassy_time::Instant;
 
@@ -965,7 +965,8 @@ impl<'a> OpenThread<'a> {
     /// while `run` has not brought it up yet (see [`Self::wait_radio_ready`]).
     ///
     /// [`Capabilities::RECEIVE_TIMING`] in the set means the radio can run CSL
-    /// (see [`Self::set_csl_period`]).
+    /// (see [`Self::set_csl_period`]). Without the `csl-receiver` feature that
+    /// capability is never reported, as the stack is built without CSL.
     pub fn radio_caps(&self) -> Option<Capabilities> {
         let mut ot = self.activate();
         let state = ot.state();
@@ -994,10 +995,16 @@ impl<'a> OpenThread<'a> {
     /// Return the CSL (Coordinated Sampled Listening) period, in microseconds
     /// (`otLinkGetCslPeriod`); `0` if CSL is off.
     pub fn csl_period(&self) -> u32 {
-        let mut ot = self.activate();
-        let state = ot.state();
+        #[cfg(feature = "csl-receiver")]
+        {
+            let mut ot = self.activate();
+            let state = ot.state();
 
-        unsafe { sys::otLinkGetCslPeriod(state.ot.instance) }
+            unsafe { sys::otLinkGetCslPeriod(state.ot.instance) }
+        }
+
+        #[cfg(not(feature = "csl-receiver"))]
+        0
     }
 
     /// Set the CSL (Coordinated Sampled Listening) period, in microseconds
@@ -1017,7 +1024,8 @@ impl<'a> OpenThread<'a> {
     /// `INVALID_ARGS`. It also takes a radio with timed receive: with a radio
     /// that lacks [`Capabilities::RECEIVE_TIMING`] a non-zero period is rejected
     /// with `NOT_CAPABLE`, and so is one requested before the radio is brought
-    /// up (see [`Self::wait_radio_ready`]).
+    /// up (see [`Self::wait_radio_ready`]). Without the `csl-receiver` feature
+    /// every non-zero period is rejected with `NOT_CAPABLE`.
     ///
     /// The data-poll period keeps its own meaning next to CSL: with CSL enabled
     /// OpenThread only polls at the CSL timeout ([`Self::set_csl_timeout`]) to
@@ -1033,35 +1041,74 @@ impl<'a> OpenThread<'a> {
             return Err(OtError::new(sys::otError_OT_ERROR_NOT_CAPABLE));
         }
 
-        let mut ot = self.activate();
-        let state = ot.state();
+        #[cfg(feature = "csl-receiver")]
+        {
+            let mut ot = self.activate();
+            let state = ot.state();
 
-        ot!(unsafe { sys::otLinkSetCslPeriod(state.ot.instance, period_micros) })
+            ot!(unsafe { sys::otLinkSetCslPeriod(state.ot.instance, period_micros) })
+        }
+
+        #[cfg(not(feature = "csl-receiver"))]
+        Ok(())
     }
 
     /// The longest CSL period OpenThread accepts, in microseconds
     /// (`u16::MAX` units of 10 symbols).
     pub const CSL_MAX_PERIOD_US: u32 = u16::MAX as u32 * 160;
 
+    /// The PHY capabilities of a radio this build has no use for, and so
+    /// reports neither to OpenThread nor in [`Self::radio_caps`]: timed receive
+    /// without the `csl-receiver` feature, and transmit security without any
+    /// CSL role (OpenThread then secures every frame itself).
+    const UNUSED_RADIO_CAPS: Capabilities = {
+        let caps = Capabilities::empty();
+
+        #[cfg(not(feature = "csl-receiver"))]
+        let caps = caps.union(Capabilities::RECEIVE_TIMING);
+
+        #[cfg(not(feature = "_csl"))]
+        let caps = caps.union(Capabilities::TRANSMIT_SEC);
+
+        caps
+    };
+
     /// Return the CSL timeout, in seconds (`otLinkGetCslTimeout`): how long the
     /// parent keeps a CSL child synchronized without hearing from it.
     pub fn csl_timeout(&self) -> u32 {
-        let mut ot = self.activate();
-        let state = ot.state();
+        #[cfg(feature = "csl-receiver")]
+        {
+            let mut ot = self.activate();
+            let state = ot.state();
 
-        unsafe { sys::otLinkGetCslTimeout(state.ot.instance) }
+            unsafe { sys::otLinkGetCslTimeout(state.ot.instance) }
+        }
+
+        #[cfg(not(feature = "csl-receiver"))]
+        0
     }
 
     /// Set the CSL timeout, in seconds (`otLinkSetCslTimeout`).
     ///
     /// The child sends a keep-alive to its parent at least this often while
     /// CSL is enabled (OpenThread derives its automatic data-poll period from it),
-    /// so this is the CSL counterpart of the child timeout.
+    /// so this is the CSL counterpart of the child timeout. Without the
+    /// `csl-receiver` feature this fails with `NOT_CAPABLE`.
     pub fn set_csl_timeout(&self, timeout_secs: u32) -> Result<(), OtError> {
-        let mut ot = self.activate();
-        let state = ot.state();
+        #[cfg(feature = "csl-receiver")]
+        {
+            let mut ot = self.activate();
+            let state = ot.state();
 
-        ot!(unsafe { sys::otLinkSetCslTimeout(state.ot.instance, timeout_secs) })
+            ot!(unsafe { sys::otLinkSetCslTimeout(state.ot.instance, timeout_secs) })
+        }
+
+        #[cfg(not(feature = "csl-receiver"))]
+        {
+            let _ = timeout_secs;
+
+            Err(OtError::new(sys::otError_OT_ERROR_NOT_CAPABLE))
+        }
     }
 
     /// Return the child-supervision interval, in seconds
@@ -1250,13 +1297,30 @@ impl<'a> OpenThread<'a> {
     {
         let mut radio = pin!(self.run_radio(radio));
         let mut alarm = pin!(self.run_alarm());
-        let mut alarm_micro = pin!(self.run_alarm_micro());
         let mut openthread = pin!(self.run_tasklets());
 
-        let result = select4(&mut radio, &mut alarm, &mut alarm_micro, &mut openthread).await;
+        #[cfg(feature = "_csl")]
+        {
+            use embassy_futures::select::{select4, Either4};
 
-        match result {
-            Either4::First(r) | Either4::Second(r) | Either4::Third(r) | Either4::Fourth(r) => r,
+            let mut alarm_micro = pin!(self.run_alarm_micro());
+
+            let result = select4(&mut radio, &mut alarm, &mut alarm_micro, &mut openthread).await;
+
+            match result {
+                Either4::First(r) | Either4::Second(r) | Either4::Third(r) | Either4::Fourth(r) => {
+                    r
+                }
+            }
+        }
+
+        #[cfg(not(feature = "_csl"))]
+        {
+            let result = select3(&mut radio, &mut alarm, &mut openthread).await;
+
+            match result {
+                Either3::First(r) | Either3::Second(r) | Either3::Third(r) => r,
+            }
         }
     }
 
@@ -1428,6 +1492,7 @@ impl<'a> OpenThread<'a> {
     /// for with `embassy-time`, whose resolution only has to be good enough for
     /// the ~2 ms lead OpenThread gives itself before each window: the window
     /// itself is timed by the radio (`Radio::receive_at`).
+    #[cfg(feature = "_csl")]
     async fn run_alarm_micro(&self) -> ! {
         let alarm = || poll_fn(move |cx| self.activate().state().ot.alarm_micro.poll_wait(cx));
 
@@ -1508,16 +1573,20 @@ impl<'a> OpenThread<'a> {
             let mut activated = self.activate();
             let state = activated.state();
 
-            state.ot.radio_caps = caps.phy.bits();
+            state.ot.radio_caps = caps.phy.difference(Self::UNUSED_RADIO_CAPS).bits();
             state.ot.radio_sensitivity = caps.receive_sensitivity;
             state.ot.radio_cca_threshold = caps.default_cca_threshold;
             state.ot.radio_tx_power = caps.default_tx_power;
-            state.ot.radio_clock = caps.clock;
-            state.ot.radio_csl_accuracy_ppm = caps.csl_accuracy_ppm;
-            state.ot.radio_csl_uncertainty = caps.csl_uncertainty;
+            #[cfg(feature = "_csl")]
+            {
+                state.ot.radio_clock = caps.clock;
+                state.ot.radio_csl_accuracy_ppm = caps.csl_accuracy_ppm;
+                state.ot.radio_csl_uncertainty = caps.csl_uncertainty;
+            }
             state.ot.radio_initialized = true;
             state.ot.radio_ready.signal(());
 
+            #[cfg(feature = "csl-receiver")]
             if caps.phy.contains(radio::Capabilities::RECEIVE_TIMING) && caps.clock.is_none() {
                 warn!("Radio advertises timed receive but has no clock; CSL timing will be off");
             }
@@ -1550,6 +1619,7 @@ impl<'a> OpenThread<'a> {
             };
 
             match action {
+                #[cfg(feature = "csl-receiver")]
                 RadioAction::Csl => {
                     let csl = {
                         let mut ot = self.activate();
@@ -1562,6 +1632,7 @@ impl<'a> OpenThread<'a> {
 
                     unwrap_dbg!(radio.set_csl(&csl).await);
                 }
+                #[cfg(feature = "_csl")]
                 RadioAction::Keys => {
                     let keys = {
                         let mut ot = self.activate();
@@ -1574,6 +1645,7 @@ impl<'a> OpenThread<'a> {
 
                     unwrap_dbg!(radio.set_mac_keys(keys.as_ref()).await);
                 }
+                #[cfg(feature = "_csl")]
                 RadioAction::FrameCounter((frame_counter, if_larger)) => {
                     trace!(
                         "Radio MAC frame counter: {} (if larger: {})",
@@ -1616,6 +1688,7 @@ impl<'a> OpenThread<'a> {
                         // Nothing to do: an interrupt has already done its
                         // whole job by waking the runner.
                         RadioCommand::Interrupt => (),
+                        #[cfg(feature = "csl-receiver")]
                         RadioCommand::ReceiveAt {
                             channel,
                             start_us,
@@ -1743,6 +1816,7 @@ impl<'a> OpenThread<'a> {
     ///
     /// The receiver is armed by the radio for the window only (`Radio::receive_at`);
     /// the RX loop here just drains its queue, without switching it on.
+    #[cfg(feature = "csl-receiver")]
     async fn process_radio_receive_at<R>(
         &self,
         mut radio: R,
@@ -1770,6 +1844,7 @@ impl<'a> OpenThread<'a> {
     {
         let (cca_threshold, channel, power, psdu_len, mut psdu_tx) = {
             let mut ot = self.activate();
+            #[cfg(feature = "_csl")]
             let now = ot.radio_now_us();
             let state = ot.state();
 
@@ -1779,6 +1854,9 @@ impl<'a> OpenThread<'a> {
             // key / counter / CSL callbacks keep up to date. The CSL phase is
             // computed as of now; the frame is on the air a CSMA backoff
             // later, which the trailing edge of the receive window absorbs.
+            // Without a CSL role OpenThread is never told that the radio
+            // secures frames, and hands over finished frames itself.
+            #[cfg(feature = "_csl")]
             if !radio::Capabilities::from_bits_truncate(state.ot.radio_caps as _)
                 .contains(radio::Capabilities::TRANSMIT_SEC)
             {
@@ -1879,6 +1957,7 @@ impl<'a> OpenThread<'a> {
 
             let radio_resources = &mut state.ot.radio_resources;
 
+            #[cfg(feature = "_csl")]
             if psdu_tx.header_updated {
                 // The frame went out as the radio finished it: hand that back
                 // to OpenThread, which reads the frame counter used from it.
@@ -2024,40 +2103,55 @@ impl<'a> OpenThread<'a> {
             .ot
             .radio_cmd
             .poll_wait(cx)));
-        let mut csl = pin!(poll_fn(move |cx| self
-            .activate()
-            .state()
-            .ot
-            .radio_csl_changed
-            .poll_wait(cx)));
-        let mut keys = pin!(poll_fn(move |cx| self
-            .activate()
-            .state()
-            .ot
-            .radio_keys_changed
-            .poll_wait(cx)));
-        let mut frame_counter = pin!(poll_fn(move |cx| self
-            .activate()
-            .state()
-            .ot
-            .radio_frame_counter
-            .poll_wait(cx)));
+        let mut common = pin!(async {
+            match select3(&mut conf, &mut src, &mut cmd).await {
+                Either3::First(()) => RadioAction::Conf,
+                Either3::Second(()) => RadioAction::SrcMatch,
+                Either3::Third(cmd) => RadioAction::Cmd(cmd),
+            }
+        });
 
-        match select(
-            select3(&mut conf, &mut src, &mut cmd),
-            select3(&mut csl, &mut keys, &mut frame_counter),
-        )
-        .await
+        #[cfg(feature = "_csl")]
         {
-            Either::First(Either3::First(())) => RadioAction::Conf,
-            Either::First(Either3::Second(())) => RadioAction::SrcMatch,
-            Either::First(Either3::Third(cmd)) => RadioAction::Cmd(cmd),
-            Either::Second(Either3::First(())) => RadioAction::Csl,
-            Either::Second(Either3::Second(())) => RadioAction::Keys,
-            Either::Second(Either3::Third(frame_counter)) => {
-                RadioAction::FrameCounter(frame_counter)
+            #[cfg(feature = "csl-receiver")]
+            let csl = poll_fn(move |cx| self.activate().state().ot.radio_csl_changed.poll_wait(cx));
+            #[cfg(not(feature = "csl-receiver"))]
+            let csl = core::future::pending::<()>();
+
+            let mut csl = pin!(csl);
+            let mut keys = pin!(poll_fn(move |cx| self
+                .activate()
+                .state()
+                .ot
+                .radio_keys_changed
+                .poll_wait(cx)));
+            let mut frame_counter = pin!(poll_fn(move |cx| self
+                .activate()
+                .state()
+                .ot
+                .radio_frame_counter
+                .poll_wait(cx)));
+
+            match select(
+                &mut common,
+                select3(&mut csl, &mut keys, &mut frame_counter),
+            )
+            .await
+            {
+                Either::First(action) => action,
+                #[cfg(feature = "csl-receiver")]
+                Either::Second(Either3::First(())) => RadioAction::Csl,
+                #[cfg(not(feature = "csl-receiver"))]
+                Either::Second(Either3::First(())) => unreachable!(),
+                Either::Second(Either3::Second(())) => RadioAction::Keys,
+                Either::Second(Either3::Third(frame_counter)) => {
+                    RadioAction::FrameCounter(frame_counter)
+                }
             }
         }
+
+        #[cfg(not(feature = "_csl"))]
+        common.as_mut().await
     }
 
     /// Await until the OpenThread stack cancels the radio excursion
@@ -2246,6 +2340,20 @@ impl OtResources {
         }
     }
 
+    /// The CSL-related radio capabilities advertised to OpenThread before the
+    /// actual radio is brought up (see `init`).
+    const CSL_STATIC_RADIO_CAPS: otRadioCaps = {
+        let caps: otRadioCaps = 0;
+
+        #[cfg(feature = "csl-receiver")]
+        let caps = caps | sys::OT_RADIO_CAPS_RECEIVE_TIMING as otRadioCaps;
+
+        #[cfg(feature = "_csl")]
+        let caps = caps | sys::OT_RADIO_CAPS_TRANSMIT_SEC as otRadioCaps;
+
+        caps
+    };
+
     /// Initialize the resources, as they start their life as `MaybeUninit` so as to avoid mem-moves.
     ///
     /// Returns:
@@ -2304,16 +2412,26 @@ impl OtResources {
             radio_conf_src_match: radio::SrcMatchConfig::default(),
             radio_conf_src_match_changed: Signal::new(),
             radio_cmd: Signal::new(),
+            #[cfg(feature = "_csl")]
             alarm_micro: Signal::new(),
+            #[cfg(feature = "csl-receiver")]
             radio_csl: radio::CslConfig::new(),
+            #[cfg(feature = "csl-receiver")]
             radio_csl_changed: Signal::new(),
+            #[cfg(feature = "_csl")]
             radio_keys: None,
+            #[cfg(feature = "_csl")]
             radio_keys_changed: Signal::new(),
+            #[cfg(feature = "_csl")]
             radio_frame_counter: Signal::new(),
             // A plain-data C struct; all-zero is its "nothing set" state.
+            #[cfg(feature = "_csl")]
             radio_tx_ctx: unsafe { MaybeUninit::zeroed().assume_init() },
+            #[cfg(feature = "_csl")]
             radio_clock: None,
+            #[cfg(feature = "_csl")]
             radio_csl_accuracy_ppm: u8::MAX,
+            #[cfg(feature = "_csl")]
             radio_csl_uncertainty: u8::MAX,
             radio_initialized: false,
             radio_ready: Signal::new(),
@@ -2339,21 +2457,21 @@ impl OtResources {
             // anyway, as it needs a synchronous RSSI read (`otPlatRadioGetRssi`)
             // which is unimplementable on top of an async radio.
             //
-            // `RECEIVE_TIMING` likewise: OpenThread's `SubMac` decides at construction
-            // whether it may ever run CSL from this snapshot. Whether the actual radio
-            // supports it is checked by `set_csl_period`, the only place that can
-            // enable CSL - so a radio without timed receive is never asked for it.
+            // `RECEIVE_TIMING` likewise (with the `csl-receiver` feature):
+            // OpenThread's `SubMac` decides at construction whether it may ever
+            // run CSL from this snapshot. Whether the actual radio supports it
+            // is checked by `set_csl_period`, the only place that can enable
+            // CSL - so a radio without timed receive is never asked for it.
             //
-            // `TRANSMIT_SEC` is advertised for every radio: a radio that does
-            // not finish its own frames (counter, CSL IE, AES-CCM*) gets them
-            // finished by this crate right before transmission, with the
-            // reference platforms' helper - which is what lets a CSL child
-            // advertise a phase computed at transmit time rather than one
-            // frozen into the MIC by the stack long before.
-            radio_caps: (OT_RADIO_CAPS_ACK_TIMEOUT
-                | sys::OT_RADIO_CAPS_ENERGY_SCAN
-                | sys::OT_RADIO_CAPS_RECEIVE_TIMING
-                | sys::OT_RADIO_CAPS_TRANSMIT_SEC) as otRadioCaps,
+            // `TRANSMIT_SEC` is advertised for every radio when a CSL role is
+            // compiled in: a radio that does not finish its own frames
+            // (counter, CSL IE, AES-CCM*) gets them finished by this crate
+            // right before transmission, with the reference platforms' helper
+            // - which is what lets a CSL child advertise a phase computed at
+            // transmit time rather than one frozen into the MIC by the stack
+            // long before. Without a CSL role OpenThread secures the frames.
+            radio_caps: (OT_RADIO_CAPS_ACK_TIMEOUT | sys::OT_RADIO_CAPS_ENERGY_SCAN) as otRadioCaps
+                | Self::CSL_STATIC_RADIO_CAPS,
             radio_sensitivity: radio::RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
             radio_cca_threshold: radio::RadioCaps::DEFAULT_CCA_THRESHOLD,
             radio_tx_power: radio::RadioCaps::DEFAULT_TX_POWER,
@@ -3096,6 +3214,7 @@ impl<'a> OtContext<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "_csl")]
     /// The radio clock, in microseconds: the radio's own if it has one, else
     /// `embassy-time`'s. `otPlatRadioGetNow` and the microsecond alarm both
     /// run on it, so OpenThread's CSL arithmetic stays in one time base.
@@ -3106,10 +3225,12 @@ impl<'a> OtContext<'a> {
         }
     }
 
+    #[cfg(feature = "_csl")]
     fn plat_now_micros(&mut self) -> u32 {
         self.radio_now_us() as u32
     }
 
+    #[cfg(feature = "_csl")]
     fn plat_alarm_micro_set(&mut self, at0_us: u32, adt_us: u32) {
         trace!("Plat micro alarm set callback: {}, {}", at0_us, adt_us);
 
@@ -3131,15 +3252,18 @@ impl<'a> OtContext<'a> {
         self.state().ot.alarm_micro.signal(Some(instant));
     }
 
+    #[cfg(feature = "_csl")]
     fn plat_alarm_micro_clear(&mut self) {
         trace!("Plat micro alarm clear callback");
         self.state().ot.alarm_micro.signal(None);
     }
 
+    #[cfg(feature = "_csl")]
     fn plat_radio_now(&mut self) -> u64 {
         self.radio_now_us()
     }
 
+    #[cfg(feature = "csl-receiver")]
     fn plat_radio_receive_at(
         &mut self,
         channel: u8,
@@ -3181,6 +3305,7 @@ impl<'a> OtContext<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "csl-receiver")]
     fn plat_radio_enable_csl(
         &mut self,
         period: u32,
@@ -3204,6 +3329,7 @@ impl<'a> OtContext<'a> {
         Ok(())
     }
 
+    #[cfg(feature = "csl-receiver")]
     fn plat_radio_update_csl_sample_time(&mut self, sample_time_us: u32) {
         trace!("Plat radio CSL sample time callback: {}", sample_time_us);
 
@@ -3214,14 +3340,17 @@ impl<'a> OtContext<'a> {
         state.ot.radio_tx_ctx.mCslSampleTime = sample_time_us;
     }
 
+    #[cfg(feature = "_csl")]
     fn plat_radio_csl_accuracy(&mut self) -> u8 {
         self.state().ot.radio_csl_accuracy_ppm
     }
 
+    #[cfg(feature = "_csl")]
     fn plat_radio_csl_uncertainty(&mut self) -> u8 {
         self.state().ot.radio_csl_uncertainty
     }
 
+    #[cfg(feature = "_csl")]
     fn plat_radio_set_mac_keys(&mut self, keys: Option<radio::MacKeys>) {
         trace!("Plat radio set MAC keys callback: {:?}", keys);
 
@@ -3252,6 +3381,7 @@ impl<'a> OtContext<'a> {
         }
     }
 
+    #[cfg(feature = "_csl")]
     fn plat_radio_set_mac_frame_counter(&mut self, frame_counter: u32, if_larger: bool) {
         trace!(
             "Plat radio set MAC frame counter callback: {} (if larger: {})",
@@ -3878,32 +4008,42 @@ struct OtState<'a> {
     radio_cmd: Signal<RadioCommand>,
     /// `Some` in case there is a pending OpenThread microsecond alarm which is not due yet
     /// `None` if the existing microsecond alarm needs to be cancelled
+    #[cfg(feature = "_csl")]
     alarm_micro: Signal<Option<embassy_time::Instant>>,
     /// The CSL schedule from the POV of OpenThread (`otPlatRadioEnableCsl` /
     /// `otPlatRadioUpdateCslSampleTime`).
+    #[cfg(feature = "csl-receiver")]
     radio_csl: radio::CslConfig,
     /// Raised whenever the CSL schedule changes; consumed by the radio runner.
+    #[cfg(feature = "csl-receiver")]
     radio_csl_changed: Signal<()>,
     /// The MAC keys OpenThread handed the radio for securing its enhanced ACKs
     /// (`otPlatRadioSetMacKey`).
+    #[cfg(feature = "_csl")]
     radio_keys: Option<radio::MacKeys>,
     /// Raised whenever the MAC keys change; consumed by the radio runner.
+    #[cfg(feature = "_csl")]
     radio_keys_changed: Signal<()>,
     /// The latest MAC frame counter OpenThread pushed to the radio
     /// (`otPlatRadioSetMacFrameCounter[IfLarger]`): `(counter, if_larger)`.
+    #[cfg(feature = "_csl")]
     radio_frame_counter: Signal<(u32, bool)>,
     /// The transmit-side security context for radios that do not finish their
     /// own frames (no `Capabilities::TRANSMIT_SEC`): the keys, frame counters
     /// and CSL schedule OpenThread pushes to "the radio", consumed by the
     /// platform helper that finishes a frame right before it is transmitted
     /// (`otMacFrameProcessTxSfd`), as OpenThread's own reference platforms do.
+    #[cfg(feature = "_csl")]
     radio_tx_ctx: sys::otRadioContext,
     /// The radio clock, if the radio has one (`RadioCaps::clock`); serves
     /// `otPlatRadioGetNow` and the microsecond alarm.
+    #[cfg(feature = "_csl")]
     radio_clock: Option<radio::RadioClock>,
     /// `RadioCaps::csl_accuracy_ppm` (`otPlatRadioGetCslAccuracy`).
+    #[cfg(feature = "_csl")]
     radio_csl_accuracy_ppm: u8,
     /// `RadioCaps::csl_uncertainty` (`otPlatRadioGetCslUncertainty`).
+    #[cfg(feature = "_csl")]
     radio_csl_uncertainty: u8,
     /// Whether `run_radio` has brought the radio up and stored its capabilities.
     radio_initialized: bool,
@@ -3959,6 +4099,7 @@ enum RadioCommand {
     /// Receive on `channel` for `duration_us` starting at `start_us` (radio
     /// clock): a CSL sample window. Frames received meanwhile are reported
     /// with `otPlatRadioReceiveDone`; the window ends with the next command.
+    #[cfg(feature = "csl-receiver")]
     ReceiveAt {
         channel: u8,
         start_us: u64,
@@ -3977,13 +4118,17 @@ enum RadioAction {
     /// A radio command.
     Cmd(RadioCommand),
     /// The CSL schedule changed.
+    #[cfg(feature = "csl-receiver")]
     Csl,
     /// The MAC keys changed.
+    #[cfg(feature = "_csl")]
     Keys,
     /// A MAC frame counter to push: `(counter, if_larger)`.
+    #[cfg(feature = "_csl")]
     FrameCounter((u32, bool)),
 }
 
+#[cfg(feature = "_csl")]
 extern "C" {
     // Declared here rather than taken from the prebuilt bindings, which predate
     // the microsecond alarm.

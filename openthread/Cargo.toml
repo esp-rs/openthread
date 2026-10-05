@@ -130,6 +130,10 @@ diagnostic = ["openthread-sys/diagnostic"]
 ping-sender = ["openthread-sys/ping-sender"]
 link-metrics-initiator = ["openthread-sys/link-metrics-initiator"]
 link-metrics-subject = ["openthread-sys/link-metrics-subject"]
+csl-receiver = ["_csl", "openthread-sys/csl-receiver"]
+# Internal: the radio-clock, microsecond-alarm and enhanced-ACK security
+# plumbing shared by the CSL roles.
+_csl = []
 mac-filter = ["openthread-sys/mac-filter"]
 jam-detection = ["openthread-sys/jam-detection"]
 netdiag-client = ["openthread-sys/netdiag-client"]
