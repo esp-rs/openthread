@@ -225,6 +225,7 @@ impl Radio for NrfRadio<'_> {
                 lqi: Some(packet.lqi()),
                 timestamp_us: None,
                 ack_security: None,
+                acked_with_frame_pending: None,
             });
         }
     }

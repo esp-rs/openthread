@@ -176,6 +176,7 @@ impl Radio for EspRadio<'_> {
             csl_accuracy_ppm: u8::MAX,
             csl_uncertainty: u8::MAX,
             bus_speed: 0,
+            bus_latency_us: 0,
         })
     }
 
@@ -272,6 +273,7 @@ impl Radio for EspRadio<'_> {
                                 lqi: None,
                                 timestamp_us: None,
                                 ack_security: None,
+                                acked_with_frame_pending: None,
                             }));
                         } else {
                             trace!(
@@ -347,6 +349,7 @@ impl Radio for EspRadio<'_> {
             lqi: None,
             timestamp_us: None,
             ack_security: None,
+            acked_with_frame_pending: None,
         })
     }
 }
