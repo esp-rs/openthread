@@ -7,11 +7,13 @@ use std::time::{Duration, Instant};
 
 /// An Operational Dataset (TLV hex) for the test networks; channel 25, so
 /// nodes only talk after OpenThread switches the radio config there.
+#[allow(dead_code)]
 pub const DATASET: &str = "000300001901020fd80208b566147d38e384200e080000639c5d67a3bd0510c490f58d4be0d5eaeb0f09b395d1ae17030d4e4553542d50414e2d304644380708fd7d4f8232cb00000410a7e08419ae47c177fb91bcfcec789aa50c0402a0f77835060004001fffe0";
 
 /// A port base for an isolated instance of the simulated radio medium: away
 /// from the harness default 9000, inside the caller's `range`, varied per
 /// test process so concurrent invocations use disjoint media.
+#[allow(dead_code)]
 pub fn port_base(range: u16) -> u16 {
     range + (std::process::id() % 4000) as u16
 }
@@ -150,7 +152,41 @@ impl CliNode {
         }
     }
 
+    /// The node's RLOC IPv6 address (`ipaddr rloc`).
+    #[allow(dead_code)]
+    pub fn rloc(&mut self) -> String {
+        let output = self.cmd("ipaddr rloc", Duration::from_secs(10));
+
+        output
+            .into_iter()
+            .next()
+            .unwrap_or_else(|| panic!("node {}: no RLOC address", self.node_id))
+    }
+
+    /// Ping `addr` once with a `size`-byte payload, waiting up to `timeout`
+    /// for the reply; whether it came.
+    #[allow(dead_code)]
+    pub fn ping(&mut self, addr: &str, size: usize, timeout: Duration) -> bool {
+        self.ping_reply(addr, size, timeout).is_some()
+    }
+
+    /// [`Self::ping`], returning the reply line (with its round-trip time).
+    #[allow(dead_code)]
+    pub fn ping_reply(&mut self, addr: &str, size: usize, timeout: Duration) -> Option<String> {
+        // `ping <addr> <size> <count> <interval> <hoplimit> <timeout>`, as the
+        // upstream harness sends it: the CLI prints the replies, then `Done`.
+        let output = self.cmd(
+            &format!("ping {addr} {size} 1 1 64 {}", timeout.as_secs()),
+            timeout + Duration::from_secs(10),
+        );
+
+        output
+            .into_iter()
+            .find(|line| line.contains(" bytes from "))
+    }
+
     /// Poll `state` until it reports `state`, or panic after `timeout`.
+    #[allow(dead_code)]
     pub fn wait_state(&mut self, state: &str, timeout: Duration) {
         let deadline = Instant::now() + timeout;
 

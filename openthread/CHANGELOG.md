@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * `otPlatRadioGetNow` and the microsecond alarm run on the radio clock when the radio has one
   * `Radio::transmit` takes the PSDU mutably now plus a `PsduTxInfo` extra struct
   * `PsduMeta` renamed to `PsduRxInfo`
+  * CSL transmitter for FTDs: `PsduTxInfo` gains `tx_at_us` (handed to radios advertising `Capabilities::TRANSMIT_TIMING`; the glue times the frame itself for the others) and `max_csma_backoffs`
 * `serial_bridge`: wait out the reboot an acknowledged `factoryreset` still has ahead of it before talking to the device
 * Fix: OpenThread refcount underflow in the new_with_* constructors on drop (#123)
 

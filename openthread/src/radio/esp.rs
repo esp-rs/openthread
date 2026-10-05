@@ -175,6 +175,7 @@ impl Radio for EspRadio<'_> {
             clock: None,
             csl_accuracy_ppm: u8::MAX,
             csl_uncertainty: u8::MAX,
+            bus_speed: 0,
         })
     }
 
