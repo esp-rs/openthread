@@ -5,7 +5,7 @@
 #![allow(async_fn_in_trait)]
 #![allow(clippy::uninlined_format_args)]
 
-use core::cell::{Cell, RefCell, RefMut};
+use core::cell::{RefCell, RefMut};
 use core::ffi::c_void;
 use core::fmt::Display;
 use core::future::poll_fn;
@@ -15,7 +15,7 @@ use core::net::{Ipv6Addr, SocketAddrV6};
 use core::pin::pin;
 use core::ptr::addr_of_mut;
 
-use embassy_futures::select::{select, select3, Either, Either3};
+use embassy_futures::select::{select, Either};
 
 use embassy_time::Instant;
 
@@ -1320,6 +1320,8 @@ impl<'a> OpenThread<'a> {
 
         #[cfg(not(feature = "csl-receiver"))]
         {
+            use embassy_futures::select::{select3, Either3};
+
             let result = select3(&mut radio, &mut alarm, &mut openthread).await;
 
             match result {
@@ -1610,138 +1612,84 @@ impl<'a> OpenThread<'a> {
         loop {
             self.activate().process_tasklets();
 
-            let rx_channel = {
-                let mut activated = self.activate();
-                let state = activated.state();
-
-                state.ot.radio_receive_channel
-            };
+            // Configuration first: whatever OpenThread asks for next - a frame
+            // secured with the keys it just set, from the address it just
+            // took - expects the radio to have it already.
+            while self.process_radio_config(&mut radio).await {}
 
             let mut psdu_buf = [0_u8; OT_RADIO_FRAME_MAX_SIZE as usize];
             let mut ack_psdu_buf = [0_u8; OT_RADIO_FRAME_MAX_SIZE as usize];
 
-            let action = if let Some(rx_channel) = rx_channel {
-                let mut action = pin!(self.radio_action());
-                let mut rx = pin!(self.run_radio_rx(&mut radio, rx_channel, &mut psdu_buf, true));
+            // What OpenThread waits on - a transmission, an energy scan - comes
+            // first, and runs to completion: nothing OpenThread may ask for
+            // meanwhile is meant to cut it short (it is refused Sleep and
+            // Disable until then, see `plat_radio_sleep`). Whatever it does ask
+            // for meanwhile is state, picked up on the next round.
+            let (tx_pending, energy_scan) = {
+                let mut activated = self.activate();
+                let state = activated.state();
 
-                let Either::First(action) = select(&mut action, &mut rx).await;
+                (state.ot.radio_tx_pending, state.ot.radio_energy_scan)
+            };
 
-                action
+            trace!(
+                "Radio runner: tx pending {}, energy scan {:?}",
+                tx_pending,
+                energy_scan
+            );
+
+            if tx_pending {
+                self.process_radio_tx(&mut radio, &mut psdu_buf, &mut ack_psdu_buf)
+                    .await;
+                continue;
+            }
+
+            if let Some((channel, duration_millis)) = energy_scan {
+                self.process_radio_energy_scan(&mut radio, channel, duration_millis)
+                    .await;
+                continue;
+            }
+
+            // A CSL receive window OpenThread scheduled: handed to the radio,
+            // which runs it by itself. Until it is handed over, a newer one
+            // replaces it (`otPlatRadioReceiveAt`); once handed over, it is
+            // the radio's.
+            #[cfg(feature = "csl-receiver")]
+            {
+                let window = self.activate().state().ot.radio_rx_window.take();
+
+                if let Some(window) = window {
+                    trace!("Radio receive window: {:?}", window);
+
+                    if let Err(err) = radio
+                        .receive_at(window.channel, window.start_us, window.duration_us)
+                        .await
+                    {
+                        warn!("Timed receive failed: {:?}", dbg2fmt!(err));
+                    }
+                }
+            }
+
+            let (rx_channel, timed_rx) = {
+                let mut activated = self.activate();
+                let state = activated.state();
+
+                (state.ot.radio_receive_channel, state.ot.radio_timed_rx)
+            };
+
+            if rx_channel.is_some() || timed_rx {
+                // Receiving: switched on here for a `Receive`; for receive
+                // windows the radio switches its receiver on and off by itself,
+                // and the frames they bring are delivered whenever they come -
+                // putting the radio to sleep here would cut a window short.
+                let mut wake = pin!(self.wait_radio_cmd());
+                let mut rx = pin!(self.run_radio_rx(&mut radio, rx_channel, &mut psdu_buf));
+
+                let Either::First(()) = select(&mut wake, &mut rx).await;
             } else {
                 unwrap_dbg!(radio.set_sleep().await);
 
-                self.radio_action().await
-            };
-
-            match action {
-                #[cfg(feature = "csl-receiver")]
-                RadioAction::Csl => {
-                    let csl = {
-                        let mut ot = self.activate();
-                        let state = ot.state();
-
-                        state.ot.radio_csl
-                    };
-
-                    trace!("Radio CSL schedule changed: {:?}", csl);
-
-                    unwrap_dbg!(radio.set_csl(&csl).await);
-                }
-                #[cfg(feature = "_csl")]
-                RadioAction::Keys => {
-                    let keys = {
-                        let mut ot = self.activate();
-                        let state = ot.state();
-
-                        state.ot.radio_keys
-                    };
-
-                    trace!("Radio MAC keys changed: {:?}", keys);
-
-                    unwrap_dbg!(radio.set_mac_keys(keys.as_ref()).await);
-                }
-                #[cfg(feature = "_csl")]
-                RadioAction::FrameCounter((frame_counter, if_larger)) => {
-                    trace!(
-                        "Radio MAC frame counter: {} (if larger: {})",
-                        frame_counter,
-                        if_larger
-                    );
-
-                    unwrap_dbg!(radio.set_mac_frame_counter(frame_counter, if_larger).await);
-                }
-                RadioAction::Conf => {
-                    let conf = {
-                        let mut ot = self.activate();
-                        let state = ot.state();
-
-                        state.ot.radio_conf.clone()
-                    };
-
-                    trace!("Radio configuration changed: {:?}", conf);
-
-                    unwrap_dbg!(radio.set_config(&conf).await);
-                }
-                RadioAction::SrcMatch => {
-                    let src = {
-                        let mut ot = self.activate();
-                        let state = ot.state();
-
-                        state.ot.radio_conf_src_match.clone()
-                    };
-
-                    trace!("Radio source match table changed: {:?}", src);
-
-                    unwrap_dbg!(radio.set_src_match_config(&src).await);
-                }
-                RadioAction::Cmd(cmd) => {
-                    trace!("Got radio command: {:?}", cmd);
-
-                    let mut new_cmd = pin!(self.wait_new_radio_cmd());
-
-                    match cmd {
-                        // Nothing to do: an interrupt has already done its
-                        // whole job by waking the runner.
-                        RadioCommand::Interrupt => (),
-                        #[cfg(feature = "csl-receiver")]
-                        RadioCommand::ReceiveAt {
-                            channel,
-                            start_us,
-                            duration_us,
-                        } => {
-                            let mut rx = pin!(self.process_radio_receive_at(
-                                &mut radio,
-                                channel,
-                                start_us,
-                                duration_us,
-                                &mut psdu_buf
-                            ));
-
-                            select(&mut new_cmd, &mut rx).await;
-                        }
-                        RadioCommand::Tx => {
-                            let mut tx = pin!(self.process_radio_tx(
-                                &mut radio,
-                                &mut psdu_buf,
-                                &mut ack_psdu_buf
-                            ));
-
-                            select(&mut new_cmd, &mut tx).await;
-                        }
-                        RadioCommand::EnergyScan {
-                            channel,
-                            duration_millis,
-                        } => {
-                            let mut scan = pin!(self.process_radio_energy_scan(
-                                &mut radio,
-                                channel,
-                                duration_millis
-                            ));
-
-                            select(&mut new_cmd, &mut scan).await;
-                        }
-                    }
-                }
+                self.wait_radio_cmd().await;
             }
         }
     }
@@ -1749,17 +1697,20 @@ impl<'a> OpenThread<'a> {
     /// Repeatedly receive IEEE 802.15.4 frames from the radio and pass them to the OpenThread C library.
     ///
     /// This loop runs forever, unless cancelled by dropping the future.
+    ///
+    /// With a `receive_channel`, the receiver is switched on (on that channel)
+    /// first; without, it is left to what the radio does by itself (receive
+    /// windows).
     async fn run_radio_rx<R>(
         &self,
         mut radio: R,
-        channel: u8,
+        receive_channel: Option<u8>,
         psdu_buf: &mut [u8],
-        enter_receive: bool,
     ) -> !
     where
         R: Radio,
     {
-        if enter_receive {
+        if let Some(channel) = receive_channel {
             unwrap_dbg!(radio.set_receive(channel).await);
         }
 
@@ -1868,34 +1819,80 @@ impl<'a> OpenThread<'a> {
         }
     }
 
-    /// Schedule a timed receive window on the radio and deliver whatever it
-    /// receives until the stack issues its next radio command (typically the
-    /// `Sleep` that ends the window).
+    /// Send an IEEE 802.15.4 frame, and optionally receive an ACK frame in response.
+    /// Push to the radio whatever OpenThread changed of its configuration
+    /// since the last push; reports whether there was anything.
     ///
-    /// The receiver is armed by the radio for the window only (`Radio::receive_at`);
-    /// the RX loop here just drains its queue, without switching it on.
-    #[cfg(feature = "csl-receiver")]
-    async fn process_radio_receive_at<R>(
-        &self,
-        mut radio: R,
-        channel: u8,
-        start_us: u64,
-        duration_us: u32,
-        psdu_buf: &mut [u8],
-    ) where
+    /// The frame counter goes before the keys: on a key rotation OpenThread
+    /// resets the counter first, so that a radio securing its enhanced ACKs
+    /// never uses the new key with the old counter.
+    async fn process_radio_config<R>(&self, mut radio: R) -> bool
+    where
         R: Radio,
     {
-        if let Err(err) = radio.receive_at(channel, start_us, duration_us).await {
-            warn!("Timed receive failed: {:?}", dbg2fmt!(err));
+        let mut ot = self.activate();
+        let state = ot.state();
 
-            return;
+        #[cfg(feature = "_csl")]
+        let frame_counter = state.ot.radio_frame_counter.take();
+        #[cfg(feature = "_csl")]
+        let keys = core::mem::take(&mut state.ot.radio_keys_changed).then_some(state.ot.radio_keys);
+        let conf =
+            core::mem::take(&mut state.ot.radio_conf_changed).then(|| state.ot.radio_conf.clone());
+        let src_match = core::mem::take(&mut state.ot.radio_conf_src_match_changed)
+            .then(|| state.ot.radio_conf_src_match.clone());
+        #[cfg(feature = "csl-receiver")]
+        let csl = core::mem::take(&mut state.ot.radio_csl_changed).then_some(state.ot.radio_csl);
+
+        drop(ot);
+
+        let changed = conf.is_some() || src_match.is_some();
+        #[cfg(feature = "_csl")]
+        let changed = changed || frame_counter.is_some() || keys.is_some();
+        #[cfg(feature = "csl-receiver")]
+        let changed = changed || csl.is_some();
+
+        #[cfg(feature = "_csl")]
+        {
+            if let Some((frame_counter, if_larger)) = frame_counter {
+                trace!(
+                    "Radio MAC frame counter: {} (if larger: {})",
+                    frame_counter,
+                    if_larger
+                );
+
+                unwrap_dbg!(radio.set_mac_frame_counter(frame_counter, if_larger).await);
+            }
+
+            if let Some(keys) = keys {
+                trace!("Radio MAC keys changed: {:?}", keys);
+
+                unwrap_dbg!(radio.set_mac_keys(keys.as_ref()).await);
+            }
         }
 
-        self.run_radio_rx(&mut radio, channel, psdu_buf, false)
-            .await
+        if let Some(conf) = conf {
+            trace!("Radio configuration changed: {:?}", conf);
+
+            unwrap_dbg!(radio.set_config(&conf).await);
+        }
+
+        if let Some(src_match) = src_match {
+            trace!("Radio source match table changed: {:?}", src_match);
+
+            unwrap_dbg!(radio.set_src_match_config(&src_match).await);
+        }
+
+        #[cfg(feature = "csl-receiver")]
+        if let Some(csl) = csl {
+            trace!("Radio CSL schedule changed: {:?}", csl);
+
+            unwrap_dbg!(radio.set_csl(&csl).await);
+        }
+
+        changed
     }
 
-    /// Send an IEEE 802.15.4 frame, and optionally receive an ACK frame in response.
     async fn process_radio_tx<R>(&self, mut radio: R, psdu_buf: &mut [u8], ack_psdu_buf: &mut [u8])
     where
         R: Radio,
@@ -1926,21 +1923,59 @@ impl<'a> OpenThread<'a> {
                 let short_addr = state.ot.radio_conf.short_addr.unwrap_or(0xfffe);
                 let alt_short_addr = state.ot.radio_conf.alt_short_addr.unwrap_or(0xfffe);
 
-                let ctx = &mut state.ot.radio_tx_ctx;
+                let ot = &mut *state.ot;
+
+                let ctx = &mut ot.radio_tx_ctx;
                 ctx.mExtAddress.m8 = ext_addr;
                 ctx.mShortAddress = short_addr;
                 ctx.mAlternateShortAddress = alt_short_addr;
 
-                let err = unsafe {
-                    sys::otMacFrameProcessTxSfd(
-                        &mut state.ot.radio_resources.snd_frame,
-                        now,
-                        &mut state.ot.radio_tx_ctx,
-                    )
+                let frame = &mut ot.radio_resources.snd_frame;
+
+                // A frame whose header OpenThread already filled in - a retry of
+                // an indirect frame, with the key id and frame counter of the
+                // earlier attempt - is secured with the key of that key id, which
+                // the helper expects in the frame itself.
+                let err = if unsafe {
+                    frame.mInfo.mTxInfo.mIsHeaderUpdated()
+                        && !frame.mInfo.mTxInfo.mIsSecurityProcessed()
+                        && sys::otMacFrameIsSecurityEnabled(frame)
+                        && sys::otMacFrameIsKeyIdMode1(frame)
+                } {
+                    let key_id = unsafe { sys::otMacFrameGetKeyId(frame) };
+
+                    // Key ids run 1..=128, wrapping around.
+                    let key = if key_id == ctx.mKeyId {
+                        Some(&ctx.mCurrKey)
+                    } else if key_id == ctx.mKeyId.wrapping_sub(2) % 128 + 1 {
+                        Some(&ctx.mPrevKey)
+                    } else if key_id == ctx.mKeyId % 128 + 1 {
+                        Some(&ctx.mNextKey)
+                    } else {
+                        None
+                    };
+
+                    match key {
+                        Some(key) => {
+                            frame.mInfo.mTxInfo.mAesKey = key;
+                            otError_OT_ERROR_NONE
+                        }
+                        None => sys::otError_OT_ERROR_SECURITY,
+                    }
+                } else {
+                    otError_OT_ERROR_NONE
+                };
+
+                let err = if err == otError_OT_ERROR_NONE {
+                    unsafe { sys::otMacFrameProcessTxSfd(frame, now, ctx) }
+                } else {
+                    err
                 };
 
                 if err != otError_OT_ERROR_NONE {
                     warn!("Transmit security failed (OT error {}), frame dropped", err);
+
+                    state.ot.radio_tx_pending = false;
 
                     unsafe {
                         otPlatRadioTxDone(
@@ -2024,13 +2059,6 @@ impl<'a> OpenThread<'a> {
             Bytes(&psdu_buf[..psdu_len])
         );
 
-        let done = Cell::new(false);
-        let _guard = scopeguard::guard((), |_| {
-            if !done.get() {
-                trace!("Tx interrupted");
-            }
-        });
-
         let result = radio
             .transmit(
                 &mut psdu_buf[..psdu_len],
@@ -2045,6 +2073,8 @@ impl<'a> OpenThread<'a> {
         {
             let mut ot = self.activate();
             let state = ot.state();
+
+            state.ot.radio_tx_pending = false;
 
             if let Some(rssi) = result.as_ref().ok().and_then(|m| m.and_then(|m| m.rssi)) {
                 state.ot.last_rssi = rssi;
@@ -2119,8 +2149,6 @@ impl<'a> OpenThread<'a> {
                 }
             }
         }
-
-        done.set(true);
     }
 
     /// Perform an energy scan on the radio for the specified duration.
@@ -2128,22 +2156,6 @@ impl<'a> OpenThread<'a> {
     where
         R: Radio,
     {
-        let done = Cell::new(false);
-        let _guard = scopeguard::guard((), |_| {
-            if !done.get() {
-                // Report an aborted scan (no valid measurement)
-                // because we got interrupted by a new command
-                trace!("Energy scan interrupted");
-
-                let mut ot = self.activate();
-                let state = ot.state();
-
-                unsafe {
-                    otPlatRadioEnergyScanDone(state.ot.instance, OT_RADIO_RSSI_INVALID as i8);
-                }
-            }
-        });
-
         trace!("Energy scan: {} ms", duration_millis);
 
         let result = radio.energy_scan(channel, duration_millis).await;
@@ -2165,94 +2177,19 @@ impl<'a> OpenThread<'a> {
                     }
                 };
 
+                state.ot.radio_energy_scan = None;
+
                 unsafe {
                     otPlatRadioEnergyScanDone(state.ot.instance, max_rssi);
                 }
             }
         }
-
-        done.set(true);
     }
 
-    /// Get the next radio action to be performed by the OpenThread stack.
-    ///
-    /// Await if there is no action to be performed yet.
-    async fn radio_action(&self) -> RadioAction {
-        let mut conf = pin!(poll_fn(move |cx| self
-            .activate()
-            .state()
-            .ot
-            .radio_conf_changed
-            .poll_wait(cx)));
-        let mut src = pin!(poll_fn(move |cx| self
-            .activate()
-            .state()
-            .ot
-            .radio_conf_src_match_changed
-            .poll_wait(cx)));
-        let mut cmd = pin!(poll_fn(move |cx| self
-            .activate()
-            .state()
-            .ot
-            .radio_cmd
-            .poll_wait(cx)));
-        let mut common = pin!(async {
-            match select3(&mut conf, &mut src, &mut cmd).await {
-                Either3::First(()) => RadioAction::Conf,
-                Either3::Second(()) => RadioAction::SrcMatch,
-                Either3::Third(cmd) => RadioAction::Cmd(cmd),
-            }
-        });
-
-        #[cfg(feature = "_csl")]
-        {
-            #[cfg(feature = "csl-receiver")]
-            let csl = poll_fn(move |cx| self.activate().state().ot.radio_csl_changed.poll_wait(cx));
-            #[cfg(not(feature = "csl-receiver"))]
-            let csl = core::future::pending::<()>();
-
-            let mut csl = pin!(csl);
-            let mut keys = pin!(poll_fn(move |cx| self
-                .activate()
-                .state()
-                .ot
-                .radio_keys_changed
-                .poll_wait(cx)));
-            let mut frame_counter = pin!(poll_fn(move |cx| self
-                .activate()
-                .state()
-                .ot
-                .radio_frame_counter
-                .poll_wait(cx)));
-
-            match select(
-                &mut common,
-                select3(&mut csl, &mut keys, &mut frame_counter),
-            )
-            .await
-            {
-                Either::First(action) => action,
-                #[cfg(feature = "csl-receiver")]
-                Either::Second(Either3::First(())) => RadioAction::Csl,
-                #[cfg(not(feature = "csl-receiver"))]
-                Either::Second(Either3::First(())) => unreachable!(),
-                Either::Second(Either3::Second(())) => RadioAction::Keys,
-                Either::Second(Either3::Third(frame_counter)) => {
-                    RadioAction::FrameCounter(frame_counter)
-                }
-            }
-        }
-
-        #[cfg(not(feature = "_csl"))]
-        common.as_mut().await
-    }
-
-    /// Await until the OpenThread stack cancels the radio excursion
-    /// (a transmit or an energy scan) currently in progress by re-issuing another radio command.
-    async fn wait_new_radio_cmd(&self) {
-        let cmd = poll_fn(move |cx| self.activate().state().ot.radio_cmd.poll_wait_signaled(cx));
-
-        cmd.await
+    /// Wait until OpenThread asks the radio for something or changes its
+    /// configuration (see `OtState::radio_cmd`).
+    async fn wait_radio_cmd(&self) {
+        poll_fn(move |cx| self.activate().state().ot.radio_cmd.poll_wait(cx)).await
     }
 
     /// Spins the OpenThread C library loop by processing tasklets if they are pending
@@ -2518,22 +2455,22 @@ impl OtResources {
             tasklets: Signal::new(),
             changes: Signal::new(),
             radio_conf: Config::new(),
-            radio_conf_changed: Signal::new(),
+            radio_conf_changed: false,
             radio_conf_src_match: radio::SrcMatchConfig::default(),
-            radio_conf_src_match_changed: Signal::new(),
+            radio_conf_src_match_changed: false,
             radio_cmd: Signal::new(),
             #[cfg(feature = "csl-receiver")]
             alarm_micro: Signal::new(),
             #[cfg(feature = "csl-receiver")]
             radio_csl: radio::CslConfig::new(),
             #[cfg(feature = "csl-receiver")]
-            radio_csl_changed: Signal::new(),
+            radio_csl_changed: false,
             #[cfg(feature = "_csl")]
             radio_keys: None,
             #[cfg(feature = "_csl")]
-            radio_keys_changed: Signal::new(),
+            radio_keys_changed: false,
             #[cfg(feature = "_csl")]
-            radio_frame_counter: Signal::new(),
+            radio_frame_counter: None,
             // A plain-data C struct; all-zero is its "nothing set" state.
             #[cfg(feature = "_csl")]
             radio_tx_ctx: unsafe { MaybeUninit::zeroed().assume_init() },
@@ -2551,6 +2488,10 @@ impl OtResources {
             radio_ready: Signal::new(),
             radio_timed_rx: false,
             radio_enabled: false,
+            radio_tx_pending: false,
+            radio_energy_scan: None,
+            #[cfg(feature = "csl-receiver")]
+            radio_rx_window: None,
             radio_receive_channel: None,
             last_rssi: OT_RADIO_RSSI_INVALID as i8,
             // The *initial* radio capabilities, before the actual radio is
@@ -3411,14 +3352,17 @@ impl<'a> OtContext<'a> {
 
         // OpenThread schedules a window only from its sample state, where the
         // radio is meant to sleep between windows, so the window supersedes
-        // any earlier `Receive`: the radio sleeps once it is over.
+        // any earlier `Receive`: the radio sleeps once it is over. A window
+        // not handed to the radio yet is replaced, as the API asks; one that
+        // was is the radio's, and runs.
         state.ot.radio_receive_channel = None;
         state.ot.radio_timed_rx = true;
-        state.ot.radio_cmd.signal(RadioCommand::ReceiveAt {
+        state.ot.radio_rx_window = Some(RxWindow {
             channel,
             start_us,
             duration_us,
         });
+        state.ot.radio_cmd.signal(());
 
         Ok(())
     }
@@ -3453,7 +3397,8 @@ impl<'a> OtContext<'a> {
         state.ot.radio_csl.period = period;
         state.ot.radio_csl.short_addr = short_addr;
         state.ot.radio_csl.ext_addr = ext_addr.unwrap_or(0);
-        state.ot.radio_csl_changed.signal(());
+        state.ot.radio_csl_changed = true;
+        state.ot.radio_cmd.signal(());
         state.ot.radio_tx_ctx.mCslPeriod = period.min(u16::MAX as u32) as u16;
 
         Ok(())
@@ -3466,7 +3411,8 @@ impl<'a> OtContext<'a> {
         let state = self.state();
 
         state.ot.radio_csl.sample_time_us = sample_time_us;
-        state.ot.radio_csl_changed.signal(());
+        state.ot.radio_csl_changed = true;
+        state.ot.radio_cmd.signal(());
         state.ot.radio_tx_ctx.mCslSampleTime = sample_time_us;
     }
 
@@ -3511,7 +3457,8 @@ impl<'a> OtContext<'a> {
         let state = self.state();
 
         state.ot.radio_keys = keys;
-        state.ot.radio_keys_changed.signal(());
+        state.ot.radio_keys_changed = true;
+        state.ot.radio_cmd.signal(());
 
         // Mirror into the software transmit-security context. The frame
         // counter is OpenThread's to set (`otPlatRadioSetMacFrameCounter`:
@@ -3550,10 +3497,15 @@ impl<'a> OtContext<'a> {
             ctx.mMacFrameCounter = frame_counter;
         }
 
-        state
-            .ot
-            .radio_frame_counter
-            .signal((frame_counter, if_larger));
+        // Folded into what is still to be pushed: a counter set outright
+        // replaces it; one to be set only if larger raises it.
+        state.ot.radio_frame_counter = Some(match state.ot.radio_frame_counter {
+            Some((pending, pending_if_larger)) if if_larger => {
+                (pending.max(frame_counter), pending_if_larger)
+            }
+            _ => (frame_counter, if_larger),
+        });
+        state.ot.radio_cmd.signal(());
     }
 
     fn plat_radio_ieee_eui64(&mut self, mac: &mut [u8; 8]) {
@@ -3608,13 +3560,20 @@ impl<'a> OtContext<'a> {
         trace!("Plat radio disable callback");
 
         let state = self.state();
+
+        // As OpenThread's own RCP host does: a transmission (or scan) in
+        // progress is finished, and reported, before the radio goes anywhere.
+        // OpenThread expects nothing else: it never cancels one (Sleep and
+        // Receive are refused meanwhile too), and reporting one after the
+        // radio is disabled would leave its MAC in a state it cannot enable
+        // the radio from again.
+        if state.ot.radio_tx_pending || state.ot.radio_energy_scan.is_some() {
+            Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
+        }
+
         state.ot.radio_enabled = false;
 
-        if state.ot.radio_receive_channel.is_some() || state.ot.radio_timed_rx {
-            state.ot.radio_receive_channel = None;
-            state.ot.radio_timed_rx = false;
-            state.ot.radio_cmd.signal(RadioCommand::Interrupt);
-        }
+        Self::radio_sleep_state(state);
 
         Ok(())
     }
@@ -3639,7 +3598,8 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.promiscuous != promiscuous {
             state.ot.radio_conf.promiscuous = promiscuous;
-            state.ot.radio_conf_changed.signal(());
+            state.ot.radio_conf_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -3708,7 +3668,8 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.ext_addr != Some(address) {
             state.ot.radio_conf.ext_addr = Some(address);
-            state.ot.radio_conf_changed.signal(());
+            state.ot.radio_conf_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -3722,7 +3683,8 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.short_addr != Some(address) {
             state.ot.radio_conf.short_addr = Some(address);
-            state.ot.radio_conf_changed.signal(());
+            state.ot.radio_conf_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -3741,7 +3703,8 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.alt_short_addr != alt {
             state.ot.radio_conf.alt_short_addr = alt;
-            state.ot.radio_conf_changed.signal(());
+            state.ot.radio_conf_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -3752,7 +3715,8 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf.pan_id != Some(pan_id) {
             state.ot.radio_conf.pan_id = Some(pan_id);
-            state.ot.radio_conf_changed.signal(());
+            state.ot.radio_conf_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -3765,16 +3729,40 @@ impl<'a> OtContext<'a> {
 
         let state = self.state();
 
-        if !state.ot.radio_enabled {
+        if !state.ot.radio_enabled || state.ot.radio_tx_pending {
             Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
         }
 
-        state.ot.radio_cmd.signal(RadioCommand::EnergyScan {
-            channel,
-            duration_millis,
-        });
+        if state.ot.radio_energy_scan.is_some() {
+            Err(OtError::new(sys::otError_OT_ERROR_BUSY))?;
+        }
+
+        state.ot.radio_energy_scan = Some((channel, duration_millis));
+
+        // A receive window has lower priority than a scan (OpenThread's own
+        // rule, which is why it schedules windows while scanning at all).
+        #[cfg(feature = "csl-receiver")]
+        {
+            state.ot.radio_rx_window = None;
+        }
+
+        state.ot.radio_cmd.signal(());
 
         Ok(())
+    }
+
+    /// Command the radio to sleep: no `Receive`, no receive windows.
+    fn radio_sleep_state(state: &mut OtActiveState<'_>) {
+        #[cfg(feature = "csl-receiver")]
+        let window = state.ot.radio_rx_window.take().is_some();
+        #[cfg(not(feature = "csl-receiver"))]
+        let window = false;
+
+        if state.ot.radio_receive_channel.is_some() || state.ot.radio_timed_rx || window {
+            state.ot.radio_receive_channel = None;
+            state.ot.radio_timed_rx = false;
+            state.ot.radio_cmd.signal(());
+        }
     }
 
     fn plat_radio_sleep(&mut self) -> Result<(), OtError> {
@@ -3786,11 +3774,13 @@ impl<'a> OtContext<'a> {
             Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
         }
 
-        if state.ot.radio_receive_channel.is_some() || state.ot.radio_timed_rx {
-            state.ot.radio_receive_channel = None;
-            state.ot.radio_timed_rx = false;
-            state.ot.radio_cmd.signal(RadioCommand::Interrupt);
+        // A transmission or scan in progress is finished first (see
+        // `plat_radio_disable`).
+        if state.ot.radio_tx_pending || state.ot.radio_energy_scan.is_some() {
+            Err(OtError::new(sys::otError_OT_ERROR_BUSY))?;
         }
+
+        Self::radio_sleep_state(state);
 
         Ok(())
     }
@@ -3814,7 +3804,7 @@ impl<'a> OtContext<'a> {
 
         let state = self.state();
 
-        if !state.ot.radio_enabled {
+        if !state.ot.radio_enabled || state.ot.radio_energy_scan.is_some() {
             Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
         }
 
@@ -3824,6 +3814,7 @@ impl<'a> OtContext<'a> {
         state.ot.radio_resources.snd_psdu[..psdu.len()].copy_from_slice(psdu);
         state.ot.radio_resources.snd_frame.mPsdu =
             addr_of_mut!(state.ot.radio_resources.snd_psdu) as *mut _;
+        state.ot.radio_tx_pending = true;
 
         // While sampling, OpenThread commands `Receive` ahead of each
         // transmission (the radio is not known to go from sleep straight to
@@ -3838,7 +3829,7 @@ impl<'a> OtContext<'a> {
             state.ot.radio_receive_channel = None;
         }
 
-        state.ot.radio_cmd.signal(RadioCommand::Tx);
+        state.ot.radio_cmd.signal(());
 
         Ok(())
     }
@@ -3848,16 +3839,26 @@ impl<'a> OtContext<'a> {
 
         let state = self.state();
 
-        if !state.ot.radio_enabled {
+        // Not while transmitting or scanning either (see `plat_radio_disable`).
+        if !state.ot.radio_enabled
+            || state.ot.radio_tx_pending
+            || state.ot.radio_energy_scan.is_some()
+        {
             Err(OtError::new(otError_OT_ERROR_INVALID_STATE))?;
         }
 
         state.ot.radio_receive_channel = Some(channel);
         state.ot.radio_timed_rx = false;
 
-        // OpenThread also uses this callback as a means to cancel an ongoing
-        // TX or energy scan operation - hence why we are unconditionally notifying.
-        state.ot.radio_cmd.signal(RadioCommand::Interrupt);
+        // Receiving has priority over a receive window not handed to the
+        // radio yet - OpenThread's own rule (it stops scheduling windows
+        // while receiving, e.g. after a data poll).
+        #[cfg(feature = "csl-receiver")]
+        {
+            state.ot.radio_rx_window = None;
+        }
+
+        state.ot.radio_cmd.signal(());
 
         Ok(())
     }
@@ -3870,7 +3871,8 @@ impl<'a> OtContext<'a> {
         let auto_sleep = !on;
         if state.ot.radio_conf.auto_sleep != auto_sleep {
             state.ot.radio_conf.auto_sleep = auto_sleep;
-            state.ot.radio_conf_changed.signal(());
+            state.ot.radio_conf_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -3881,7 +3883,8 @@ impl<'a> OtContext<'a> {
 
         if state.ot.radio_conf_src_match.enabled != enable {
             state.ot.radio_conf_src_match.enabled = enable;
-            state.ot.radio_conf_src_match_changed.signal(());
+            state.ot.radio_conf_src_match_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -3900,7 +3903,8 @@ impl<'a> OtContext<'a> {
                 .short_addrs
                 .push(address)
                 .map_err(|_| OtError::new(otError_OT_ERROR_NO_BUFS))?;
-            state.ot.radio_conf_src_match_changed.signal(());
+            state.ot.radio_conf_src_match_changed = true;
+            state.ot.radio_cmd.signal(());
         }
 
         Ok(())
@@ -3921,7 +3925,8 @@ impl<'a> OtContext<'a> {
                 .ext_addrs
                 .push(address)
                 .map_err(|_| OtError::new(otError_OT_ERROR_NO_BUFS))?;
-            state.ot.radio_conf_src_match_changed.signal(());
+            state.ot.radio_conf_src_match_changed = true;
+            state.ot.radio_cmd.signal(());
         }
 
         Ok(())
@@ -3942,7 +3947,8 @@ impl<'a> OtContext<'a> {
             .ok_or(OtError::new(otError_OT_ERROR_NO_ADDRESS))?;
 
         addrs.swap_remove(pos);
-        state.ot.radio_conf_src_match_changed.signal(());
+        state.ot.radio_conf_src_match_changed = true;
+        state.ot.radio_cmd.signal(());
 
         Ok(())
     }
@@ -3962,7 +3968,8 @@ impl<'a> OtContext<'a> {
             .ok_or(OtError::new(otError_OT_ERROR_NO_ADDRESS))?;
 
         addrs.swap_remove(pos);
-        state.ot.radio_conf_src_match_changed.signal(());
+        state.ot.radio_conf_src_match_changed = true;
+        state.ot.radio_cmd.signal(());
 
         Ok(())
     }
@@ -3973,7 +3980,8 @@ impl<'a> OtContext<'a> {
         let state = self.state();
         if !state.ot.radio_conf_src_match.short_addrs.is_empty() {
             state.ot.radio_conf_src_match.short_addrs.clear();
-            state.ot.radio_conf_src_match_changed.signal(());
+            state.ot.radio_conf_src_match_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -3983,7 +3991,8 @@ impl<'a> OtContext<'a> {
         let state = self.state();
         if !state.ot.radio_conf_src_match.ext_addrs.is_empty() {
             state.ot.radio_conf_src_match.ext_addrs.clear();
-            state.ot.radio_conf_src_match_changed.signal(());
+            state.ot.radio_conf_src_match_changed = true;
+            state.ot.radio_cmd.signal(());
         }
     }
 
@@ -4168,14 +4177,18 @@ struct OtState<'a> {
     changes: Signal<()>,
     /// The latest radio configuration from the POV of OpenThread
     radio_conf: radio::Config,
-    /// Raised whenever a standing radio-configuration policy changes; consumed by the radio runner.
-    radio_conf_changed: Signal<()>,
+    /// `radio_conf` changed and is still to be pushed to the radio.
+    radio_conf_changed: bool,
     /// The source-address-match table (`otPlatRadio*SrcMatch*`).
     radio_conf_src_match: radio::SrcMatchConfig,
-    /// Raised whenever the source-address-match table changes; consumed by the radio runner.
-    radio_conf_src_match_changed: Signal<()>,
-    /// Raised whenever the radio needs to execute the provided command.
-    radio_cmd: Signal<RadioCommand>,
+    /// `radio_conf_src_match` changed and is still to be pushed to the radio.
+    radio_conf_src_match_changed: bool,
+    /// Wakes the radio runner whenever OpenThread asks the radio for something
+    /// or changes its configuration. What it asks for, and what changed, is in
+    /// the state (`radio_tx_pending`, `radio_energy_scan`, `radio_rx_window`,
+    /// `radio_receive_channel`, the `*_changed` flags, ...), so that nothing can
+    /// be lost to something asked for after it.
+    radio_cmd: Signal<()>,
     /// `Some` in case there is a pending OpenThread microsecond alarm which is not due yet
     /// `None` if the existing microsecond alarm needs to be cancelled
     #[cfg(feature = "csl-receiver")]
@@ -4184,20 +4197,21 @@ struct OtState<'a> {
     /// `otPlatRadioUpdateCslSampleTime`).
     #[cfg(feature = "csl-receiver")]
     radio_csl: radio::CslConfig,
-    /// Raised whenever the CSL schedule changes; consumed by the radio runner.
+    /// `radio_csl` changed and is still to be pushed to the radio.
     #[cfg(feature = "csl-receiver")]
-    radio_csl_changed: Signal<()>,
+    radio_csl_changed: bool,
     /// The MAC keys OpenThread handed the radio for securing its enhanced ACKs
     /// (`otPlatRadioSetMacKey`).
     #[cfg(feature = "_csl")]
     radio_keys: Option<radio::MacKeys>,
-    /// Raised whenever the MAC keys change; consumed by the radio runner.
+    /// `radio_keys` changed and is still to be pushed to the radio.
     #[cfg(feature = "_csl")]
-    radio_keys_changed: Signal<()>,
-    /// The latest MAC frame counter OpenThread pushed to the radio
-    /// (`otPlatRadioSetMacFrameCounter[IfLarger]`): `(counter, if_larger)`.
+    radio_keys_changed: bool,
+    /// The MAC frame counter still to be pushed to the radio
+    /// (`otPlatRadioSetMacFrameCounter[IfLarger]`): `(counter, if_larger)`,
+    /// all the calls since the last push folded into one.
     #[cfg(feature = "_csl")]
-    radio_frame_counter: Signal<(u32, bool)>,
+    radio_frame_counter: Option<(u32, bool)>,
     /// The transmit-side security context for radios that do not finish their
     /// own frames (no `Capabilities::TRANSMIT_SEC`): the keys, frame counters
     /// and CSL schedule OpenThread pushes to "the radio", consumed by the
@@ -4232,6 +4246,16 @@ struct OtState<'a> {
     /// Note that this is orthogonal to the commanded Sleep/Receive/Transmit states the runner executes.
     /// Typically no-op except that radio operations arriving while disabled answer `INVALID_STATE`, per the C contract.
     radio_enabled: bool,
+    /// Whether a transmission OpenThread asked for (`otPlatRadioTransmit`) has
+    /// not been reported done (`otPlatRadioTxDone`) yet.
+    radio_tx_pending: bool,
+    /// The energy scan OpenThread asked for (`otPlatRadioEnergyScan`) - its
+    /// channel and duration in ms - until reported done
+    /// (`otPlatRadioEnergyScanDone`).
+    radio_energy_scan: Option<(u8, u16)>,
+    /// The CSL receive window OpenThread scheduled, until handed to the radio.
+    #[cfg(feature = "csl-receiver")]
+    radio_rx_window: Option<RxWindow>,
     /// The channel the radio is commanded to receive on, or `None` if the radio is not commanded to receive.
     radio_receive_channel: Option<u8>,
     /// The RSSI of the most recently received frame (ACKs included).
@@ -4256,52 +4280,15 @@ struct OtState<'a> {
     dataset_resources: &'a mut DatasetResources,
 }
 
-/// A command for the radio runner to process.
-#[derive(Debug)]
+/// A CSL receive window OpenThread scheduled (`otPlatRadioReceiveAt`): on
+/// `channel`, for `duration_us` from `start_us` (radio clock).
+#[cfg(feature = "csl-receiver")]
+#[derive(Debug, Clone, Copy)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum RadioCommand {
-    /// Abort any potentially ongoing radio transmission or energy scan.
-    Interrupt,
-    /// Transmit one frame.
-    ///
-    /// The data of the frame is in `OtData::radio_resources.snd_frame` and `OtData::radio_resources.snd_psdu`.
-    /// Once the frame is sent (or an error occurs) OpenThread C will be signalled by calling `otPlatRadioTxDone`.
-    Tx,
-    /// Perform an energy scan for the provided duration in milliseconds.
-    ///
-    /// Once the scan completes (or an error occurs) OpenThread C will be
-    /// signalled by calling `otPlatRadioEnergyScanDone`.
-    EnergyScan { channel: u8, duration_millis: u16 },
-    /// Receive on `channel` for `duration_us` starting at `start_us` (radio
-    /// clock): a CSL sample window. Frames received meanwhile are reported
-    /// with `otPlatRadioReceiveDone`; the window ends with the next command.
-    #[cfg(feature = "csl-receiver")]
-    ReceiveAt {
-        channel: u8,
-        start_us: u64,
-        duration_us: u32,
-    },
-}
-
-/// What the radio runner has to do next (see `OpenThread::radio_action`).
-#[derive(Debug)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
-enum RadioAction {
-    /// The standing radio configuration changed.
-    Conf,
-    /// The source-address-match table changed.
-    SrcMatch,
-    /// A radio command.
-    Cmd(RadioCommand),
-    /// The CSL schedule changed.
-    #[cfg(feature = "csl-receiver")]
-    Csl,
-    /// The MAC keys changed.
-    #[cfg(feature = "_csl")]
-    Keys,
-    /// A MAC frame counter to push: `(counter, if_larger)`.
-    #[cfg(feature = "_csl")]
-    FrameCounter((u32, bool)),
+struct RxWindow {
+    channel: u8,
+    start_us: u64,
+    duration_us: u32,
 }
 
 #[cfg(feature = "csl-receiver")]
