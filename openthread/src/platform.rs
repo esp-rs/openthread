@@ -8,7 +8,13 @@ use embassy_sync::blocking_mutex::Mutex;
 
 use openthread_sys::otError_OT_ERROR_NONE;
 
+#[cfg(feature = "_csl")]
+use crate::radio::MacKeys;
+#[cfg(feature = "csl-receiver")]
+use crate::sys::otExtAddress;
 use crate::sys::{otError, otInstance, otLogLevel, otLogRegion, otRadioCaps, otRadioFrame};
+#[cfg(feature = "_csl")]
+use crate::sys::{otMacKeyMaterial, otRadioKeyType, otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY};
 use crate::{IntoOtCode, OtActiveState, OtContext};
 
 /// A hack so that we can store a mutable reference to the active state in a global static variable
@@ -61,6 +67,142 @@ extern "C" fn otPlatAlarmMilliStop(instance: *const otInstance) -> otError {
     OtContext::callback(instance)
         .plat_alarm_clear()
         .into_ot_code()
+}
+
+#[cfg(feature = "csl-receiver")]
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroGetNow() -> u32 {
+    OtContext::callback(core::ptr::null()).plat_now_micros()
+}
+
+#[cfg(feature = "csl-receiver")]
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroStartAt(instance: *mut otInstance, at0: u32, adt: u32) {
+    OtContext::callback(instance).plat_alarm_micro_set(at0, adt);
+}
+
+#[cfg(feature = "csl-receiver")]
+#[no_mangle]
+extern "C" fn otPlatAlarmMicroStop(instance: *const otInstance) {
+    OtContext::callback(instance).plat_alarm_micro_clear();
+}
+
+// --- CSL (Synchronized Sleepy End Device) and enhanced-ACK security ---
+
+#[cfg(feature = "_csl")]
+#[no_mangle]
+extern "C" fn otPlatRadioGetNow(instance: *const otInstance) -> u64 {
+    OtContext::callback(instance).plat_radio_now()
+}
+
+#[cfg(feature = "csl-receiver")]
+#[no_mangle]
+extern "C" fn otPlatRadioReceiveAt(
+    instance: *const otInstance,
+    channel: u8,
+    start: u32,
+    duration: u32,
+) -> otError {
+    OtContext::callback(instance)
+        .plat_radio_receive_at(channel, start, duration)
+        .into_ot_code()
+}
+
+#[cfg(feature = "csl-receiver")]
+#[no_mangle]
+extern "C" fn otPlatRadioEnableCsl(
+    instance: *const otInstance,
+    csl_period: u32,
+    short_addr: u16,
+    ext_addr: *const otExtAddress,
+) -> otError {
+    // Unlike the source-match entries, OpenThread hands this one out in
+    // big-endian byte order: the numeric EUI-64, as `ext_address()` reads it.
+    let ext_addr = unsafe { ext_addr.as_ref() }.map(|addr| u64::from_be_bytes(addr.m8));
+
+    OtContext::callback(instance)
+        .plat_radio_enable_csl(csl_period, short_addr, ext_addr)
+        .into_ot_code()
+}
+
+#[cfg(feature = "csl-receiver")]
+#[no_mangle]
+extern "C" fn otPlatRadioUpdateCslSampleTime(instance: *const otInstance, csl_sample_time: u32) {
+    OtContext::callback(instance).plat_radio_update_csl_sample_time(csl_sample_time);
+}
+
+#[cfg(feature = "ftd")]
+#[no_mangle]
+extern "C" fn otPlatRadioGetBusSpeed(instance: *const otInstance) -> u32 {
+    OtContext::callback(instance).plat_radio_bus_speed()
+}
+
+#[cfg(feature = "ftd")]
+#[no_mangle]
+extern "C" fn otPlatRadioGetBusLatency(instance: *const otInstance) -> u32 {
+    OtContext::callback(instance).plat_radio_bus_latency()
+}
+
+#[cfg(feature = "_csl")]
+#[no_mangle]
+extern "C" fn otPlatRadioGetCslAccuracy(instance: *const otInstance) -> u8 {
+    OtContext::callback(instance).plat_radio_csl_accuracy()
+}
+
+#[cfg(feature = "_csl")]
+#[no_mangle]
+extern "C" fn otPlatRadioGetCslUncertainty(instance: *const otInstance) -> u8 {
+    OtContext::callback(instance).plat_radio_csl_uncertainty()
+}
+
+#[cfg(feature = "_csl")]
+#[no_mangle]
+extern "C" fn otPlatRadioSetMacKey(
+    instance: *const otInstance,
+    key_id_mode: u8,
+    key_id: u8,
+    prev_key: *const otMacKeyMaterial,
+    curr_key: *const otMacKeyMaterial,
+    next_key: *const otMacKeyMaterial,
+    key_type: otRadioKeyType,
+) {
+    // Only literal keys can be handed to a radio; key references (PSA) are not
+    // supported by this crate's OpenThread build.
+    let literal = |key: *const otMacKeyMaterial| -> Option<[u8; 16]> {
+        (key_type == otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY)
+            .then(|| unsafe { key.as_ref() }.map(|key| unsafe { key.mKeyMaterial.mKey.m8 }))
+            .flatten()
+    };
+
+    let keys = match (literal(prev_key), literal(curr_key), literal(next_key)) {
+        (Some(prev), Some(curr), Some(next)) => Some(MacKeys {
+            // OpenThread passes the mode as it sits in the frame's security
+            // control byte (`kKeyIdMode1 == 1 << 3`); the radio wants 0..=3.
+            key_id_mode: key_id_mode >> 3,
+            key_id,
+            prev,
+            curr,
+            next,
+        }),
+        _ => None,
+    };
+
+    OtContext::callback(instance).plat_radio_set_mac_keys(keys);
+}
+
+#[cfg(feature = "_csl")]
+#[no_mangle]
+extern "C" fn otPlatRadioSetMacFrameCounter(instance: *const otInstance, frame_counter: u32) {
+    OtContext::callback(instance).plat_radio_set_mac_frame_counter(frame_counter, false);
+}
+
+#[cfg(feature = "_csl")]
+#[no_mangle]
+extern "C" fn otPlatRadioSetMacFrameCounterIfLarger(
+    instance: *const otInstance,
+    frame_counter: u32,
+) {
+    OtContext::callback(instance).plat_radio_set_mac_frame_counter(frame_counter, true);
 }
 
 #[no_mangle]

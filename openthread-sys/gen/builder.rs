@@ -118,6 +118,19 @@ impl OpenThreadBuilder {
             .allowlist_item("ot.*")
             .allowlist_item("OT_.*")
             .header(include_header.to_string_lossy())
+            // The platform helpers (`examples/platforms/utils`): frame parsing and
+            // the transmit-side security / CSL IE processing the glue performs for
+            // radios that do not do it themselves. They reference the core stack.
+            .clang_args([&format!(
+                "-I{}",
+                canon(
+                    &self
+                        .crate_root_path
+                        .join("openthread")
+                        .join("examples")
+                        .join("platforms")
+                )
+            )])
             .clang_args([&format!(
                 "-I{}",
                 canon(&self.crate_root_path.join("openthread").join("include"))
@@ -250,26 +263,34 @@ impl OpenThreadBuilder {
         // internal C++ behaviors (a more thorough parent search at attach,
         // delay-aware tx-queue management). See `thread-version-and-frame-support`.
         //
-        // The two CSL flags below are the important part of pinning ">=1.2
-        // WITHOUT the CSL machinery". `OPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE`
-        // otherwise DEFAULTS ON at >= 1.2 (see the vendored `src/core/config/mac.h`)
-        // and is a SEPARATE axis from the receiver: the transmitter is the
-        // *parent* side (an FTD scheduling indirect frames to CSL children),
-        // the receiver is the *child* (SSED) side. We want neither yet:
-        //   - CSL_RECEIVER off  -> this node is never a CSL sleepy child.
-        //   - CSL_TRANSMITTER off -> an FTD here never tries to parent CSL
-        //     children, so OT never calls the CSL-parent radio hooks
-        //     (`otPlatRadioGetCslAccuracy`/`GetCslUncertainty`) at runtime.
-        // Together they keep the radio-platform contract identical to 1.1: no
-        // `EnableCsl`/`ReceiveAt`/`GetCsl*` callbacks are referenced or invoked,
-        // so every existing `Radio` driver keeps working unchanged. Enabling CSL
-        // (low-power SSED) is a deliberate future opt-in that also needs the
-        // `Radio` trait to grow the CSL/enh-ACK-security surface.
+        // CSL (Coordinated Sampled Listening, the Thread >= 1.2 Synchronized
+        // Sleepy End Device) has two SEPARATE axes in OpenThread:
+        //   - CSL_RECEIVER: the *child* (SSED) side, the `csl-receiver`
+        //     feature (`OT_CSL_RECEIVER` knob, see `features.rs`). With it a
+        //     sleepy child may announce a CSL schedule and sample the channel
+        //     at its parent's transmit times instead of polling. Whether it
+        //     actually does is a runtime decision (`OpenThread::set_csl_period`),
+        //     and only a `Radio` advertising `Capabilities::RECEIVE_TIMING`
+        //     (timed receive, a radio clock, enhanced-ACK security) can. It
+        //     also needs the microsecond platform timer (`otPlatAlarmMicro*`,
+        //     served by this crate from `embassy-time` or the radio clock) and
+        //     the receive-window lead time below.
+        //   - CSL_TRANSMITTER: the *parent* side (an FTD scheduling indirect
+        //     frames into its CSL children's receive windows). Not optional for
+        //     an FTD: a Thread >= 1.2 child decides that its parent does CSL
+        //     from the parent's Thread version alone (`Mle::IsCslSupported`),
+        //     so an FTD speaking 1.4 without it would take CSL children whose
+        //     downlink then waits for their CSL-timeout poll. It is code an MTD
+        //     can never use, though (it never has children) - and compiling it
+        //     in would still cost an MTD flash and the radio-clock hooks. So it
+        //     follows the device type: the switch is defined as `OPENTHREAD_FTD`,
+        //     which OpenThread sets per archive (`1` for `openthread-ftd`, `0`
+        //     for `openthread-mtd` and the spinel libraries) and which the
+        //     vendored sources only ever test in `#if`s.
         config
             .define("OT_THREAD_VERSION", "1.4")
-            .cflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
-            .cxxflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=0")
-            .define("OT_CSL_RECEIVER", "OFF")
+            .cflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=OPENTHREAD_FTD")
+            .cxxflag("-DOPENTHREAD_CONFIG_MAC_CSL_TRANSMITTER_ENABLE=OPENTHREAD_FTD")
             .define("OT_LOG_LEVEL", "NOTE")
             // Build BOTH device types so the prebuilt cache covers MTD and FTD.
             // The actual archives shipped/linked are chosen by the umbrella
@@ -385,6 +406,22 @@ impl OpenThreadBuilder {
         // turned `ON` per active cargo feature. See `gen/features.rs`.
         for setting in features::active_knob_settings() {
             config.define(setting.knob, if setting.on { "ON" } else { "OFF" });
+        }
+
+        if features::csl_receiver_active() {
+            config
+                .cflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
+                .cxxflag("-DOPENTHREAD_CONFIG_PLATFORM_USEC_TIMER_ENABLE=1")
+                // How far ahead of a CSL receive window OpenThread asks the
+                // platform to schedule it. The upstream default (320 us) is
+                // sized for a platform that arms the radio synchronously from
+                // the CSL timer; here the request travels from the micro alarm
+                // through the OpenThread task to the radio task before it
+                // reaches the driver, and a request that arrives after the
+                // window start is refused by a timed-receive radio. 3 ms covers
+                // that path with margin; it only moves the timer, not the window.
+                .cflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000")
+                .cxxflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000");
         }
 
         // The C CLI is a build-structure toggle rather than an `OT_*` config

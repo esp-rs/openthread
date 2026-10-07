@@ -6,8 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
-
-* Fix: OpenThread refcount underflow in the new_with_* constructors on drop
+* Breaking: CSL (Thread 1.2 Synchronized Sleepy End Device) support (#122):
+  * New CSL and enhanced ACKs APIs
+  * `Radio` trait: new defaulted CSL and enhanced ACK methods; a radio advertising `Capabilities::RECEIVE_TIMING` **must** implement them
+  * `otPlatRadioGetNow` and the microsecond alarm run on the radio clock when the radio has one
+  * `Radio::transmit` takes the PSDU mutably now plus a `PsduTxInfo` extra struct
+  * `PsduMeta` renamed to `PsduRxInfo`
+  * CSL transmitter for FTDs: `PsduTxInfo` gains `tx_at_us` (handed to radios advertising `Capabilities::TRANSMIT_TIMING`; the glue times the frame itself for the others) and `max_csma_backoffs`
+  * `PsduRxInfo` gains `acked_with_frame_pending`: the Frame Pending bit of the ACK the radio sent
+  * `RadioCaps` gains `bus_speed` and `bus_latency_us`, for an FTD to hand frames for its CSL children to a remote radio early enough
+  * `SpinelRadio`: CSL transmitter support (timed transmission in the RCP clock, MAC keys and frame counter handed to the RCP)
+* Fix: the radio runner kept just one pending radio command, which any later one replaced - or cancelled mid-way - so a transmission or energy scan could be lost, or cut short without OpenThread hearing about it (it then waited for it), and a CSL receive window could be skipped or cut short. Now replaced with a set of states the radio runner works through.
+* Fix: with a radio that does not secure its own frames, a retried indirect frame (to a sleepy or CSL child) was secured with a null key, crashing the node
+* Fix: `SpinelRadio` reported failed transmissions as successes, so OpenThread never retried or counted them
+* Fix: `SpinelRadio` read the radio capabilities from the wrong property, and retuned the RCP to a frame's channel instead of returning to the receive channel after it
+* Fix: a data poll in an 802.15.4-2015 frame (as a CSL child polls) was not recognized as acknowledged with Frame Pending, so the parent never answered it from its indirect queue
+* Fix: a CSL child on a timed-receive radio kept its receiver on after its own transmissions, and indefinitely once CSL was turned off
+* `serial_bridge`: wait out the reboot an acknowledged `factoryreset` still has ahead of it before talking to the device
+* Fix: OpenThread refcount underflow in the new_with_* constructors on drop (#123)
 
 ## [0.4.0] - 2026-09-14
 * (Breaking) Update to `rand_core` 0.10; `OpenThread` now needs a CSPRNG
@@ -16,7 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.3.0] - 2026-08-20
 * (Breaking) Changes to the Radio trait to fill in functionality gaps, fix bugs and bring more clarity (#109)
-  * `PsduMeta` extended with an `lqi` field
+  * `PsduRxInfo` extended with an `lqi` field
   * API for fetching initial TX power (in dBm) and CCA energy detect threshold (in dBm)
   * `Cca` enum retired, as OpenThread is anyway unaware of the various ways of doing CCA (Carrier / EnergyDetect / both)
   * Explicit "receive on channel" and "sleep" APIs (the latter important for Sleepy End Devices)

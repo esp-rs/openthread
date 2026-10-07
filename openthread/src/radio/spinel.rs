@@ -25,9 +25,30 @@
 //! like [`crate::ProxyRadio`], only the "other side" is a chip on a wire.
 //!
 //! This is possible because the [`crate::Radio`] trait already operates at the
-//! raw-PHY level: MAC-layer security is performed by OpenThread's core before a
-//! frame reaches the radio (see the [`crate::Radio`] docs), so `SpinelRadio`
-//! transmits already-secured PSDUs and never needs the RCP's MAC keys.
+//! raw-PHY level: MAC-layer security is normally performed by OpenThread's core
+//! before a frame reaches the radio (see the [`crate::Radio`] docs), so
+//! `SpinelRadio` transmits already-secured PSDUs. Only with a CSL role compiled
+//! in (an FTD parenting CSL children) does the RCP secure frames and enhanced
+//! ACKs itself, with the MAC keys handed down through [`Radio::set_mac_keys`].
+//!
+//! # CSL
+//!
+//! An FTD on a `SpinelRadio` parents CSL children the way OpenThread's own
+//! RCP hosts do: the RCP times the frames into the children's receive windows
+//! (`TRANSMIT_TIMING`), timestamps received frames, and sends secured enhanced
+//! ACKs. The radio clock ([`RadioCaps::clock`]) is the RCP's: its frame
+//! timestamps and transmit times cross the link untouched, so the schedule of
+//! a CSL child - its last frame's timestamp plus whole CSL periods - is kept in
+//! the clock the RCP transmits by. Only "now" is an estimate (the host clock
+//! plus the offset to the RCP clock, measured every
+//! [`TIME_SYNC_INTERVAL`]), which merely decides how early a frame is handed
+//! over. That clock is a plain function, reading a process-wide offset: one
+//! `SpinelRadio` per process.
+//!
+//! A CSL *child* is not possible on an RCP: spinel has no property to hand the
+//! RCP the CSL schedule it would have to advertise in its enhanced ACKs (the
+//! reference POSIX host does not implement `otPlatRadioEnableCsl` either), so
+//! `RECEIVE_TIMING` is never reported.
 //!
 //! # Wire protocol
 //!
@@ -49,11 +70,15 @@
 use core::future::Future;
 use core::mem::MaybeUninit;
 
-use embassy_time::{Duration, Timer};
+use core::cell::Cell;
+
+use embassy_sync::blocking_mutex::raw::CriticalSectionRawMutex;
+use embassy_sync::blocking_mutex::Mutex;
+use embassy_time::{Duration, Instant, Timer};
 
 use crate::radio::{
-    Capabilities, Config, MacCapabilities, PsduMeta, Radio, RadioCaps, RadioErrorKind,
-    SrcMatchConfig,
+    AckSecurity, Capabilities, Config, MacCapabilities, MacKeys, PsduRxInfo, Radio, RadioCaps,
+    RadioClock, RadioErrorKind, SrcMatchConfig,
 };
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 
@@ -156,7 +181,7 @@ const PROP_MAC_SCAN_MASK: u32 = 0x31;
 const PROP_MAC_SCAN_PERIOD: u32 = 0x32;
 const PROP_MAC_ENERGY_SCAN_RESULT: u32 = 0x39;
 /// `SPINEL_PROP_RADIO_CAPS` — the RCP's `otRadioCaps` bitmask (packed-uint).
-const PROP_RADIO_CAPS: u32 = 0x1207;
+const PROP_RADIO_CAPS: u32 = 0x120b;
 const PROP_PHY_CHAN: u32 = 0x21;
 const PROP_PHY_TX_POWER: u32 = 0x25;
 /// `SPINEL_PROP_PHY_CCA_THRESHOLD` — the RCP's CCA energy-detect threshold, in dBm (int8).
@@ -183,6 +208,72 @@ const PROP_MAC_SRC_MATCH_ENABLED: u32 = 0x1303;
 const PROP_MAC_SRC_MATCH_SHORT_ADDRESSES: u32 = 0x1304;
 const PROP_MAC_SRC_MATCH_EXTENDED_ADDRESSES: u32 = 0x1305;
 const PROP_STREAM_RAW: u32 = 0x71;
+/// `SPINEL_PROP_RCP_MAC_KEY`: the MAC keys the RCP secures frames and enhanced
+/// ACKs with.
+const PROP_RCP_MAC_KEY: u32 = 0x800;
+/// `SPINEL_PROP_RCP_MAC_FRAME_COUNTER`: the RCP's MAC frame counter.
+const PROP_RCP_MAC_FRAME_COUNTER: u32 = 0x801;
+/// `SPINEL_PROP_RCP_TIMESTAMP`: the RCP's clock, in microseconds.
+const PROP_RCP_TIMESTAMP: u32 = 0x802;
+/// `SPINEL_PROP_RCP_CSL_ACCURACY`: the RCP clock's accuracy, in PPM.
+const PROP_RCP_CSL_ACCURACY: u32 = 0x804;
+/// `SPINEL_PROP_RCP_CSL_UNCERTAINTY`: the RCP's timing uncertainty, in 10 µs.
+const PROP_RCP_CSL_UNCERTAINTY: u32 = 0x805;
+
+/// `SPINEL_STATUS_NO_ACK`: a transmitted frame was not acknowledged.
+const STATUS_NO_ACK: u32 = 17;
+/// `SPINEL_STATUS_CCA_FAILURE`: a frame was not sent, the channel was busy.
+const STATUS_CCA_FAILURE: u32 = 18;
+/// `SPINEL_STATUS_STACK_NATIVE__BEGIN`: the RCP's own `otError`s are reported
+/// as this plus the error.
+const STATUS_STACK_NATIVE_BEGIN: u32 = 15_360;
+
+/// The error a failed transmission reports, for the status the RCP finished
+/// it with - as the reference host maps it (`SpinelStatusToOtError`): what
+/// OpenThread then does (retransmit, retry in the next CSL window, count a
+/// link failure) depends on it, so a failure must never pass for a success.
+fn tx_status_error(status: u32) -> RadioErrorKind {
+    const NATIVE_NO_ACK: u32 = STATUS_STACK_NATIVE_BEGIN + crate::sys::otError_OT_ERROR_NO_ACK;
+    const NATIVE_CHANNEL_ACCESS_FAILURE: u32 =
+        STATUS_STACK_NATIVE_BEGIN + crate::sys::otError_OT_ERROR_CHANNEL_ACCESS_FAILURE;
+
+    match status {
+        STATUS_NO_ACK | NATIVE_NO_ACK => RadioErrorKind::RxAckTimeout,
+        STATUS_CCA_FAILURE | NATIVE_CHANNEL_ACCESS_FAILURE => RadioErrorKind::TxFailed,
+        _ => RadioErrorKind::Other,
+    }
+}
+
+/// `SPINEL_MD_FLAG_ACKED_FP`: the RCP acknowledged a received frame with
+/// Frame Pending set.
+const MD_FLAG_ACKED_FP: u16 = 0x0010;
+
+/// `SPINEL_MD_FLAG_ACKED_SEC`: the RCP acknowledged a received frame with a
+/// secured enhanced ACK.
+const MD_FLAG_ACKED_SEC: u16 = 0x0020;
+
+/// How often the offset between the RCP clock and the host clock is measured
+/// again - the reference host's `OPENTHREAD_SPINEL_CONFIG_RCP_TIME_SYNC_INTERVAL`.
+const TIME_SYNC_INTERVAL: Duration = Duration::from_secs(60);
+
+/// The RCP clock minus the host clock (`embassy-time`), in microseconds, as
+/// last measured (`PROP_RCP_TIMESTAMP`); `None` until measured, or if the RCP
+/// cannot tell its time. Process-wide, as the radio clock it serves is a plain
+/// function (see the module docs).
+static RCP_TIME_OFFSET: Mutex<CriticalSectionRawMutex, Cell<Option<i64>>> =
+    Mutex::new(Cell::new(None));
+
+/// The RCP time offset, if measured.
+fn rcp_time_offset() -> Option<i64> {
+    RCP_TIME_OFFSET.lock(Cell::get)
+}
+
+/// The radio clock: the RCP's clock, as estimated from the host clock.
+fn rcp_now_us() -> u64 {
+    let offset = rcp_time_offset().unwrap_or(0);
+
+    (Instant::now().as_micros() as i64 + offset) as u64
+}
 
 /// The RCP capability ids we require (a real RCP in raw-MAC mode).
 const CAP_CONFIG_RADIO: u32 = 34;
@@ -324,8 +415,11 @@ fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
 /// config channel at delivery time may no longer be the reception channel.
 /// Missing metadata (a short body) degrades to `None`, and the caller falls
 /// back to the config channel.
-#[allow(clippy::type_complexity)]
-fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>, Option<u8>)> {
+///
+/// The PHY-data struct also carries the reception timestamp (RCP clock), and
+/// an RCP with transmit security appends a MAC-data struct: the key index and
+/// frame counter of the secured enhanced ACK it answered the frame with.
+fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], RxMeta)> {
     if body.len() < 2 {
         return None;
     }
@@ -335,15 +429,77 @@ fn parse_radio_frame(body: &[u8]) -> Option<(&[u8], Option<i8>, Option<u8>, Opti
     }
     let psdu = &body[2..2 + plen];
 
-    // Metadata after the PSDU: rssi(1) + noise(1) + flags(2) + PHY-data struct
-    // (2-byte LE length prefix, then channel + lqi + ...).
+    // Metadata after the PSDU: rssi(1) + noise(1) + flags(2), then the
+    // PHY-data struct (channel + lqi + timestamp), the vendor-data struct
+    // (receive error) and the optional MAC-data struct (ACK key index + frame
+    // counter). A spinel struct is a 2-byte LE length prefix + its contents.
     let meta = &body[2 + plen..];
     let rssi = meta.first().map(|&b| b as i8);
-    let phy_len = (meta.len() >= 6).then(|| u16::from_le_bytes([meta[4], meta[5]]));
-    let channel = (phy_len >= Some(1) && meta.len() >= 7).then(|| meta[6]);
-    let lqi = (phy_len >= Some(2) && meta.len() >= 8).then(|| meta[7]);
+    let flags = meta
+        .get(2..4)
+        .map(|flags| u16::from_le_bytes([flags[0], flags[1]]))
+        .unwrap_or(0);
 
-    Some((psdu, rssi, channel, lqi))
+    let mut structs = meta.get(4..).unwrap_or(&[]);
+    let phy = take_struct(&mut structs);
+    let _vendor = take_struct(&mut structs);
+    let mac = take_struct(&mut structs);
+    let len = meta.len() - structs.len();
+
+    let channel = phy.and_then(|phy| phy.first().copied());
+    let lqi = phy.and_then(|phy| phy.get(1).copied());
+    let timestamp = phy
+        .and_then(|phy| phy.get(2..10))
+        .map(|ts| u64::from_le_bytes([ts[0], ts[1], ts[2], ts[3], ts[4], ts[5], ts[6], ts[7]]))
+        .filter(|ts| *ts != 0);
+    let ack_security = mac
+        .filter(|_| flags & MD_FLAG_ACKED_SEC != 0)
+        .and_then(|mac| {
+            Some(AckSecurity {
+                key_id: *mac.first()?,
+                frame_counter: u32::from_le_bytes(mac.get(1..5)?.try_into().ok()?),
+            })
+        });
+
+    Some((
+        psdu,
+        RxMeta {
+            rssi,
+            channel,
+            lqi,
+            timestamp,
+            ack_security,
+            acked_with_frame_pending: flags & MD_FLAG_ACKED_FP != 0,
+            len,
+        },
+    ))
+}
+
+/// Split the next spinel struct (a 2-byte LE length prefix + its contents) off
+/// the front of `data`.
+fn take_struct<'a>(data: &mut &'a [u8]) -> Option<&'a [u8]> {
+    let cur = *data;
+    let len = u16::from_le_bytes([*cur.first()?, *cur.get(1)?]) as usize;
+    let contents = cur.get(2..2 + len)?;
+    *data = &cur[2 + len..];
+
+    Some(contents)
+}
+
+/// The metadata the RCP reports with a received frame (see
+/// [`parse_radio_frame`]).
+struct RxMeta {
+    rssi: Option<i8>,
+    channel: Option<u8>,
+    lqi: Option<u8>,
+    /// When the frame was received, in the RCP clock.
+    timestamp: Option<u64>,
+    /// The secured enhanced ACK the RCP answered the frame with, if any.
+    ack_security: Option<AckSecurity>,
+    /// Whether the RCP answered the frame with an ACK with Frame Pending set.
+    acked_with_frame_pending: bool,
+    /// How many bytes the metadata took after the PSDU (with its length).
+    len: usize,
 }
 
 /// Append a (possibly NUL-terminated) UTF-8 blob `src` into `out` starting at
@@ -580,6 +736,20 @@ pub struct SpinelRadio<'a, T> {
     src_match_dirty: bool,
     /// Whether raw-stream (RX) is currently enabled on the RCP.
     rx_enabled: bool,
+    /// When the RCP time offset is due to be measured (again).
+    time_sync_due: Instant,
+    /// The RCP's CSL timing figures (`PROP_RCP_CSL_ACCURACY` /
+    /// `PROP_RCP_CSL_UNCERTAINTY`), read during the handshake; `u8::MAX`
+    /// (unknown) for RCP firmwares without CSL.
+    csl_accuracy_ppm: u8,
+    /// See `csl_accuracy_ppm`.
+    csl_uncertainty: u8,
+    /// The speed of the link to the RCP, in bits per second (see
+    /// [`Self::with_bus_speed`]).
+    bus_speed: u32,
+    /// The latency of the link to the RCP, in microseconds (see
+    /// [`Self::with_bus_latency`]).
+    bus_latency_us: u32,
     /// Next transaction id (1..=15, 0 is reserved for unsolicited notifications).
     next_tid: u8,
     /// Scratch buffer for the raw spinel frame being built for transmission.
@@ -631,12 +801,72 @@ where
             sensitivity: RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
             src_match_dirty: false,
             rx_enabled: false,
+            time_sync_due: Instant::from_ticks(0),
+            csl_accuracy_ppm: u8::MAX,
+            csl_uncertainty: u8::MAX,
+            bus_speed: 0,
+            bus_latency_us: 0,
             next_tid: 1,
             tx_frame,
             rx_frame,
             rx_len: 0,
             rx_queue,
             state,
+        }
+    }
+
+    /// Tell the radio the speed of the link to the RCP, in payload bits per
+    /// second - for a UART, its baud rate less the start and stop bits (8/10
+    /// of it). An FTD needs it to hand the frames for its CSL children over
+    /// early enough to cross the link in time (see [`RadioCaps::bus_speed`]);
+    /// `0` (the default) treats the link as instant.
+    #[must_use]
+    pub fn with_bus_speed(mut self, bits_per_second: u32) -> Self {
+        self.bus_speed = bits_per_second;
+        self
+    }
+
+    /// Tell the radio the latency of the link to the RCP on top of its speed,
+    /// in microseconds: e.g. a USB serial bridge, which moves data at the
+    /// host's polling interval (see [`RadioCaps::bus_latency_us`]).
+    #[must_use]
+    pub fn with_bus_latency(mut self, latency_us: u32) -> Self {
+        self.bus_latency_us = latency_us;
+        self
+    }
+
+    /// Measure the offset between the RCP clock and the host clock, if due.
+    ///
+    /// Best-effort: an RCP that cannot tell its time leaves the radio without
+    /// timestamps and timed transmit (see [`Self::ensure_init`]).
+    async fn ensure_time_sync(&mut self) {
+        if Instant::now() < self.time_sync_due {
+            return;
+        }
+
+        // The parameter is a dummy timestamp, so that the request is as long
+        // as the response and the two link delays cancel out (as the
+        // reference host does it); the RCP time then lies halfway between
+        // sending and receiving.
+        let sent = Instant::now();
+        let remote = self
+            .get_prop_with(PROP_RCP_TIMESTAMP, &0u64.to_le_bytes(), |payload| {
+                payload.get(..8).map(|ts| {
+                    u64::from_le_bytes([ts[0], ts[1], ts[2], ts[3], ts[4], ts[5], ts[6], ts[7]])
+                })
+            })
+            .await;
+        let received = Instant::now();
+
+        self.time_sync_due = received + TIME_SYNC_INTERVAL;
+
+        match remote {
+            Ok(Some(remote)) => {
+                let local = (sent.as_micros() + received.as_micros()) / 2;
+
+                RCP_TIME_OFFSET.lock(|offset| offset.set(Some(remote as i64 - local as i64)));
+            }
+            _ => debug!("RCP: could not read its clock"),
         }
     }
 
@@ -971,11 +1201,26 @@ where
         prop: u32,
         f: impl FnOnce(&[u8]) -> R,
     ) -> Result<R, RadioErrorKind> {
+        self.get_prop_with(prop, &[], f).await
+    }
+
+    /// [`Self::get_prop`], with a parameter for the property.
+    async fn get_prop_with<R>(
+        &mut self,
+        prop: u32,
+        param: &[u8],
+        f: impl FnOnce(&[u8]) -> R,
+    ) -> Result<R, RadioErrorKind> {
         let tid = self.alloc_tid();
         let cmd = CMD_PROP_VALUE_GET;
 
-        let frame_len = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
+        let mut frame_len = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
             .ok_or(RadioErrorKind::TxFailed)?;
+        if frame_len + param.len() > self.tx_frame.len() {
+            return Err(RadioErrorKind::TxFailed);
+        }
+        self.tx_frame[frame_len..frame_len + param.len()].copy_from_slice(param);
+        frame_len += param.len();
         trace_frame("RCP <-", &self.tx_frame[..frame_len]);
         self.transport
             .send(&self.tx_frame[..frame_len])
@@ -1190,7 +1435,11 @@ where
                 info!("RCP does not report RADIO_CAPS; using the baseline only");
                 0
             });
-        self.caps = Capabilities::from_bits_truncate(caps_bits as u16) | SPINEL_RADIO_CAPS;
+        // Never `RECEIVE_TIMING`, whatever the RCP has: a CSL child needs the
+        // RCP to advertise its schedule in its enhanced ACKs, and spinel has
+        // no property to hand it that schedule (see the module docs).
+        self.caps = (Capabilities::from_bits_truncate(caps_bits as u16) | SPINEL_RADIO_CAPS)
+            .difference(Capabilities::RECEIVE_TIMING);
 
         info!(
             "RCP radio caps: 0x{:04x} (reported 0x{:08x} + baseline 0x{:04x})",
@@ -1246,6 +1495,29 @@ where
                 "RCP does not report PHY_CCA_THRESHOLD; using the default {} dBm",
                 self.default_cca_threshold
             ),
+        }
+
+        // The RCP's CSL timing figures, which an FTD reports to its CSL
+        // children. Best-effort: only RCP firmwares with CSL have them.
+        if let Ok(Some(accuracy)) = self
+            .get_prop(PROP_RCP_CSL_ACCURACY, |payload| payload.first().copied())
+            .await
+        {
+            self.csl_accuracy_ppm = accuracy;
+        }
+        if let Ok(Some(uncertainty)) = self
+            .get_prop(PROP_RCP_CSL_UNCERTAINTY, |payload| payload.first().copied())
+            .await
+        {
+            self.csl_uncertainty = uncertainty;
+        }
+
+        // Timed transmit and frame timestamps cross the link in the RCP's
+        // clock, so they need its offset to the host clock.
+        self.time_sync_due = Instant::from_ticks(0);
+        self.ensure_time_sync().await;
+        if rcp_time_offset().is_none() {
+            self.caps.remove(Capabilities::TRANSMIT_TIMING);
         }
 
         // Enable the PHY.
@@ -1468,6 +1740,13 @@ where
             receive_sensitivity: self.sensitivity,
             default_tx_power: self.default_tx_power,
             default_cca_threshold: self.default_cca_threshold,
+            // The RCP's clock, once its offset to the host clock is known (see
+            // the module docs).
+            clock: rcp_time_offset().map(|_| RadioClock(rcp_now_us)),
+            csl_accuracy_ppm: self.csl_accuracy_ppm,
+            csl_uncertainty: self.csl_uncertainty,
+            bus_speed: self.bus_speed,
+            bus_latency_us: self.bus_latency_us,
         })
     }
 
@@ -1508,6 +1787,50 @@ where
         }
 
         Ok(())
+    }
+
+    async fn set_mac_keys(&mut self, keys: Option<&MacKeys>) -> Result<(), Self::Error> {
+        // Only an RCP that secures frames itself has a use for the keys. Taking
+        // them away is not a spinel operation; the RCP keeps the last ones,
+        // which it uses only for frames it is asked to secure.
+        let Some(keys) = keys.filter(|_| self.caps.contains(Capabilities::TRANSMIT_SEC)) else {
+            return Ok(());
+        };
+
+        self.ensure_init().await?;
+
+        // Key ID mode (as OpenThread encodes it in the security control
+        // field, which is what the RCP hands its own radio platform), key
+        // index, then the previous, current and next keys, each as
+        // data-with-length.
+        let mut payload = [0u8; 2 + 3 * (2 + 16)];
+        payload[0] = keys.key_id_mode << 3;
+        payload[1] = keys.key_id;
+        for (index, key) in [&keys.prev, &keys.curr, &keys.next].into_iter().enumerate() {
+            let at = 2 + index * 18;
+            payload[at..at + 2].copy_from_slice(&16u16.to_le_bytes());
+            payload[at + 2..at + 18].copy_from_slice(key);
+        }
+
+        self.set_prop(PROP_RCP_MAC_KEY, &payload).await
+    }
+
+    async fn set_mac_frame_counter(
+        &mut self,
+        frame_counter: u32,
+        if_larger: bool,
+    ) -> Result<(), Self::Error> {
+        if !self.caps.contains(Capabilities::TRANSMIT_SEC) {
+            return Ok(());
+        }
+
+        self.ensure_init().await?;
+
+        let mut payload = [0u8; 5];
+        payload[..4].copy_from_slice(&frame_counter.to_le_bytes());
+        payload[4] = if_larger as u8;
+
+        self.set_prop(PROP_RCP_MAC_FRAME_COUNTER, &payload).await
     }
 
     async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
@@ -1574,25 +1897,65 @@ where
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        psdu_tx: &mut crate::PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
         self.ensure_init().await?;
         self.flush_src_match().await?;
+        self.ensure_time_sync().await;
 
-        // The frame carries its own channel and power below, but the RCP's
-        // channel property is what its receiver returns to afterwards, so keep
-        // the two in step. The CCA threshold has no per-frame slot at all - it
-        // is a property, pushed only when it moves.
-        self.ensure_channel(channel).await?;
+        // The frame carries its own channel and power below, and where the
+        // receiver goes afterwards (`rxChannelAfterTxDone`): back to the channel
+        // it receives on. So the RCP's channel property is left alone - a frame
+        // on another channel (to a CSL child listening on its own CSL channel)
+        // must not leave the receiver there, deaf to the network channel, until
+        // the next receive command crosses the link. The CCA threshold has no
+        // per-frame slot at all - it is a property, pushed only when it moves.
         if let Some(threshold) = cca_threshold {
             self.ensure_cca_threshold(threshold).await?;
         }
 
         let tx_power = power;
+
+        let secured = psdu.first().is_some_and(|fcf| fcf & 0x08 != 0);
+
+        // A frame timed into a CSL child's receive window: the RCP times it, as
+        // a delay from about now - all in the RCP's clock, which is the radio
+        // clock the stack timed the frame by. One that could not cross the
+        // link in time any more goes out right away instead, as OpenThread's
+        // own timing would send it.
+        let (tx_delay_base, tx_delay) = psdu_tx
+            .tx_at_us
+            .filter(|_| rcp_time_offset().is_some())
+            .and_then(|tx_at_us| {
+                let now = rcp_now_us() as i64;
+                let at = tx_at_us as i64;
+
+                // The frame's way to the RCP (with the spinel and HDLC
+                // overhead), plus a margin for the RCP to schedule it.
+                let transfer_us = if self.bus_speed > 0 {
+                    (psdu.len() as i64 + 32) * 8 * 1_000_000 / self.bus_speed as i64
+                } else {
+                    0
+                } + self.bus_latency_us as i64;
+
+                let timed =
+                    (at - now > transfer_us + 500).then_some((now as u32, (at - now) as u32));
+
+                if timed.is_none() {
+                    debug!(
+                        "Timed frame {} us late for the RCP, sending it right away",
+                        transfer_us + 500 - (at - now)
+                    );
+                }
+
+                timed
+            })
+            .unwrap_or((0, 0));
 
         // Build the STREAM_RAW transmit payload:
         //   data-with-len(psdu) + channel + maxCsmaBackoffs + maxFrameRetries
@@ -1612,36 +1975,37 @@ where
         n += 1;
         // Let the RCP do CSMA/CA backoff and frame retries — we advertise
         // `CSMA_BACKOFF` + `TRANSMIT_RETRIES`, so OpenThread expects the radio to
-        // handle them. 802.15.4 defaults (macMaxCSMABackoffs=4, macMaxFrameRetries=3).
-        payload[n] = 4; // maxCsmaBackoffs
+        // handle them: as many backoffs as OpenThread wants (802.15.4's
+        // macMaxCSMABackoffs=4 unless it says), and macMaxFrameRetries=3. A
+        // timed frame gets no retries: a retry would miss the window, and
+        // OpenThread aims the retransmission at the next one itself.
+        payload[n] = psdu_tx.max_csma_backoffs.unwrap_or(4); // maxCsmaBackoffs
         n += 1;
-        payload[n] = 3; // maxFrameRetries
+        payload[n] = if tx_delay != 0 { 0 } else { 3 }; // maxFrameRetries
         n += 1;
         payload[n] = cca_threshold.is_some() as u8; // csmaCaEnabled
         n += 1;
-        payload[n] = 1; // isHeaderUpdated (OT core secured the frame)
+        payload[n] = psdu_tx.header_updated as u8; // isHeaderUpdated
         n += 1;
-        // isARetx: set for secured frames to keep the RCP's hands off the MAC
-        // header. RCP firmwares with a transmit-security engine (e.g. the nRF
-        // `ot-rcp`, `ot-nrf528xx` `radio.c` `otPlatRadioTransmit`) overwrite
-        // the frame counter and key index of every secured key-id-mode-1 frame
-        // with their *own* counter/key-id state — without consulting
+        // isARetx: also set for any secured frame the host has secured already,
+        // to keep the RCP's hands off its MAC header. RCP firmwares with a
+        // transmit-security engine (e.g. the nRF `ot-rcp`, `ot-nrf528xx`
+        // `radio.c` `otPlatRadioTransmit`) overwrite the frame counter and key
+        // index of every secured key-id-mode-1 frame with their *own*
+        // counter/key-id state — without consulting
         // `isHeaderUpdated`/`isSecurityProcessed` — unless the frame is marked
-        // as a retransmission. Since this driver performs security on the
-        // host, the header is final: a re-stamped counter/key-id no longer
-        // matches the MIC, and every receiver silently drops the frame after
-        // its radio has already acknowledged it. `isARetx` has no other effect
-        // on the RCP for our traffic (its only other use is a CSL IE update,
-        // and CSL is never configured here).
-        payload[n] = psdu.first().is_some_and(|fcf| fcf & 0x08 != 0) as u8;
+        // as a retransmission. For a frame secured on the host, a re-stamped
+        // counter/key-id no longer matches the MIC, and every receiver silently
+        // drops the frame after its radio has already acknowledged it.
+        payload[n] = (psdu_tx.retransmission || (psdu_tx.security_processed && secured)) as u8;
         n += 1;
-        payload[n] = 1; // isSecurityProcessed (security done host-side)
+        payload[n] = psdu_tx.security_processed as u8; // isSecurityProcessed
         n += 1;
-        payload[n..n + 4].copy_from_slice(&0u32.to_le_bytes()); // txDelay
+        payload[n..n + 4].copy_from_slice(&tx_delay.to_le_bytes()); // txDelay
         n += 4;
-        payload[n..n + 4].copy_from_slice(&0u32.to_le_bytes()); // txDelayBaseTime
+        payload[n..n + 4].copy_from_slice(&tx_delay_base.to_le_bytes()); // txDelayBaseTime
         n += 4;
-        payload[n] = channel; // rxChannelAfterTxDone
+        payload[n] = self.channel; // rxChannelAfterTxDone
         n += 1;
         payload[n] = tx_power as u8;
         n += 1;
@@ -1656,29 +2020,69 @@ where
 
         // Parse the transmit-done body (from `RadioSpinel::HandleTransmitDone`):
         //   uint_packed status + bool framePending + bool headerUpdated
-        //   + [if status OK] the ACK radio frame (same layout as an RX frame).
+        //   + [if status OK] the ACK radio frame (same layout as an RX frame)
+        //   + [if the RCP finished the frame's header] its key index (u8) and
+        //     frame counter (u32).
         // We advertise `TX_ACK`, so OpenThread expects us to return the received
         // ACK here rather than have `MacRadio` synthesize it in software.
         let body_end = self.rx_len;
         let body = &self.rx_frame[off..body_end];
 
-        let Some((status, mut p)) = spinel_uint_decode(body) else {
+        let Some((status, p)) = spinel_uint_decode(body) else {
             return Ok(None);
         };
-        // status != OK → the transmit failed (no ACK / channel access). Report as
-        // no ACK; OpenThread maps a missing ACK to the appropriate retry/failure.
-        let status_ok = status == 0; // SPINEL_STATUS_OK
-        if !status_ok {
+        // framePending (bool, 1 byte) + headerUpdated (bool, 1 byte).
+        let Some(header_updated) = body.get(p + 1).map(|&updated| updated != 0) else {
             return Ok(None);
-        }
-        // Skip framePending (bool, 1 byte) + headerUpdated (bool, 1 byte).
-        if body.len() < p + 2 {
-            return Ok(None);
-        }
-        p += 2;
+        };
+        let mut rest = &body[p + 2..];
 
-        // The remaining bytes are the ACK radio frame (if any was received).
-        let Some((ack_psdu, ack_rssi, ack_channel, ack_lqi)) = parse_radio_frame(&body[p..]) else {
+        // status != OK → the transmit failed (no ACK / channel access), and
+        // there is no ACK frame; reported as an error below, once the frame
+        // counter it used is handed back.
+        let status_ok = status == 0; // SPINEL_STATUS_OK
+        if !status_ok && tx_delay != 0 {
+            debug!("Timed frame failed on the RCP: spinel status {}", status);
+        }
+        let ack = if status_ok {
+            parse_radio_frame(rest).map(|(ack_psdu, meta)| {
+                let used = ack_psdu.len() + 2 + meta.len;
+                (ack_psdu, meta, used)
+            })
+        } else {
+            None
+        };
+        if let Some((_, _, used)) = &ack {
+            rest = rest.get(*used..).unwrap_or(&[]);
+        }
+
+        // The RCP assigned the frame its counter and key index: write them into
+        // the frame we hold, so that OpenThread reads the ones used and a
+        // retransmission repeats them. (The frame stays as we sent it
+        // otherwise - the RCP does not hand back the secured frame - so it is
+        // not `security_processed`: a retransmission is secured by the RCP again.)
+        if !psdu_tx.header_updated && header_updated && secured {
+            if let (Some(&key_id), Some(counter)) = (rest.first(), rest.get(1..5)) {
+                let counter = u32::from_le_bytes([counter[0], counter[1], counter[2], counter[3]]);
+
+                let mut frame: crate::sys::otRadioFrame = unsafe { core::mem::zeroed() };
+                frame.mPsdu = psdu.as_mut_ptr();
+                frame.mLength = psdu.len() as _;
+
+                unsafe {
+                    crate::sys::otMacFrameSetKeyId(&mut frame, key_id);
+                    crate::sys::otMacFrameSetFrameCounter(&mut frame, counter);
+                }
+
+                psdu_tx.header_updated = true;
+            }
+        }
+
+        if !status_ok {
+            return Err(tx_status_error(status));
+        }
+
+        let Some((ack_psdu, ack_meta, _)) = ack else {
             return Ok(None);
         };
 
@@ -1686,11 +2090,14 @@ where
             Some(buf) => {
                 let copy = ack_psdu.len().min(buf.len());
                 buf[..copy].copy_from_slice(&ack_psdu[..copy]);
-                Ok(Some(PsduMeta {
+                Ok(Some(PsduRxInfo {
                     len: copy,
-                    channel: ack_channel.unwrap_or(channel),
-                    rssi: ack_rssi,
-                    lqi: ack_lqi,
+                    channel: ack_meta.channel.unwrap_or(channel),
+                    rssi: ack_meta.rssi,
+                    lqi: ack_meta.lqi,
+                    timestamp_us: ack_meta.timestamp,
+                    ack_security: None,
+                    acked_with_frame_pending: None,
                 }))
             }
             // The caller didn't ask for the ACK PSDU (didn't expect an ACK), so
@@ -1699,9 +2106,10 @@ where
         }
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         self.ensure_init().await?;
         self.flush_src_match().await?;
+        self.ensure_time_sync().await;
         // Normally already done by `set_receive`; re-asserted here because a
         // `receive` may also follow a transmit, and because it is cheap (the
         // property is only written when it actually changes).
@@ -1717,14 +2125,17 @@ where
         // a command response (see `try_stash_rx`). This is the common case —
         // inbound frames usually arrive during a transmit.
         while let Some(stashed) = self.rx_queue.pop_front() {
-            if let Some((psdu, rssi, rx_channel, lqi)) = parse_radio_frame(&stashed) {
+            if let Some((psdu, meta)) = parse_radio_frame(&stashed) {
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
-                return Ok(PsduMeta {
+                return Ok(PsduRxInfo {
                     len: copy,
-                    channel: rx_channel.unwrap_or(cfg_channel),
-                    rssi,
-                    lqi,
+                    channel: meta.channel.unwrap_or(cfg_channel),
+                    rssi: meta.rssi,
+                    lqi: meta.lqi,
+                    timestamp_us: meta.timestamp,
+                    ack_security: meta.ack_security,
+                    acked_with_frame_pending: Some(meta.acked_with_frame_pending),
                 });
             }
             // Unparseable stashed frame — skip and try the next.
@@ -1740,18 +2151,21 @@ where
 
             // Unsolicited STREAM_RAW notification = a received frame.
             if tid == 0 && rcmd == CMD_PROP_VALUE_IS && rprop == PROP_STREAM_RAW {
-                let Some((psdu, rssi, rx_channel, lqi)) = parse_radio_frame(&frame[off..]) else {
+                let Some((psdu, meta)) = parse_radio_frame(&frame[off..]) else {
                     continue;
                 };
 
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
 
-                return Ok(PsduMeta {
+                return Ok(PsduRxInfo {
                     len: copy,
-                    channel: rx_channel.unwrap_or(cfg_channel),
-                    rssi,
-                    lqi,
+                    channel: meta.channel.unwrap_or(cfg_channel),
+                    rssi: meta.rssi,
+                    lqi: meta.lqi,
+                    timestamp_us: meta.timestamp,
+                    ack_security: meta.ack_security,
+                    acked_with_frame_pending: Some(meta.acked_with_frame_pending),
                 });
             }
             // Other frames (matched responses to a concurrent op, status) — ignore.

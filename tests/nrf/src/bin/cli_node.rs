@@ -336,8 +336,25 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
         // No await between taking the bytes and claiming them - see `tx_begin`.
         console::tx_begin();
 
+        // Write *all* of it: a buffered write reports how many bytes it took,
+        // and a burst larger than the TX ring buffer is accepted in pieces.
+        // Discarding that count truncates CLI output mid-line, which the
+        // harness sees as a command that never finished answering.
         #[cfg(not(feature = "console-usb"))]
-        let _ = console_tx.write(&buf[..len]).await;
+        {
+            let mut sent = 0;
+            while sent < len {
+                match console_tx.write(&buf[sent..len]).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => sent += n,
+                }
+            }
+
+            // Past the ring buffer and onto the wire. Without this, `drained`
+            // would report bytes delivered while they are still queued, and a
+            // reset following a reply would truncate it.
+            let _ = console_tx.flush().await;
+        }
 
         #[cfg(feature = "console-usb")]
         {
