@@ -417,11 +417,29 @@ impl OpenThreadBuilder {
                 // sized for a platform that arms the radio synchronously from
                 // the CSL timer; here the request travels from the micro alarm
                 // through the OpenThread task to the radio task before it
-                // reaches the driver, and a request that arrives after the
-                // window start is refused by a timed-receive radio. 3 ms covers
-                // that path with margin; it only moves the timer, not the window.
-                .cflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000")
-                .cxxflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=3000");
+                // reaches the driver (~0.8 ms on an nRF52840 running a Matter
+                // stack), and the driver itself needs lead: the nRF 802.15.4
+                // driver refuses a window less than ~2.3 ms ahead of an idle
+                // radio, as MPSL has to start the HF crystal (1.4 ms worst
+                // case) and set up a timeslot first. 5 ms covers both with
+                // margin for a busy executor; it only moves the timer, not the
+                // window.
+                .cflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=5000")
+                .cxxflag("-DOPENTHREAD_CONFIG_CSL_RECEIVE_TIME_AHEAD=5000")
+                // How long a CSL receive window stays open around the expected
+                // frame, beyond the clock drift and uncertainty margins. The
+                // upstream defaults keep the receiver on for a whole
+                // maximum-length frame (and its ACK) after the MHR start - some
+                // 5.5 ms of every sample - for radios that stop receiving when
+                // the window ends. The radios that do timed receive here (the
+                // nRF 802.15.4 driver, natively or as a spinel RCP) extend a
+                // window by themselves once they detect a frame's SHR, so the
+                // window only has to cover the end of the preamble, the SFD and
+                // the PHR, as in Nordic's own OpenThread platform.
+                .cflag("-DOPENTHREAD_CONFIG_MIN_RECEIVE_ON_AHEAD=104")
+                .cxxflag("-DOPENTHREAD_CONFIG_MIN_RECEIVE_ON_AHEAD=104")
+                .cflag("-DOPENTHREAD_CONFIG_MIN_RECEIVE_ON_AFTER=0")
+                .cxxflag("-DOPENTHREAD_CONFIG_MIN_RECEIVE_ON_AFTER=0");
         }
 
         // The C CLI is a build-structure toggle rather than an `OT_*` config
