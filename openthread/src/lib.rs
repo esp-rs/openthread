@@ -1665,7 +1665,15 @@ impl<'a> OpenThread<'a> {
                         .receive_at(window.channel, window.start_us, window.duration_us)
                         .await
                     {
-                        warn!("Timed receive failed: {:?}", dbg2fmt!(err));
+                        debug!("Timed receive failed: {:?}", dbg2fmt!(err));
+
+                        // A window is asked for with the radio meant to sleep around it, and it
+                        // is the window that would have switched the receiver off. Without one,
+                        // a receiver still on from an earlier `Receive` would stay on until the
+                        // next window - a whole CSL period later.
+                        if let Err(err) = radio.set_sleep().await {
+                            warn!("Radio sleep failed: {:?}", dbg2fmt!(err));
+                        }
                     }
                 }
             }
