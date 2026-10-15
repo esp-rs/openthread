@@ -253,18 +253,13 @@ impl Radio for EspRadio<'_> {
                                 ack_frame.channel
                             );
 
-                            // Only read RSSI if there is at least one byte after the PSDU.
-                            let rssi = if ack_frame.data.len() > 1 + ack_psdu_len {
-                                Some(ack_frame.data[1..][ack_psdu_len] as i8)
-                            } else {
-                                None
-                            };
+                            let (rssi, lqi) = rssi_lqi(&ack_psdu_buf[..ack_psdu_len]);
 
                             return Ok(Some(PsduMeta {
                                 len: ack_psdu_len,
                                 channel: ack_frame.channel,
                                 rssi,
-                                lqi: None,
+                                lqi,
                             }));
                         } else {
                             trace!(
@@ -319,26 +314,33 @@ impl Radio for EspRadio<'_> {
 
         psdu_buf[..psdu_len].copy_from_slice(&raw.data[1..][..psdu_len]);
 
-        // Only read RSSI if there is at least one byte after the PSDU.
-        let rssi = if raw.data.len() > 1 + psdu_len {
-            Some(raw.data[1..][psdu_len] as i8)
-        } else {
-            None
-        };
+        let (rssi, lqi) = rssi_lqi(&psdu_buf[..psdu_len]);
 
         trace!(
-            "802.15.4: RX {} bytes ch{} rssi={:?}",
+            "802.15.4: RX {} bytes ch{} rssi={:?} lqi={:?}",
             psdu_len,
             raw.channel,
-            rssi
+            rssi,
+            lqi
         );
 
         Ok(PsduMeta {
             len: psdu_len,
             channel: raw.channel,
             rssi,
-            lqi: None,
+            lqi,
         })
+    }
+}
+
+/// Extract the RSSI and LQI of a received PSDU.
+///
+/// The ESP radio does not write the FCS into the RX buffer; it stores the
+/// RSSI and LQI in its place, i.e. in the last two bytes of the PSDU.
+fn rssi_lqi(psdu: &[u8]) -> (Option<i8>, Option<u8>) {
+    match psdu {
+        [.., rssi, lqi] => (Some(*rssi as i8), Some(*lqi)),
+        _ => (None, None),
     }
 }
 
