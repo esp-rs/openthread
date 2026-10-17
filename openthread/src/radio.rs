@@ -268,14 +268,13 @@ impl Default for RadioCaps {
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct Config {
-    /// Allow the radio to autonomously power its receiver down during idle
-    /// periods, instead of keeping it in RX.
-    /// Disregarded unless the radio advertises [`Capabilities::AUTO_SLEEP`],
-    /// otherwise emulated by OpenThread itself by issuing explicit "go to sleep"
-    /// commands to the radio.
+    /// Let the radio power its receiver down by itself when idle, instead of
+    /// keeping it in RX (only ever set for a battery-powered sleepy MTD).
+    /// Switching it on puts a receiving radio to sleep right away, not only
+    /// after the operation in progress.
     ///
-    /// Auto-sleep is only relevant and enabled for MTD devices which are battery
-    /// powered and need to conserve power.
+    /// Disregarded unless the radio advertises [`Capabilities::AUTO_SLEEP`];
+    /// otherwise OpenThread commands `Sleep` explicitly.
     pub auto_sleep: bool,
     /// Promiscuous mode (receive all frames regardless of address filtering)
     /// Disregarded if the radio is not capable of operating in promiscuous mode
@@ -476,7 +475,7 @@ pub struct AckSecurity {
 
 /// A microsecond clock shared by everything timing-related in a radio: its
 /// frame timestamps ([`PsduRxInfo::timestamp_us`]), its timed receive
-/// ([`Radio::receive_at`]) and the CSL sample times ([`CslConfig`]).
+/// ([`Radio::set_receive_at`]) and the CSL sample times ([`CslConfig`]).
 ///
 /// A plain function, because OpenThread reads the clock synchronously
 /// (`otPlatRadioGetNow`) from contexts where the `Radio` instance - owned by
@@ -635,62 +634,41 @@ impl defmt::Format for MacKeys {
 
 /// The IEEE 802.15.4 PHY Radio trait.
 ///
-/// While the trait models the PHY layer of the radio, it might implement some "MAC-offloading"
-/// capabilities as well - namely - the ability to automatically send and receive ACK frames,
-/// the ability to filter received frames by PAN ID, short address, and extended address and others.
-///
-/// The stack requires all of [`MacCapabilities::REQUIRED`] from the radio it is
-/// handed. An implementation offering less must be wrapped by the user in a
-/// [`MacRadio`], which emulates the missing capabilities in software; the notes
-/// below on what an implementation "can be a no-op for" are written from that
-/// standpoint.
+/// The trait models the PHY, plus whatever MAC work the radio offloads (ACKs, address
+/// filtering, timed receive windows, ...). The stack requires [`MacCapabilities::REQUIRED`]; a
+/// radio offering less is wrapped in a [`MacRadio`], which emulates the rest in software.
 ///
 /// # Contract
 ///
-/// OpenThread drives the radio as a small state machine - Sleep, Receive,
-/// and then Energy Scan and the transmit sequence as an excursion out of
-/// Receive - and holds the platform to semantics that are easy to violate
-/// from the signatures alone (see `docs/radio-contract.md`).
+/// OpenThread drives the radio as a small state machine - Sleep or Receive, with transmits and
+/// energy scans as excursions and, for a CSL child, receive windows the radio runs by itself -
+/// and holds the platform to semantics that are easy to violate from the signatures alone (see
+/// `docs/radio-contract.md`). An implementation MUST uphold:
 ///
-/// An implementation MUST uphold:
-/// 1. **`transmit` is the complete transmit sequence** per the declared
-///    capabilities - CSMA/CCA, the transmission, and, for frames requesting
-///    one, the ACK wait - resolved without the caller concurrently polling
-///    `receive`. The matching ACK is consumed by `transmit` and reported in
-///    its result; it must never surface via `receive`.
+/// 1. **`transmit` is the complete transmit sequence** per the declared capabilities - CSMA/CCA,
+///    the transmission and, for frames requesting one, the ACK wait - without the caller
+///    concurrently polling `receive`. The matching ACK is reported in its result and never
+///    surfaces via `receive`. (Without `MacCapabilities::TX_ACK` it may just send; [`MacRadio`]
+///    adds the rest.)
 ///
-///    `transmit` is only allowed to be a pure "send this frame" without waiting
-///    for an ACK when `MacCapabilities::TX_ACK` is NOT set - such a radio must
-///    be wrapped in a [`MacRadio`], which polyfills the full semantics of
-///    "`transmit` is the complete transmit sequence".
+/// 2. **Reception outlives the calls**: frames arriving while no `receive` is pending - during
+///    `transmit`'s listening phases, or in a receive window - are neither lost nor silently
+///    consumed, but delivered by later `receive` calls (typically from a driver-internal queue;
+///    dropping on overflow is fine). (Without both `RX_ACK` and `TX_ACK`, `receive` may just
+///    wait for a frame; [`MacRadio`] adds the queueing.)
 ///
-/// 2. **Reception outlives the calls**: frames arriving while no `receive`
-///    is pending - including during `transmit`'s listening phases - are
-///    neither lost nor silently consumed; they are delivered by subsequent
-///    `receive` calls (typically from a driver-internal queue). A bounded
-///    queue that drops on overflow is acceptable saturation behavior.
+/// 3. **Cancellation is a sanctioned abort**: the `transmit` future may be dropped mid-sequence
+///    (OpenThread aborts an ACK wait this way). The frame may already be on the air; the radio
+///    simply returns to receiving - or to sleep, if it sleeps when idle
+///    ([`Capabilities::AUTO_SLEEP`]).
 ///
-///    `receive` is only allowed to be a pure "wait and receive a frame now" -
-///    without sending any ACKs and without accumulating anything outside the
-///    `receive` method ONLY when BOTH `MacCapabilities::RX_ACK` and
-///    `MacCapabilities::TX_ACK` are NOT set. After all, it is `transmit`'s
-///    ACK wait that forces accumulation of RX frames outside of `receive`
-///    in the first place. Such a radio must be wrapped in a [`MacRadio`],
-///    which polyfills the full semantics of "Reception outlives the calls".
+/// 4. **A sleeping radio misses frames** ([`Radio::set_sleep`]): frames arriving while asleep are
+///    dropped, not buffered - except in the receive windows it was handed
+///    ([`Radio::set_receive_at`]), which it runs regardless.
 ///
-/// 3. **Cancellation is a sanctioned abort**: the `transmit` future may be
-///    dropped mid-sequence (OpenThread aborts an ACK wait this way). The
-///    frame may already be on the air; the radio must simply return to
-///    receiving.
-///
-/// 4. **A sleeping radio misses frames** ([`Radio::set_sleep`]): frames arriving
-///    while asleep are dropped, not buffered for later - a sleepy child
-///    provably missing traffic is protocol behavior, not lost data.
-///
-/// The trait is NOT required to support the following operations:
-/// - Re-sending a TX frame if the ACK frame was not received; this is done by OpenThread
-/// - Dropping a duplicate RX frame; this is done by OpenThread
-/// - MAC layer security; this is done by OpenThread
+/// Left to OpenThread: retransmissions, duplicate detection and MAC security - except for the
+/// enhanced ACKs a CSL child sends ([`Radio::set_mac_keys`]) and the frames a
+/// [`Capabilities::TRANSMIT_SEC`] radio finishes itself.
 pub trait Radio {
     /// The error type for radio operations.
     type Error: RadioError;
@@ -740,29 +718,21 @@ pub trait Radio {
     /// Can be a no-op for such radios, but they must be wrapped by the user in a [`MacRadio`] then.
     async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error>;
 
-    /// Set the radio to sleep mode.
-    ///
-    /// NOTE:
-    /// Can be a no-op for radios which are not supporting `MacCapabilities::TX_ACK` and `MacCapabilities::RX_ACK`,
-    /// and are therefore not able to receive frames while waiting for an ACK frame in `transmit`.
-    /// These radios naturally don't have an internal queue of received frames, so they don't need to be set to sleep
-    /// mode to save power, as they only receive when the `receive` method is called anyway.
-    async fn set_sleep(&mut self) -> Result<(), Self::Error>;
-
     /// Schedule a receive window: turn the receiver on for `channel` at `start_us`
     /// (radio clock, see [`RadioCaps::clock`]) for `duration_us`, then off again.
     ///
     /// This is how a CSL child samples the channel at its parent's transmit
-    /// times. Frames received during the window are delivered through
+    /// times (`otPlatRadioReceiveAt`). Frames received during the window are delivered through
     /// [`receive`](Radio::receive), which the runner keeps calling meanwhile -
     /// and which must NOT force the receiver on beyond the window (a radio that
     /// enters receive mode from `receive` has to notice it is in a timed window).
     /// The window is cancelled by [`set_sleep`](Radio::set_sleep) /
     /// [`set_receive`](Radio::set_receive) / [`transmit`](Radio::transmit).
     ///
+    /// NOTE:
     /// Only called on radios advertising [`Capabilities::RECEIVE_TIMING`]; the
     /// default is for the others and does nothing.
-    async fn receive_at(
+    async fn set_receive_at(
         &mut self,
         channel: u8,
         start_us: u64,
@@ -775,8 +745,18 @@ pub trait Radio {
         Ok(())
     }
 
+    /// Set the radio to sleep mode.
+    ///
+    /// NOTE:
+    /// Can be a no-op for radios which are not supporting `MacCapabilities::TX_ACK` and `MacCapabilities::RX_ACK`,
+    /// and are therefore not able to receive frames while waiting for an ACK frame in `transmit`.
+    /// These radios naturally don't have an internal queue of received frames, so they don't need to be set to sleep
+    /// mode to save power, as they only receive when the `receive` method is called anyway.
+    async fn set_sleep(&mut self) -> Result<(), Self::Error>;
+
     /// Set the CSL schedule the radio advertises in its enhanced ACKs.
     ///
+    /// NOTE:
     /// Only called on radios advertising [`Capabilities::RECEIVE_TIMING`], and
     /// then again before every sample window (the sample time moves). The
     /// default is for the others and does nothing.
@@ -911,6 +891,15 @@ where
         T::set_receive(self, channel).await
     }
 
+    async fn set_receive_at(
+        &mut self,
+        channel: u8,
+        start_us: u64,
+        duration_us: u32,
+    ) -> Result<(), Self::Error> {
+        T::set_receive_at(self, channel, start_us, duration_us).await
+    }
+
     async fn set_sleep(&mut self) -> Result<(), Self::Error> {
         T::set_sleep(self).await
     }
@@ -938,15 +927,6 @@ where
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         T::receive(self, psdu_buf).await
-    }
-
-    async fn receive_at(
-        &mut self,
-        channel: u8,
-        start_us: u64,
-        duration_us: u32,
-    ) -> Result<(), Self::Error> {
-        T::receive_at(self, channel, start_us, duration_us).await
     }
 
     async fn set_csl(&mut self, csl: &CslConfig) -> Result<(), Self::Error> {

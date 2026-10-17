@@ -15,7 +15,7 @@ use core::net::{Ipv6Addr, SocketAddrV6};
 use core::pin::pin;
 use core::ptr::addr_of_mut;
 
-use embassy_futures::select::{select, Either};
+use embassy_futures::select::{select, select3, Either, Either3};
 
 use embassy_time::Instant;
 
@@ -1320,8 +1320,6 @@ impl<'a> OpenThread<'a> {
 
         #[cfg(not(feature = "csl-receiver"))]
         {
-            use embassy_futures::select::{select3, Either3};
-
             let result = select3(&mut radio, &mut alarm, &mut openthread).await;
 
             match result {
@@ -1497,7 +1495,7 @@ impl<'a> OpenThread<'a> {
     /// alarm is armed in the radio clock (see `plat_alarm_micro_set`) and waited
     /// for with `embassy-time`, whose resolution only has to be good enough for
     /// the ~2 ms lead OpenThread gives itself before each window: the window
-    /// itself is timed by the radio (`Radio::receive_at`).
+    /// itself is timed by the radio (`Radio::set_receive_at`).
     #[cfg(feature = "csl-receiver")]
     async fn run_alarm_micro(&self) -> ! {
         let alarm = || poll_fn(move |cx| self.activate().state().ot.alarm_micro.poll_wait(cx));
@@ -1662,7 +1660,7 @@ impl<'a> OpenThread<'a> {
                     trace!("Radio receive window: {:?}", window);
 
                     if let Err(err) = radio
-                        .receive_at(window.channel, window.start_us, window.duration_us)
+                        .set_receive_at(window.channel, window.start_us, window.duration_us)
                         .await
                     {
                         debug!("Timed receive failed: {:?}", dbg2fmt!(err));
@@ -1678,11 +1676,15 @@ impl<'a> OpenThread<'a> {
                 }
             }
 
-            let (rx_channel, timed_rx) = {
+            let (rx_channel, timed_rx, auto_sleep) = {
                 let mut activated = self.activate();
                 let state = activated.state();
 
-                (state.ot.radio_receive_channel, state.ot.radio_timed_rx)
+                (
+                    state.ot.radio_receive_channel,
+                    state.ot.radio_timed_rx,
+                    state.ot.radio_conf.auto_sleep,
+                )
             };
 
             if rx_channel.is_some() || timed_rx {
@@ -1690,10 +1692,45 @@ impl<'a> OpenThread<'a> {
                 // windows the radio switches its receiver on and off by itself,
                 // and the frames they bring are delivered whenever they come -
                 // putting the radio to sleep here would cut a window short.
-                let mut wake = pin!(self.wait_radio_cmd());
-                let mut rx = pin!(self.run_radio_rx(&mut radio, rx_channel, &mut psdu_buf));
+                //
+                // A sleepy node (no receiving when idle) is only commanded to
+                // `Receive` to pick up a frame its parent announced as pending.
+                // OpenThread gives up on that frame after `DATA_POLL_TIMEOUT`,
+                // but with a radio that sleeps by itself when idle it does not
+                // command `Sleep` then: the radio has to time out on its own.
+                let timed_out = {
+                    let mut wake = pin!(self.wait_radio_cmd());
+                    let mut rx = pin!(self.run_radio_rx(&mut radio, rx_channel, &mut psdu_buf));
+                    let mut timeout = pin!(async {
+                        if rx_channel.is_some() && auto_sleep {
+                            embassy_time::Timer::after(Self::DATA_POLL_TIMEOUT).await;
+                        } else {
+                            core::future::pending::<()>().await;
+                        }
+                    });
 
-                let Either::First(()) = select(&mut wake, &mut rx).await;
+                    matches!(
+                        select3(&mut wake, &mut rx, &mut timeout).await,
+                        Either3::Third(())
+                    )
+                };
+
+                if timed_out {
+                    // OpenThread is done receiving; forget its `Receive` too, or
+                    // the next round would switch the receiver right back on.
+                    {
+                        let mut activated = self.activate();
+                        let state = activated.state();
+
+                        if state.ot.radio_receive_channel == rx_channel {
+                            state.ot.radio_receive_channel = None;
+                        }
+                    }
+
+                    if let Err(err) = radio.set_sleep().await {
+                        warn!("Radio sleep failed: {:?}", dbg2fmt!(err));
+                    }
+                }
             } else {
                 unwrap_dbg!(radio.set_sleep().await);
 
@@ -1701,6 +1738,15 @@ impl<'a> OpenThread<'a> {
             }
         }
     }
+
+    /// How long a sleepy node keeps receiving for a frame that its parent
+    /// announced as pending.
+    ///
+    /// This MUST match `OPENTHREAD_CONFIG_MAC_DATA_POLL_TIMEOUT`, OpenThread's
+    /// own wait for that frame (100 ms unless the OpenThread build overrides
+    /// it): the value is not reachable from the bindings, which only cover the
+    /// public headers.
+    const DATA_POLL_TIMEOUT: embassy_time::Duration = embassy_time::Duration::from_millis(100);
 
     /// Repeatedly receive IEEE 802.15.4 frames from the radio and pass them to the OpenThread C library.
     ///

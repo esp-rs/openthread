@@ -126,7 +126,7 @@ Therefore, the radio should enter/exit auto-sleep mode only when the OpenThread 
 
 Note also that implementing this offloading capability in the radio is non-trivial and completely optional. It is optional because if not present the OpenThread stack itself will emulate it, with explicit `Receive`/`Sleep` calls into the radio at the appropriate moments.
 
-Non-trivial, because the radio must then hit every idle boundary itself, per the long list in the `otPlatRadioSetRxOnWhenIdle` doc comment - including keeping the receiver on after a Data Request whose ACK carried Frame Pending.
+Non-trivial, because the radio must then hit every idle boundary itself, per the long list in the `otPlatRadioSetRxOnWhenIdle` doc comment - including keeping the receiver on after a Data Request whose ACK carried Frame Pending. Ending that wait after OpenThread's data poll timeout is not the radio's concern: the radio runner does it. When `rx-on-when-idle` goes from `true` to `false`, the receiver should go off right away, not only after the operation in progress.
 
 This capability exists chiefly for RCPs, where per-boundary commands would cost a UART round-trip each.
 
@@ -139,52 +139,37 @@ Radios without the capability get the core's software fallback (which needs a sy
 
 Active scan is NOT a distinct radio state: it is an ordinary Receive on the scan channel plus a Beacon Request transmit - which is exactly why it depends on C4.
 
-### C9. A CSL child's receive windows are the radio's to time, and its enhanced ACKs are the radio's to secure
+### C9. CSL Child: The radio driver is responsible for timing its receive windows and should support enhanced ACKs, with security
 
-Thread 1.2 CSL (a Synchronized Sleepy End Device) replaces data polling
-with a listening schedule: the child samples the channel for a short window
-once per CSL period, and the parent transmits into that window. OpenThread
-drives it through three platform surfaces, all optional on the `Radio` trait
-and only exercised when the radio advertises `Capabilities::RECEIVE_TIMING`:
+Thread 1.2 CSL (a Synchronized Sleepy End Device) replaces data polling with a listening schedule: the child samples the channel for a short
+window once per CSL period, and the parent transmits into that window. 
 
-- **Timed receive** (`Radio::receive_at`, `otPlatRadioReceiveAt`): "receiver
-  on at `start` for `duration`, then off". The window is a fifth commanded
-  state next to Sleep/Receive/Transmit/EnergyScan, entered from Sleep and
-  left by the next command (OpenThread's `Sleep` at the window's end). While
-  it lasts the runner keeps calling `receive`, which MUST NOT switch the
-  receiver on for good - a radio whose `receive` enters receive mode has to
-  notice it is inside a window and only drain its queue.
-- **A radio clock** (`RadioCaps::clock`, `otPlatRadioGetNow`) shared by the
-  window start, the frame timestamps (`PsduRxInfo::timestamp_us`) and the CSL
-  sample time (`CslConfig::sample_time_us`). OpenThread's own microsecond
-  alarm runs on it too, so all of its CSL arithmetic is in one time base.
-  The crate reads it synchronously from contexts that cannot reach the
-  `Radio` instance, hence a plain function.
-- **Enhanced-ACK security** (`Radio::set_mac_keys`, `Radio::set_mac_frame_counter`,
-  `PsduRxInfo::ack_security`): the parent's frames are secured, so the ACKs -
-  which the radio generates, with the CSL IE from `Radio::set_csl` inside -
+OpenThread drives it through three platform APIs, all optional on the `Radio` trait and only exercised when the radio advertises
+`Capabilities::RECEIVE_TIMING`:
+
+- **Timed receive** (`Radio::set_receive_at`, `otPlatRadioReceiveAt`)
+  "receiver on at `start` for `duration`, then off".
+  The window is a fifth commanded state next to Sleep/Receive/Transmit/EnergyScan, entered from Sleep and left by the next command
+  (OpenThread's `Sleep` at the window's end). While it lasts, the runner keeps calling `receive`, which MUST NOT switch the receiver on - a radio whose `receive` enters receive mode has to notice it is inside a window and only drain its queue.
+- **A radio clock** (`RadioCaps::clock`, `otPlatRadioGetNow`)
+  Used for timing the window start, the frame timestamps (`PsduRxInfo::timestamp_us`) and the CSL sample time (`CslConfig::sample_time_us`).
+  OpenThread's own microsecond alarm runs on this clock too, so all of its CSL arithmetic is in one time base.
+  The crate reads it synchronously from contexts that cannot reach the `Radio` instance, hence why this needs to be a plain function.
+- **Enhanced-ACK security** (`Radio::set_mac_keys`, `Radio::set_mac_frame_counter`, `PsduRxInfo::ack_security`)
+  The parent's frames are secured, so the ACKs which the radio generates - with the CSL IE from `Radio::set_csl` inside -
   must be secured too, with the child's own key and frame counter.
-- **Transmit-time frame finishing** (`Capabilities::TRANSMIT_SEC`, `PsduTxInfo`):
-  a CSL child's own frames (its data polls, its Child Update Requests) carry
-  a CSL IE whose phase is meaningful only relative to the moment the frame
-  goes on the air. OpenThread therefore never fills that IE itself: it leaves
-  the frame counter, the CSL IE and the AES-CCM* to the platform
+- **Transmit-time frame finishing** (`Capabilities::TRANSMIT_SEC`, `PsduTxInfo`)
+  A CSL child's own frames (its data polls, its Child Update Requests) carry a CSL IE whose phase is meaningful only relative to the moment the
+  frame goes on the air.
+  OpenThread therefore never fills that IE itself: it leaves the frame counter, the CSL IE and the AES-CCM* to the platform
   (`OT_RADIO_CAPS_TRANSMIT_SEC`), to be done as the frame is transmitted.
-  The crate advertises that capability unconditionally and honours it in one
-  of two ways. A radio that advertises `TRANSMIT_SEC` on the trait gets the
-  raw frame plus a `PsduTxInfo` and finishes it in its own buffer, at the true
-  transmit time (the nRF driver's security and IE writers); it writes the
-  finished frame back and marks the header updated, since OpenThread reads
-  the frame counter it used from it. Every other radio gets the frame already
-  finished by the crate, right before `transmit`, with OpenThread's own
-  platform helper (`otMacFrameProcessTxSfd`) and a phase computed as of then -
-  a CSMA backoff earlier than the truth, which the receive window's trailing
-  edge absorbs. The keys and counters for that come from the same
-  `otPlatRadioSetMacKey` / `otPlatRadioSetMacFrameCounter` calls the radio
+  The crate advertises that capability unconditionally and honours it in one of two ways. A radio that advertises `TRANSMIT_SEC` on the trait
+  gets the raw frame plus a `PsduTxInfo` and finishes it in its own buffer, at the true transmit time (the nRF driver's security and IE writers); it writes the finished frame back and marks the header updated, since OpenThread reads the frame counter it used from it. 
+  Every other radio gets the frame already finished by the crate, right before `transmit`, with OpenThread's own platform helper (`otMacFrameProcessTxSfd`) and a phase computed as of then - a CSMA backoff earlier than the truth, which the receive window's trailing
+  edge absorbs. The keys and counters for that come from the same `otPlatRadioSetMacKey` / `otPlatRadioSetMacFrameCounter` calls the radio
   gets; the crate mirrors them into the helper's context.
 
-The MAC keys and the frame counter are pushed to every radio (OpenThread
-does not know which ones secure ACKs); the trait defaults ignore them.
+The MAC keys and the frame counter are pushed to every radio (OpenThread does not know which ones secure ACKs); the trait defaults ignore them.
 
 ## The radio state machine
 
