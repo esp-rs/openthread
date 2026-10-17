@@ -21,7 +21,7 @@ use log::info;
 use openthread::spinel::{
     SerialPort, SpinelRadio, SpinelRadioResources, UartSpinelTransport, UartTransportResources,
 };
-use openthread::{DnsResponse, OpenThread, OtResources, OtUdpResources, SimpleRamSettings};
+use openthread::{DnsResponse, OpenThread, OtResources, OtUdpResources, Radio, SimpleRamSettings};
 
 use rand::rngs::{StdRng, SysRng};
 use rand::{Rng, SeedableRng};
@@ -89,9 +89,6 @@ async fn main_task(spawner: Spawner) {
     // Pure DNS *client*: no SRP resources needed. We still `srp_autostart()`
     // below (works without SRP resources) so the DNS client auto-discovers its
     // server.
-    let ot = OpenThread::new_with_udp(ieee_eui64, rng, ot_settings, ot_resources, ot_udp_resources)
-        .unwrap();
-
     // The radio/transport buffers, in `const`-constructed statics (`.bss`), so
     // they never travel through the stack.
     static RADIO_RESOURCES: ConstStaticCell<SpinelRadioResources> =
@@ -100,10 +97,21 @@ async fn main_task(spawner: Spawner) {
         ConstStaticCell::new(UartTransportResources::new());
 
     let serial = SerialPort::open(&serial_path, baud).expect("open RCP serial");
-    let radio = SpinelRadio::new(
+    let mut radio = SpinelRadio::new(
         UartSpinelTransport::new(serial, UART_RESOURCES.take()),
         RADIO_RESOURCES.take(),
     );
+    let radio_caps = radio.init().await.unwrap();
+
+    let ot = OpenThread::new_with_udp(
+        ieee_eui64,
+        &radio_caps,
+        rng,
+        ot_settings,
+        ot_resources,
+        ot_udp_resources,
+    )
+    .unwrap();
 
     spawner.spawn(run_ot(ot.clone(), radio).unwrap());
 

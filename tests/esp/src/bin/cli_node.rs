@@ -62,7 +62,7 @@ use esp_bootloader_esp_idf::partitions::{
 use esp_storage::FlashStorage;
 
 use openthread::esp::EspRadio;
-use openthread::{OpenThread, OtResources};
+use openthread::{OpenThread, OtResources, Radio};
 
 use tinyrlibc as _;
 
@@ -131,15 +131,12 @@ async fn main(spawner: Spawner) {
         FlashSettings::new(flash, nvs_offset, ot_settings_buf)
     );
 
-    let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
+    let mut radio = EspRadio::new(Ieee802154::new(peripherals.IEEE802154));
+    let radio_caps = radio.init().await.unwrap();
 
-    spawner.spawn(
-        run_ot(
-            ot.clone(),
-            EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
-        )
-        .unwrap(),
-    );
+    let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, ot_settings, ot_resources).unwrap();
+
+    spawner.spawn(run_ot(ot.clone(), radio).unwrap());
 
     let (console_rx, console_tx) = UsbSerialJtag::new(peripherals.USB_DEVICE)
         .into_async()

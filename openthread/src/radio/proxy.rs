@@ -12,7 +12,9 @@ use embassy_sync::zerocopy_channel::{Channel, Receiver, Sender};
 
 use crate::fmt::Bytes;
 use crate::sys::{OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID};
-use crate::{Config, PsduMeta, Radio, RadioCaps, RadioError as _, RadioErrorKind, SrcMatchConfig};
+use crate::{
+    Config, PsduRxInfo, Radio, RadioCaps, RadioError as _, RadioErrorKind, SrcMatchConfig,
+};
 
 /// The resources for the radio proxy.
 pub struct ProxyRadioResources {
@@ -224,12 +226,13 @@ impl Radio for ProxyRadio<'_> {
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        _psdu_tx: &mut crate::PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
         trace!("ProxyRadio, about to transmit: {}", Bytes(psdu));
 
         let response = self
@@ -241,12 +244,16 @@ impl Radio for ProxyRadio<'_> {
             })
             .await;
 
-        let psdu_meta = (ack_psdu_buf.is_some() && !response.psdu.is_empty()).then_some(PsduMeta {
-            len: response.psdu.len(),
-            channel: response.psdu_channel,
-            rssi: response.psdu_rssi,
-            lqi: response.psdu_lqi,
-        });
+        let psdu_meta =
+            (ack_psdu_buf.is_some() && !response.psdu.is_empty()).then_some(PsduRxInfo {
+                len: response.psdu.len(),
+                channel: response.psdu_channel,
+                rssi: response.psdu_rssi,
+                lqi: response.psdu_lqi,
+                timestamp_us: None,
+                ack_security: None,
+                acked_with_frame_pending: None,
+            });
 
         if let Some(ack_psdu_buf) = ack_psdu_buf {
             if psdu_meta.is_some() {
@@ -259,7 +266,7 @@ impl Radio for ProxyRadio<'_> {
         response.result.map(|_| psdu_meta)
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         trace!("ProxyRadio, about to receive");
 
         // Cancellation-safe by construction: the only await is the channel pop,
@@ -489,9 +496,21 @@ impl PhyRadioRunner<'_> {
             } => {
                 unwrap!(response.psdu.resize_default(response.psdu.capacity()));
 
+                // The frame arrives here finished by the stack side: nothing
+                // for the radio to do to it.
+                let mut psdu_tx = crate::PsduTxInfo {
+                    security_processed: true,
+                    header_updated: true,
+                    ..Default::default()
+                };
+
+                let mut psdu_buf = [0; PSDU_LEN];
+                psdu_buf[..psdu.len()].copy_from_slice(psdu);
+
                 let result = radio
                     .transmit(
-                        psdu,
+                        &mut psdu_buf[..psdu.len()],
+                        &mut psdu_tx,
                         *channel,
                         *power,
                         *cca_threshold,
@@ -693,7 +712,7 @@ impl ProxyRadioResponse {
 /// A frame received by the PHY radio, on its way to the proxy.
 struct ProxyRadioFrame {
     /// The outcome of the receive operation - the frame meta-data on success
-    result: Result<PsduMeta, RadioErrorKind>,
+    result: Result<PsduRxInfo, RadioErrorKind>,
     /// The received PSDU, valid up to `result`'s length on success
     psdu: [u8; PSDU_LEN],
 }
@@ -702,11 +721,14 @@ impl ProxyRadioFrame {
     /// Create a new empty proxy radio frame.
     const fn new() -> Self {
         Self {
-            result: Ok(PsduMeta {
+            result: Ok(PsduRxInfo {
                 len: 0,
                 channel: 0,
                 rssi: None,
                 lqi: None,
+                timestamp_us: None,
+                ack_security: None,
+                acked_with_frame_pending: None,
             }),
             psdu: [0; PSDU_LEN],
         }

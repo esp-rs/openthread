@@ -40,7 +40,7 @@ use embassy_time::{Duration, Timer};
 use openthread::nrf::{Ieee802154, NrfRadio};
 use openthread::{
     DnsResponse, EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources,
-    OtUdpResources, PhyRadioRunner, ProxyRadio, ProxyRadioResources, SimpleRamSettings,
+    OtUdpResources, PhyRadioRunner, ProxyRadio, ProxyRadioResources, Radio, SimpleRamSettings,
 };
 
 use panic_rtt_target as _;
@@ -116,18 +116,12 @@ async fn main(spawner: Spawner) {
 
     let ot_settings = mk_static!(SimpleRamSettings, SimpleRamSettings::new(ot_settings_buf));
 
-    // No SRP resources are needed: this example is a pure DNS *client*. We still
-    // call `srp_autostart()` below (it works without SRP resources) so the DNS
-    // client can auto-discover its server - see the comment there.
-    let ot = OpenThread::new_with_udp(ieee_eui64, rng, ot_settings, ot_resources, ot_udp_resources)
-        .unwrap();
-
     info!("About to spawn OT runner");
 
     let radio = NrfRadio::new(Ieee802154::new(p.RADIO, Irqs));
 
     let proxy_radio_resources = mk_static!(ProxyRadioResources, ProxyRadioResources::new());
-    let (proxy_radio, phy_radio_runner) = ProxyRadio::new(proxy_radio_resources);
+    let (mut proxy_radio, phy_radio_runner) = ProxyRadio::new(proxy_radio_resources);
 
     // High-priority executor: EGU0_SWI0, priority level 7
     interrupt::EGU0_SWI0.set_priority(Priority::P7);
@@ -135,7 +129,22 @@ async fn main(spawner: Spawner) {
     let spawner_high = EXECUTOR_HIGH.start(interrupt::EGU0_SWI0);
     spawner_high.spawn(run_radio(phy_radio_runner, radio).unwrap());
 
+    let radio_caps = proxy_radio.init().await.unwrap();
+
     info!("Radio created");
+
+    // No SRP resources are needed: this example is a pure DNS *client*. We still
+    // call `srp_autostart()` below (it works without SRP resources) so the DNS
+    // client can auto-discover its server - see the comment there.
+    let ot = OpenThread::new_with_udp(
+        ieee_eui64,
+        &radio_caps,
+        rng,
+        ot_settings,
+        ot_resources,
+        ot_udp_resources,
+    )
+    .unwrap();
 
     spawner.spawn(run_ot(ot.clone(), proxy_radio).unwrap());
 

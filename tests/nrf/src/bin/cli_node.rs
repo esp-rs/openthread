@@ -60,7 +60,7 @@ use embassy_usb::UsbDevice;
 use openthread::nrf::NrfRadio;
 use openthread::{
     EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources, PhyRadioRunner,
-    ProxyRadio, ProxyRadioResources,
+    ProxyRadio, ProxyRadioResources, Radio,
 };
 
 use tinyrlibc as _;
@@ -217,7 +217,7 @@ fn main() -> ! {
 #[embassy_executor::task]
 async fn run_node(
     spawner: Spawner,
-    radio: ProxyRadio<'static>,
+    mut radio: ProxyRadio<'static>,
     console_rx: ConsoleRx,
     rng: &'static mut Rng<'static, Blocking>,
     ot_settings: &'static mut FlashSettings,
@@ -229,9 +229,11 @@ async fn run_node(
 
     let ot_resources = mk_static!(OtResources, OtResources::new());
 
+    let radio_caps = radio.init().await.unwrap();
+
     defmt::info!("ot init");
 
-    let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
+    let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, ot_settings, ot_resources).unwrap();
 
     defmt::info!("ot up");
 
@@ -336,8 +338,25 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
         // No await between taking the bytes and claiming them - see `tx_begin`.
         console::tx_begin();
 
+        // Write *all* of it: a buffered write reports how many bytes it took,
+        // and a burst larger than the TX ring buffer is accepted in pieces.
+        // Discarding that count truncates CLI output mid-line, which the
+        // harness sees as a command that never finished answering.
         #[cfg(not(feature = "console-usb"))]
-        let _ = console_tx.write(&buf[..len]).await;
+        {
+            let mut sent = 0;
+            while sent < len {
+                match console_tx.write(&buf[sent..len]).await {
+                    Ok(0) | Err(_) => break,
+                    Ok(n) => sent += n,
+                }
+            }
+
+            // Past the ring buffer and onto the wire. Without this, `drained`
+            // would report bytes delivered while they are still queued, and a
+            // reset following a reply would truncate it.
+            let _ = console_tx.flush().await;
+        }
 
         #[cfg(feature = "console-usb")]
         {

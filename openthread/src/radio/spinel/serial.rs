@@ -6,10 +6,23 @@
 //! (which adds the HDLC framing the UART wire needs):
 //!
 //! ```ignore
-//! use openthread::radio::spinel::{SerialPort, SpinelRadio, UartSpinelTransport};
+//! use openthread::spinel::{
+//!     SerialPort, SpinelRadio, SpinelRadioResources, UartSpinelTransport, UartTransportResources,
+//! };
+//!
+//! static RADIO_RESOURCES: ConstStaticCell<SpinelRadioResources> =
+//!     ConstStaticCell::new(SpinelRadioResources::new());
+//! static UART_RESOURCES: ConstStaticCell<UartTransportResources> =
+//!     ConstStaticCell::new(UartTransportResources::new());
 //!
 //! let serial = SerialPort::open("/dev/ttyUSB0", 115_200)?;
-//! let radio = SpinelRadio::new(UartSpinelTransport::new(serial));
+//! let mut radio = SpinelRadio::new(
+//!     UartSpinelTransport::new(serial, UART_RESOURCES.take()),
+//!     RADIO_RESOURCES.take(),
+//! );
+//! let radio_caps = radio.init().await?;
+//!
+//! let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, settings, resources)?;
 //! ot.run(radio).await
 //! ```
 //!

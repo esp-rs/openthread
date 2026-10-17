@@ -97,6 +97,18 @@ const RESET_ATTEMPTS: usize = 3;
 /// How long each of those attempts waits for the prompt.
 const RESET_ATTEMPT_TIMEOUT: Duration = Duration::from_secs(3);
 
+/// How long an acknowledged reset gets to take effect before the bridge
+/// starts probing for the fresh instance. A firmware node answers the reset
+/// command *first* (`Done` and a prompt from the instance that is about to
+/// die) and reboots *then* - after flushing its settings, which on a flash
+/// page can take tens of milliseconds - so a command written into that gap
+/// reaches nobody. Sized for a slow flush with margin; costs that much once
+/// per node per test.
+const REBOOT_GRACE: Duration = Duration::from_millis(500);
+
+/// How long each probe for the rebooted instance's prompt waits.
+const PROBE_TIMEOUT: Duration = Duration::from_millis(300);
+
 /// How long a vanished device gets to re-enumerate before the bridge gives
 /// up and exits. Covers a chip reset plus USB re-enumeration with a wide
 /// margin; a device still gone after this is not rebooting, it is dead.
@@ -446,6 +458,9 @@ fn reset_device(device: &mut Device) {
         device.write(format!("{command}\r\n").as_bytes());
 
         if await_prompt(device, RESET_ATTEMPT_TIMEOUT) {
+            // That prompt acknowledged the command; the reboot it triggers
+            // is still ahead. Wait for the instance that survives it.
+            await_reboot(device);
             return;
         }
 
@@ -486,6 +501,46 @@ fn reset_device(device: &mut Device) {
                     Some(Duration::from_millis(100)),
                 );
             }
+        }
+    }
+}
+
+/// Wait out an acknowledged reset and find the rebooted instance's prompt.
+///
+/// First a grace period in which everything the dying instance and the boot
+/// still say is discarded (a boot banner, the odd framing-error byte the
+/// UART reconfiguration produces, the echo of the empty lines around the
+/// reset command). Then the device is prodded with an empty line until it
+/// answers with a prompt: a chip still restarting answers nothing, a chip
+/// whose console is USB is reconnected by [`Device::read`] along the way,
+/// and the first prompt back is the fresh instance's. Bounded by
+/// [`PROMPT_TIMEOUT`]; past it the bridge goes transparent and lets the
+/// harness report whatever the device is doing.
+fn await_reboot(device: &mut Device) {
+    let deadline = Instant::now() + PROMPT_TIMEOUT;
+    let grace_end = Instant::now() + REBOOT_GRACE;
+    let mut buf = [0; 256];
+
+    while Instant::now() < grace_end {
+        if device.read(&mut buf).is_none() {
+            if device.take_reconnected() {
+                break;
+            }
+
+            wait(
+                &device.fd,
+                PollFlags::POLLIN,
+                Some(Duration::from_millis(10)),
+            );
+        }
+    }
+
+    while Instant::now() < deadline {
+        settle(device);
+        device.write(b"\r\n");
+
+        if await_prompt(device, PROBE_TIMEOUT) {
+            return;
         }
     }
 }
