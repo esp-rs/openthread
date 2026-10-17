@@ -60,7 +60,7 @@ use embassy_usb::UsbDevice;
 use openthread::nrf::NrfRadio;
 use openthread::{
     EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources, PhyRadioRunner,
-    ProxyRadio, ProxyRadioResources,
+    ProxyRadio, ProxyRadioResources, Radio,
 };
 
 use tinyrlibc as _;
@@ -217,7 +217,7 @@ fn main() -> ! {
 #[embassy_executor::task]
 async fn run_node(
     spawner: Spawner,
-    radio: ProxyRadio<'static>,
+    mut radio: ProxyRadio<'static>,
     console_rx: ConsoleRx,
     rng: &'static mut Rng<'static, Blocking>,
     ot_settings: &'static mut FlashSettings,
@@ -229,9 +229,11 @@ async fn run_node(
 
     let ot_resources = mk_static!(OtResources, OtResources::new());
 
+    let radio_caps = radio.init().await.unwrap();
+
     defmt::info!("ot init");
 
-    let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
+    let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, ot_settings, ot_resources).unwrap();
 
     defmt::info!("ot up");
 

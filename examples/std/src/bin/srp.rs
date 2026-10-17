@@ -20,8 +20,8 @@ use openthread::spinel::{
     SerialPort, SpinelRadio, SpinelRadioResources, UartSpinelTransport, UartTransportResources,
 };
 use openthread::{
-    BytesFmt, OpenThread, OtResources, OtSrpResources, OtUdpResources, SimpleRamSettings, SrpConf,
-    SrpService, UdpSocket,
+    BytesFmt, OpenThread, OtResources, OtSrpResources, OtUdpResources, Radio, SimpleRamSettings,
+    SrpConf, SrpService, UdpSocket,
 };
 
 use rand::rngs::{StdRng, SysRng};
@@ -94,16 +94,6 @@ async fn main_task(spawner: Spawner) {
     let ot_settings_buf = OT_SETTINGS_BUF.init([0; 1024]);
     let ot_settings = OT_SETTINGS.init(SimpleRamSettings::new(ot_settings_buf));
 
-    let ot = OpenThread::new_with_udp_srp(
-        ieee_eui64,
-        rng,
-        ot_settings,
-        ot_resources,
-        ot_udp_resources,
-        ot_srp_resources,
-    )
-    .unwrap();
-
     // The radio/transport buffers, in `const`-constructed statics (`.bss`), so
     // they never travel through the stack.
     static RADIO_RESOURCES: ConstStaticCell<SpinelRadioResources> =
@@ -112,10 +102,22 @@ async fn main_task(spawner: Spawner) {
         ConstStaticCell::new(UartTransportResources::new());
 
     let serial = SerialPort::open(&serial_path, baud).expect("open RCP serial");
-    let radio = SpinelRadio::new(
+    let mut radio = SpinelRadio::new(
         UartSpinelTransport::new(serial, UART_RESOURCES.take()),
         RADIO_RESOURCES.take(),
     );
+    let radio_caps = radio.init().await.unwrap();
+
+    let ot = OpenThread::new_with_udp_srp(
+        ieee_eui64,
+        &radio_caps,
+        rng,
+        ot_settings,
+        ot_resources,
+        ot_udp_resources,
+        ot_srp_resources,
+    )
+    .unwrap();
 
     spawner.spawn(run_ot(ot.clone(), radio).unwrap());
     spawner.spawn(run_ot_info(ot.clone()).unwrap());

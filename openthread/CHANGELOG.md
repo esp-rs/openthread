@@ -16,12 +16,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   * `PsduRxInfo` gains `acked_with_frame_pending`: the Frame Pending bit of the ACK the radio sent
   * `RadioCaps` gains `bus_speed` and `bus_latency_us`, for an FTD to hand frames for its CSL children to a remote radio early enough
   * `SpinelRadio`: CSL transmitter support (timed transmission in the RCP clock, MAC keys and frame counter handed to the RCP)
+  * `OpenThread::new*` take the radio's capabilities (`&RadioCaps`): the user calls `Radio::init` before constructing, as OpenThread reads them only once, when constructed
 * Fix: the radio runner kept just one pending radio command, which any later one replaced - or cancelled mid-way - so a transmission or energy scan could be lost, or cut short without OpenThread hearing about it (it then waited for it), and a CSL receive window could be skipped or cut short. Now replaced with a set of states the radio runner works through.
 * Fix: with a radio that does not secure its own frames, a retried indirect frame (to a sleepy or CSL child) was secured with a null key, crashing the node
 * Fix: `SpinelRadio` reported failed transmissions as successes, so OpenThread never retried or counted them
 * Fix: `SpinelRadio` read the radio capabilities from the wrong property, and retuned the RCP to a frame's channel instead of returning to the receive channel after it
 * Fix: a data poll in an 802.15.4-2015 frame (as a CSL child polls) was not recognized as acknowledged with Frame Pending, so the parent never answered it from its indirect queue
 * Fix: a CSL child on a timed-receive radio kept its receiver on after its own transmissions, and indefinitely once CSL was turned off
+* Fix: OpenThread never learned that a radio sleeps by itself when idle (`Capabilities::AUTO_SLEEP`): it read the radio capabilities before the radio was brought up
 * `serial_bridge`: wait out the reboot an acknowledged `factoryreset` still has ahead of it before talking to the device
 * Fix: OpenThread refcount underflow in the new_with_* constructors on drop (#123)
 

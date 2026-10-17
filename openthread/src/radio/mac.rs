@@ -128,8 +128,10 @@ impl<const RX_QUEUE_SIZE: usize> Default for MacRadioResources<RX_QUEUE_SIZE> {
 /// static MAC_RADIO_RESOURCES: StaticCell<MacRadioResources> = StaticCell::new();
 /// let mac_radio_resources = MAC_RADIO_RESOURCES.init(MacRadioResources::new());
 ///
-/// let radio = MacRadio::new(MyBarePhyRadio::new(...), MyTimer, mac_radio_resources);
+/// let mut radio = MacRadio::new(MyBarePhyRadio::new(...), MyTimer, mac_radio_resources);
+/// let radio_caps = radio.init().await?;
 ///
+/// let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, settings, resources)?;
 /// ot.run(radio).await
 /// ```
 ///

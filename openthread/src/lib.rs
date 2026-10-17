@@ -84,7 +84,7 @@ use sys::{
     otPlatAlarmMilliFired, otPlatRadioEnergyScanDone, otPlatRadioReceiveDone, otPlatRadioTxDone,
     otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess,
     otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode,
-    OT_RADIO_CAPS_ACK_TIMEOUT, OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
+    OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
 };
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
@@ -192,6 +192,8 @@ impl<'a> OpenThread<'a> {
     ///
     /// Arguments:
     /// - `ieee_eui64`: The IEEE EUI-64 address of the Radio device.
+    /// - `radio_caps`: The capabilities of the radio to be passed to [`Self::run`], as its
+    ///   [`Radio::init`] reported them.
     /// - `rng`: A mutable reference to a random number generator that will be used by OpenThread.
     /// - `resources`: A mutable reference to the OpenThread resources.
     ///
@@ -199,6 +201,7 @@ impl<'a> OpenThread<'a> {
     /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
     pub fn new(
         ieee_eui64: [u8; 8],
+        radio_caps: &RadioCaps,
         rng: &'a mut dyn OtRng,
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
@@ -208,6 +211,7 @@ impl<'a> OpenThread<'a> {
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
+            radio_caps,
             unsafe { core::mem::transmute::<&'a mut dyn OtRng, &'static mut dyn OtRng>(rng) },
             unsafe {
                 core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
@@ -234,6 +238,8 @@ impl<'a> OpenThread<'a> {
     ///
     /// Arguments:
     /// - `ieee_eui64`: The IEEE EUI-64 address of the Radio device.
+    /// - `radio_caps`: The capabilities of the radio to be passed to [`Self::run`], as its
+    ///   [`Radio::init`] reported them.
     /// - `rng`: A mutable reference to a random number generator that will be used by OpenThread.
     /// - `resources`: A mutable reference to the OpenThread resources.
     /// - `udp_resources`: A mutable reference to the OpenThread UDP resources.
@@ -242,6 +248,7 @@ impl<'a> OpenThread<'a> {
     /// - In case there were no errors related to initializing the OpenThread library, the OpenThread instance.
     pub fn new_with_udp<const UDP_SOCKETS: usize, const UDP_RX_SZ: usize>(
         ieee_eui64: [u8; 8],
+        radio_caps: &RadioCaps,
         rng: &'a mut dyn OtRng,
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
@@ -252,6 +259,7 @@ impl<'a> OpenThread<'a> {
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
+            radio_caps,
             unsafe { core::mem::transmute::<&'a mut dyn OtRng, &'static mut dyn OtRng>(rng) },
             unsafe {
                 core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
@@ -285,6 +293,8 @@ impl<'a> OpenThread<'a> {
     ///
     /// Arguments:
     /// - `ieee_eui64`: The IEEE EUI-64 address of the Radio device.
+    /// - `radio_caps`: The capabilities of the radio to be passed to [`Self::run`], as its
+    ///   [`Radio::init`] reported them.
     /// - `rng`: A mutable reference to a random number generator that will be used by OpenThread.
     /// - `resources`: A mutable reference to the OpenThread resources.
     /// - `srp_resources`: A mutable reference to the OpenThread SRP resources.
@@ -294,6 +304,7 @@ impl<'a> OpenThread<'a> {
     #[cfg(feature = "srp-client")]
     pub fn new_with_srp<const SRP_SVCS: usize, const SRP_BUF_SZ: usize>(
         ieee_eui64: [u8; 8],
+        radio_caps: &RadioCaps,
         rng: &'a mut dyn OtRng,
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
@@ -304,6 +315,7 @@ impl<'a> OpenThread<'a> {
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
+            radio_caps,
             unsafe { core::mem::transmute::<&'a mut dyn OtRng, &'static mut dyn OtRng>(rng) },
             unsafe {
                 core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
@@ -336,6 +348,8 @@ impl<'a> OpenThread<'a> {
     ///
     /// Arguments:
     /// - `ieee_eui64`: The IEEE EUI-64 address of the Radio device.
+    /// - `radio_caps`: The capabilities of the radio to be passed to [`Self::run`], as its
+    ///   [`Radio::init`] reported them.
     /// - `rng`: A mutable reference to a random number generator that will be used by OpenThread.
     /// - `resources`: A mutable reference to the OpenThread resources.
     /// - `udp_resources`: A mutable reference to the OpenThread UDP resources.
@@ -351,6 +365,7 @@ impl<'a> OpenThread<'a> {
         const SRP_BUF_SZ: usize,
     >(
         ieee_eui64: [u8; 8],
+        radio_caps: &RadioCaps,
         rng: &'a mut dyn OtRng,
         settings: &'a mut dyn Settings,
         resources: &'a mut OtResources,
@@ -360,9 +375,9 @@ impl<'a> OpenThread<'a> {
         Self::acquire()?;
 
         // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
-        // Needed so that we convert from the the actual `'a` lifetime of `rng` to the fake `'static` lifetime in `OtResources`
         let state = resources.init(
             ieee_eui64,
+            radio_caps,
             unsafe { core::mem::transmute::<&'a mut dyn OtRng, &'static mut dyn OtRng>(rng) },
             unsafe {
                 core::mem::transmute::<&'a mut dyn Settings, &'static mut dyn Settings>(settings)
@@ -961,35 +976,16 @@ impl<'a> OpenThread<'a> {
         unsafe { sys::otThreadSetChildTimeout(state.ot.instance, timeout_secs) }
     }
 
-    /// The PHY capabilities the radio reported when it was brought up, or `None`
-    /// while `run` has not brought it up yet (see [`Self::wait_radio_ready`]).
+    /// The PHY capabilities of the radio, as passed to the constructor.
     ///
     /// [`Capabilities::RECEIVE_TIMING`] in the set means the radio can run CSL
     /// (see [`Self::set_csl_period`]). Without the `csl-receiver` feature that
     /// capability is never reported, as the stack is built without CSL.
-    pub fn radio_caps(&self) -> Option<Capabilities> {
+    pub fn radio_caps(&self) -> Capabilities {
         let mut ot = self.activate();
         let state = ot.state();
 
-        state
-            .ot
-            .radio_initialized
-            .then(|| Capabilities::from_bits_truncate(state.ot.radio_caps as _))
-    }
-
-    /// Wait until `run` has brought the radio up and [`Self::radio_caps`] is known.
-    pub async fn wait_radio_ready(&self) {
-        loop {
-            {
-                let mut ot = self.activate();
-
-                if ot.state().ot.radio_initialized {
-                    break;
-                }
-            }
-
-            poll_fn(|cx| self.activate().state().ot.radio_ready.poll_wait(cx)).await;
-        }
+        Capabilities::from_bits_truncate(state.ot.radio_caps as _)
     }
 
     /// Return the CSL (Coordinated Sampled Listening) period, in microseconds
@@ -1023,9 +1019,8 @@ impl<'a> OpenThread<'a> {
     /// [`Self::CSL_MAX_PERIOD_US`]; other values are rejected with
     /// `INVALID_ARGS`. It also takes a radio with timed receive: with a radio
     /// that lacks [`Capabilities::RECEIVE_TIMING`] a non-zero period is rejected
-    /// with `NOT_CAPABLE`, and so is one requested before the radio is brought
-    /// up (see [`Self::wait_radio_ready`]). Without the `csl-receiver` feature
-    /// every non-zero period is rejected with `NOT_CAPABLE`.
+    /// with `NOT_CAPABLE`. Without the `csl-receiver` feature every non-zero
+    /// period is rejected with `NOT_CAPABLE`.
     ///
     /// The data-poll period keeps its own meaning next to CSL: with CSL enabled
     /// OpenThread only polls at the CSL timeout ([`Self::set_csl_timeout`]) to
@@ -1033,11 +1028,7 @@ impl<'a> OpenThread<'a> {
     /// period ([`Self::set_poll_period`]) is set - so leave the poll period at
     /// its automatic default (`0`) when using CSL.
     pub fn set_csl_period(&self, period_micros: u32) -> Result<(), OtError> {
-        if period_micros != 0
-            && !self
-                .radio_caps()
-                .is_some_and(|caps| caps.contains(Capabilities::RECEIVE_TIMING))
-        {
+        if period_micros != 0 && !self.radio_caps().contains(Capabilities::RECEIVE_TIMING) {
             return Err(OtError::new(sys::otError_OT_ERROR_NOT_CAPABLE));
         }
 
@@ -1076,6 +1067,40 @@ impl<'a> OpenThread<'a> {
 
         caps
     };
+
+    /// The capabilities OpenThread is told about (`otPlatRadioGetCaps`, which
+    /// it reads once, when the instance is constructed): those this crate
+    /// provides for every radio, plus the radio's own timed receive and
+    /// auto-sleep.
+    ///
+    /// Provided for every radio:
+    /// - `ACK_TIMEOUT`: the radio owns the ACKs of its transmissions, or is
+    ///   wrapped in a `MacRadio` that does ([`MacCapabilities::REQUIRED`]).
+    /// - `ENERGY_SCAN`: scans always go to [`Radio::energy_scan`], whose default
+    ///   reports no measurement; OpenThread's own fallback needs a synchronous
+    ///   RSSI read, which an async radio cannot offer.
+    /// - `TRANSMIT_SEC`, with a CSL role: the frames a radio does not finish
+    ///   itself are finished here right before transmission, so that a CSL
+    ///   child advertises its phase as of transmit time.
+    /// - `TRANSMIT_TIMING`, on an FTD: the frames to CSL children are timed by
+    ///   the radio, or else here (see `process_radio_tx`).
+    ///
+    /// Anything else the radio does - retransmissions, CSMA backoff - stays
+    /// OpenThread's, as the [`Radio`] contract has it.
+    fn reported_radio_caps(radio_caps: Capabilities) -> otRadioCaps {
+        let caps = radio_caps
+            .intersection(Capabilities::RECEIVE_TIMING.union(Capabilities::AUTO_SLEEP))
+            .union(Capabilities::ACK_TIMEOUT)
+            .union(Capabilities::ENERGY_SCAN);
+
+        #[cfg(feature = "_csl")]
+        let caps = caps.union(Capabilities::TRANSMIT_SEC);
+
+        #[cfg(feature = "ftd")]
+        let caps = caps.union(Capabilities::TRANSMIT_TIMING);
+
+        caps.bits() as _
+    }
 
     /// Return the CSL timeout, in seconds (`otLinkGetCslTimeout`): how long the
     /// parent keeps a CSL child synchronized without hearing from it.
@@ -1279,7 +1304,8 @@ impl<'a> OpenThread<'a> {
     /// Run the OpenThread stack with the provided radio implementation.
     ///
     /// Arguments:
-    /// - `radio`: The radio to be used by the OpenThread stack.
+    /// - `radio`: The radio to be used by the OpenThread stack: the one whose capabilities
+    ///   ([`Radio::init`]) were passed to the constructor.
     ///
     /// NOTE:
     /// It is not advised to call this method concurrently from multiple async tasks
@@ -1287,7 +1313,7 @@ impl<'a> OpenThread<'a> {
     /// the tasks will fight with each other by each re-registering its own waker, thus keeping the CPU constantly busy.
     ///
     /// NOTE:
-    /// The radio must offload the complete MAC (`MacCapabilities::REQUIRED`), or this method panics.
+    /// The radio must offload the complete MAC (`MacCapabilities::REQUIRED`), or the constructor panics.
     /// A radio that does not - a bare PHY, typically - has to be wrapped by the caller in a `MacRadio`,
     /// which emulates the missing capabilities in software.
     ///
@@ -1545,68 +1571,6 @@ impl<'a> OpenThread<'a> {
     where
         R: Radio,
     {
-        // Bring the radio up and fetch its runtime capabilities, then cache the
-        // PHY set for `otPlatRadioGetCaps`. This runs before the loop below first
-        // pumps the OpenThread stack, so the caps are in place before the stack
-        // can ask for them. A radio with statically-known caps returns them
-        // directly; one that discovers them from hardware (e.g. `SpinelRadio`
-        // querying its RCP) reports the discovered set. (The MAC set is not
-        // reported to the C stack; it is checked below.) On failure we advertise
-        // no PHY offload (OpenThread then does everything in software) and let
-        // the radio recover lazily on the first request.
-        let caps = match radio.init().await {
-            Ok(caps) => caps,
-            Err(e) => {
-                warn!(
-                    "Radio init failed: {:?}; advertising no PHY capabilities",
-                    dbg2fmt!(e)
-                );
-
-                radio::RadioCaps::default()
-            }
-        };
-
-        // The stack drives the radio expecting a complete MAC underneath it.
-        // A radio that does not offload all of it has to be wrapped by the user
-        // in a `MacRadio`, which emulates the rest in software - this crate no
-        // longer does that silently, because the wrapper needs resources and,
-        // more importantly, the timing headroom of its own executor.
-        caps.mac.assert_required();
-
-        {
-            let mut activated = self.activate();
-            let state = activated.state();
-
-            state.ot.radio_caps = caps.phy.difference(Self::UNUSED_RADIO_CAPS).bits();
-            state.ot.radio_sensitivity = caps.receive_sensitivity;
-            state.ot.radio_cca_threshold = caps.default_cca_threshold;
-            state.ot.radio_tx_power = caps.default_tx_power;
-            #[cfg(feature = "_csl")]
-            {
-                state.ot.radio_clock = caps.clock;
-                state.ot.radio_csl_accuracy_ppm = caps.csl_accuracy_ppm;
-                state.ot.radio_csl_uncertainty = caps.csl_uncertainty;
-            }
-            state.ot.radio_initialized = true;
-            state.ot.radio_ready.signal(());
-
-            // OpenThread sizes how early it hands an FTD's frames for CSL
-            // children over by the bus speed and latency, which it read at
-            // construction, before the radio was known.
-            #[cfg(feature = "ftd")]
-            {
-                state.ot.radio_bus_speed = caps.bus_speed;
-                state.ot.radio_bus_latency_us = caps.bus_latency_us;
-
-                unsafe { sys::otPlatRadioBusLatencyChanged(state.ot.instance) };
-            }
-
-            #[cfg(feature = "csl-receiver")]
-            if caps.phy.contains(radio::Capabilities::RECEIVE_TIMING) && caps.clock.is_none() {
-                warn!("Radio advertises timed receive but has no clock; CSL timing will be off");
-            }
-        }
-
         loop {
             self.activate().process_tasklets();
 
@@ -2435,26 +2399,6 @@ impl OtResources {
         }
     }
 
-    /// The CSL-related radio capabilities advertised to OpenThread before the
-    /// actual radio is brought up (see `init`).
-    const CSL_STATIC_RADIO_CAPS: otRadioCaps = {
-        let caps: otRadioCaps = 0;
-
-        #[cfg(feature = "csl-receiver")]
-        let caps = caps | sys::OT_RADIO_CAPS_RECEIVE_TIMING as otRadioCaps;
-
-        #[cfg(feature = "_csl")]
-        let caps = caps | sys::OT_RADIO_CAPS_TRANSMIT_SEC as otRadioCaps;
-
-        // An FTD's frames to its CSL children are handed over ahead of time and
-        // timed either by the radio or by the glue (see `process_radio_tx`),
-        // rather than by OpenThread's own (millisecond-timer) emulation.
-        #[cfg(feature = "ftd")]
-        let caps = caps | sys::OT_RADIO_CAPS_TRANSMIT_TIMING as otRadioCaps;
-
-        caps
-    };
-
     /// Initialize the resources, as they start their life as `MaybeUninit` so as to avoid mem-moves.
     ///
     /// Returns:
@@ -2462,9 +2406,22 @@ impl OtResources {
     fn init(
         &mut self,
         ieee_eui64: [u8; 8],
+        radio_caps: &RadioCaps,
         rng: &'static mut dyn OtRng,
         settings: &'static mut dyn Settings,
     ) -> &RefCell<OtState<'static>> {
+        // The stack drives the radio expecting a complete MAC underneath it.
+        // A radio that does not offload all of it has to be wrapped by the user
+        // in a `MacRadio`, which emulates the rest in software - this crate
+        // does not do that silently, because the wrapper needs resources and,
+        // more importantly, the timing headroom of its own executor.
+        radio_caps.mac.assert_required();
+
+        #[cfg(feature = "csl-receiver")]
+        if radio_caps.phy.contains(Capabilities::RECEIVE_TIMING) && radio_caps.clock.is_none() {
+            warn!("Radio advertises timed receive but has no clock; CSL timing will be off");
+        }
+
         let radio_resources = unsafe { self.radio_resources.assume_init_mut() };
         let dataset_resources = unsafe { self.dataset_resources.assume_init_mut() };
 
@@ -2529,17 +2486,15 @@ impl OtResources {
             #[cfg(feature = "_csl")]
             radio_tx_ctx: unsafe { MaybeUninit::zeroed().assume_init() },
             #[cfg(feature = "_csl")]
-            radio_clock: None,
+            radio_clock: radio_caps.clock,
             #[cfg(feature = "_csl")]
-            radio_csl_accuracy_ppm: u8::MAX,
+            radio_csl_accuracy_ppm: radio_caps.csl_accuracy_ppm,
             #[cfg(feature = "_csl")]
-            radio_csl_uncertainty: u8::MAX,
+            radio_csl_uncertainty: radio_caps.csl_uncertainty,
             #[cfg(feature = "ftd")]
-            radio_bus_speed: 0,
+            radio_bus_speed: radio_caps.bus_speed,
             #[cfg(feature = "ftd")]
-            radio_bus_latency_us: 0,
-            radio_initialized: false,
-            radio_ready: Signal::new(),
+            radio_bus_latency_us: radio_caps.bus_latency_us,
             radio_timed_rx: false,
             radio_enabled: false,
             radio_tx_pending: false,
@@ -2548,42 +2503,13 @@ impl OtResources {
             radio_rx_window: None,
             radio_receive_channel: None,
             last_rssi: OT_RADIO_RSSI_INVALID as i8,
-            // The *initial* radio capabilities, before the actual radio is
-            // brought up by `run_radio` and reports its real set.
-            //
-            // NOTE: capabilities which decide whether OpenThread routes an
-            // operation to the platform radio at all MUST be advertised here:
-            // OpenThread's `SubMac` snapshots `otPlatRadioGetCaps` when the
-            // instance is constructed (`sub_mac.cpp`), which in this crate's
-            // architecture happens before a `Radio` instance is even known.
-            //
-            // `ENERGY_SCAN` is therefore always advertised: scan requests are
-            // always routed to the `Radio` trait, whose default `energy_scan`
-            // implementation reports "no measurement" (invalid RSSI) for
-            // radios that cannot measure channel energy — OpenThread then
-            // omits those channels from the scan results. The alternative
-            // (OpenThread's software sampling fallback) cannot work here
-            // anyway, as it needs a synchronous RSSI read (`otPlatRadioGetRssi`)
-            // which is unimplementable on top of an async radio.
-            //
-            // `RECEIVE_TIMING` likewise (with the `csl-receiver` feature):
-            // OpenThread's `SubMac` decides at construction whether it may ever
-            // run CSL from this snapshot. Whether the actual radio supports it
-            // is checked by `set_csl_period`, the only place that can enable
-            // CSL - so a radio without timed receive is never asked for it.
-            //
-            // `TRANSMIT_SEC` is advertised for every radio when a CSL role is
-            // compiled in: a radio that does not finish its own frames
-            // (counter, CSL IE, AES-CCM*) gets them finished by this crate
-            // right before transmission, with the reference platforms' helper
-            // - which is what lets a CSL child advertise a phase computed at
-            // transmit time rather than one frozen into the MIC by the stack
-            // long before. Without a CSL role OpenThread secures the frames.
-            radio_caps: (OT_RADIO_CAPS_ACK_TIMEOUT | sys::OT_RADIO_CAPS_ENERGY_SCAN) as otRadioCaps
-                | Self::CSL_STATIC_RADIO_CAPS,
-            radio_sensitivity: radio::RadioCaps::DEFAULT_RECEIVE_SENSITIVITY,
-            radio_cca_threshold: radio::RadioCaps::DEFAULT_CCA_THRESHOLD,
-            radio_tx_power: radio::RadioCaps::DEFAULT_TX_POWER,
+            radio_caps: radio_caps
+                .phy
+                .difference(OpenThread::UNUSED_RADIO_CAPS)
+                .bits() as _,
+            radio_sensitivity: radio_caps.receive_sensitivity,
+            radio_cca_threshold: radio_caps.default_cca_threshold,
+            radio_tx_power: radio_caps.default_tx_power,
         }));
 
         info!("OpenThread resources initialized");
@@ -3568,7 +3494,9 @@ impl<'a> OtContext<'a> {
     }
 
     fn plat_radio_caps(&mut self) -> otRadioCaps {
-        let caps = self.state().ot.radio_caps;
+        let caps = OpenThread::reported_radio_caps(Capabilities::from_bits_truncate(
+            self.state().ot.radio_caps as _,
+        ));
         trace!("Plat radio caps callback, caps: {}", caps);
 
         caps
@@ -4289,10 +4217,6 @@ struct OtState<'a> {
     /// `RadioCaps::bus_latency_us` (`otPlatRadioGetBusLatency`).
     #[cfg(feature = "ftd")]
     radio_bus_latency_us: u32,
-    /// Whether `run_radio` has brought the radio up and stored its capabilities.
-    radio_initialized: bool,
-    /// Raised once `radio_initialized` becomes `true`.
-    radio_ready: Signal<()>,
     /// Whether a timed receive window (`otPlatRadioReceiveAt`) is the radio's
     /// current commanded state, as opposed to plain Sleep / Receive.
     radio_timed_rx: bool,
@@ -4315,16 +4239,15 @@ struct OtState<'a> {
     /// The RSSI of the most recently received frame (ACKs included).
     /// Used to answer `otPlatRadioGetRssi` which is synchronous.
     last_rssi: i8,
-    /// Radio capabilities reported to OpenThread via otPlatRadioGetCaps.
-    /// Fetched from the actual radio trait in the `OpenThread::run` API.
+    /// The radio's PHY capabilities (`RadioCaps::phy`), less those this build
+    /// has no use for; what OpenThread is told is derived from them
+    /// (`OpenThread::reported_radio_caps`).
     radio_caps: otRadioCaps,
     /// Receive sensitivity (dBm) reported via `otPlatRadioGetReceiveSensitivity` -
     /// the noise floor OpenThread grades neighbor link margins against.
-    /// Fetched with the capabilities.
     radio_sensitivity: i8,
     /// CCA energy detect threshold (dBm) reported via `otPlatRadioGetCcaEnergyDetectThreshold` -
     /// the threshold OpenThread uses to determine whether the channel is clear.
-    /// Fetched with the capabilities.
     radio_cca_threshold: i8,
     /// Transmit power (dBm) reported via `otPlatRadioGetTransmitPower` and settable via `otPlatRadioSetTransmitPower`.
     radio_tx_power: i8,

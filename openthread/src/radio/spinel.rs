@@ -703,7 +703,10 @@ impl<const RX_QUEUE_DEPTH: usize> Default for SpinelRadioResources<RX_QUEUE_DEPT
 ///
 /// // or SpiSpinelTransport::new(spi, int, polarity, ...)
 /// let transport = UartSpinelTransport::new(uart, ...);
-/// let radio = SpinelRadio::new(transport, RESOURCES.take());
+/// let mut radio = SpinelRadio::new(transport, RESOURCES.take());
+/// let radio_caps = radio.init().await?;
+///
+/// let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, settings, resources)?;
 /// ot.run(radio).await
 /// ```
 pub struct SpinelRadio<'a, T> {

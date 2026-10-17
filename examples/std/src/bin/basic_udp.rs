@@ -19,7 +19,9 @@ use log::info;
 use openthread::spinel::{
     SerialPort, SpinelRadio, SpinelRadioResources, UartSpinelTransport, UartTransportResources,
 };
-use openthread::{BytesFmt, OpenThread, OtResources, OtUdpResources, SimpleRamSettings, UdpSocket};
+use openthread::{
+    BytesFmt, OpenThread, OtResources, OtUdpResources, Radio, SimpleRamSettings, UdpSocket,
+};
 
 use rand::rngs::{StdRng, SysRng};
 use rand::{Rng, SeedableRng};
@@ -85,9 +87,6 @@ async fn main_task(spawner: Spawner) {
     let ot_settings_buf = OT_SETTINGS_BUF.init([0; 1024]);
     let ot_settings = OT_SETTINGS.init(SimpleRamSettings::new(ot_settings_buf));
 
-    let ot = OpenThread::new_with_udp(ieee_eui64, rng, ot_settings, ot_resources, ot_udp_resources)
-        .unwrap();
-
     // The remote radio: a `SpinelRadio` over the host serial port (HDLC-framed).
     // Unlike the embedded examples there is no `ProxyRadio` / high-priority
     // executor split — serial I/O is not latency-critical, so the radio runs
@@ -100,10 +99,21 @@ async fn main_task(spawner: Spawner) {
         ConstStaticCell::new(UartTransportResources::new());
 
     let serial = SerialPort::open(&serial_path, baud).expect("open RCP serial");
-    let radio = SpinelRadio::new(
+    let mut radio = SpinelRadio::new(
         UartSpinelTransport::new(serial, UART_RESOURCES.take()),
         RADIO_RESOURCES.take(),
     );
+    let radio_caps = radio.init().await.unwrap();
+
+    let ot = OpenThread::new_with_udp(
+        ieee_eui64,
+        &radio_caps,
+        rng,
+        ot_settings,
+        ot_resources,
+        ot_udp_resources,
+    )
+    .unwrap();
 
     spawner.spawn(run_ot(ot.clone(), radio).unwrap());
     spawner.spawn(run_ot_ip_info(ot.clone()).unwrap());

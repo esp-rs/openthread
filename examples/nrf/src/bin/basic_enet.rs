@@ -31,7 +31,7 @@ use openthread::enet::{self, EnetDriver, EnetRunner};
 use openthread::nrf::{Ieee802154, NrfRadio};
 use openthread::{
     BytesFmt, EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources,
-    PhyRadioRunner, ProxyRadio, ProxyRadioResources, SimpleRamSettings,
+    PhyRadioRunner, ProxyRadio, ProxyRadioResources, Radio, SimpleRamSettings,
 };
 
 use panic_rtt_target as _;
@@ -108,17 +108,12 @@ async fn main(spawner: Spawner) {
 
     let ot_settings = mk_static!(SimpleRamSettings, SimpleRamSettings::new(ot_settings_buf));
 
-    let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
-
-    let (_enet_controller, enet_driver_runner, enet_driver) =
-        enet::new(ot.clone(), enet_driver_state);
-
     info!("About to spawn OT runner");
 
     let radio = NrfRadio::new(Ieee802154::new(p.RADIO, Irqs));
 
     let proxy_radio_resources = mk_static!(ProxyRadioResources, ProxyRadioResources::new());
-    let (proxy_radio, phy_radio_runner) = ProxyRadio::new(proxy_radio_resources);
+    let (mut proxy_radio, phy_radio_runner) = ProxyRadio::new(proxy_radio_resources);
 
     // High-priority executor: EGU0_SWI0, priority level 7
     interrupt::EGU0_SWI0.set_priority(Priority::P7);
@@ -126,7 +121,14 @@ async fn main(spawner: Spawner) {
     let spawner_high = EXECUTOR_HIGH.start(interrupt::EGU0_SWI0);
     spawner_high.spawn(run_radio(phy_radio_runner, radio).unwrap());
 
+    let radio_caps = proxy_radio.init().await.unwrap();
+
     info!("Radio created");
+
+    let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, ot_settings, ot_resources).unwrap();
+
+    let (_enet_controller, enet_driver_runner, enet_driver) =
+        enet::new(ot.clone(), enet_driver_state);
 
     spawner.spawn(run_enet_driver(enet_driver_runner, proxy_radio).unwrap());
 

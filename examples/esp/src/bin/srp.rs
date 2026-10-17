@@ -23,8 +23,8 @@ use {esp_backtrace as _, esp_println as _};
 
 use openthread::esp::EspRadio;
 use openthread::{
-    BytesFmt, OpenThread, OtResources, OtSrpResources, OtUdpResources, SimpleRamSettings, SrpConf,
-    UdpSocket,
+    BytesFmt, OpenThread, OtResources, OtSrpResources, OtUdpResources, Radio, SimpleRamSettings,
+    SrpConf, UdpSocket,
 };
 use rand_core::Rng as _;
 
@@ -96,8 +96,12 @@ async fn main(spawner: Spawner) {
 
     let ot_settings = mk_static!(SimpleRamSettings, SimpleRamSettings::new(ot_settings_buf));
 
+    let mut radio = EspRadio::new(Ieee802154::new(peripherals.IEEE802154));
+    let radio_caps = radio.init().await.unwrap();
+
     let ot = OpenThread::new_with_udp_srp(
         ieee_eui64,
+        &radio_caps,
         rng,
         ot_settings,
         ot_resources,
@@ -106,13 +110,7 @@ async fn main(spawner: Spawner) {
     )
     .unwrap();
 
-    spawner.spawn(
-        run_ot(
-            ot.clone(),
-            EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
-        )
-        .unwrap(),
-    );
+    spawner.spawn(run_ot(ot.clone(), radio).unwrap());
 
     spawner.spawn(run_ot_info(ot.clone()).unwrap());
 

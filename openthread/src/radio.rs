@@ -77,8 +77,8 @@ impl RadioError for RadioErrorKind {
 }
 
 bitflags! {
-    /// Radio capabilities - a mirror of the C `otRadioCaps` flags, reported
-    /// verbatim to the OpenThread stack via `otPlatRadioGetCaps`.
+    /// Radio capabilities - a mirror of the C `otRadioCaps` flags; the stack
+    /// is told those of them it can use (`otPlatRadioGetCaps`).
     ///
     /// Not all of these are PHY-level: several
     /// (ACK timeout, CSMA backoff, frame security, auto-sleep) describe MAC-layer
@@ -195,8 +195,8 @@ impl MacCapabilities {
 /// to the hardware — e.g. a remote co-processor reporting them during its startup
 /// handshake), which is why they are returned from `init` rather than declared as
 /// consts:
-/// - [`phy`](RadioCaps::phy): the PHY capabilities, reported to the OpenThread C
-///   stack (`otPlatRadioGetCaps`).
+/// - [`phy`](RadioCaps::phy): the PHY capabilities; the OpenThread C stack is
+///   told those of them it can use (`otPlatRadioGetCaps`).
 /// - [`mac`](RadioCaps::mac): the MAC-offloading capabilities. Any of these the
 ///   radio lacks are emulated in software by the `MacRadio` wrapper (which reads
 ///   this set at runtime).
@@ -675,12 +675,10 @@ pub trait Radio {
 
     /// Bring the radio up and report its full [`RadioCaps`] (PHY + MAC-offload).
     ///
-    /// Called once, before any [`set_config`](Radio::set_config) /
-    /// [`transmit`](Radio::transmit) / [`receive`](Radio::receive), and before
-    /// the OpenThread stack is first pumped — so the returned capabilities are
-    /// cached and used (the PHY set is reported to the stack via
-    /// `otPlatRadioGetCaps`; the MAC set drives the `MacRadio` wrapper's
-    /// software-emulation decisions).
+    /// Called by the user, once, before any other method, and before
+    /// constructing the [`OpenThread`](crate::OpenThread) instance, which takes
+    /// the result: OpenThread reads the capabilities when it is constructed,
+    /// and only then.
     ///
     /// This is the single source of *all* the radio's capabilities. Both the PHY
     /// and MAC sets are discovered here at runtime, because a radio may only learn
