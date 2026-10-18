@@ -26,6 +26,24 @@ use platform::{OT_ACTIVE_STATE, OT_REFCNT};
 
 use signal::Signal;
 
+use sys::{
+    otBufferInfo, otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
+    otDeviceRole_OT_DEVICE_ROLE_DETACHED, otDeviceRole_OT_DEVICE_ROLE_DISABLED,
+    otDeviceRole_OT_DEVICE_ROLE_LEADER, otDeviceRole_OT_DEVICE_ROLE_ROUTER, otError,
+    otError_OT_ERROR_ABORT, otError_OT_ERROR_CHANNEL_ACCESS_FAILURE, otError_OT_ERROR_DROP,
+    otError_OT_ERROR_INVALID_STATE, otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND,
+    otError_OT_ERROR_NO_ACK, otError_OT_ERROR_NO_ADDRESS, otError_OT_ERROR_NO_BUFS, otInstance,
+    otInstanceFinalize, otInstanceInitSingle, otIp6Address, otIp6GetUnicastAddresses,
+    otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send, otIp6SetEnabled, otIp6SetReceiveCallback,
+    otIpCounters, otLinkModeConfig, otMacCounters, otMessage, otMessageFree,
+    otMessageGetBufferInfo, otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead,
+    otMessageSettings, otMleCounters, otOperationalDataset, otOperationalDatasetTlvs,
+    otPlatAlarmMilliFired, otPlatRadioEnergyScanDone, otPlatRadioReceiveDone, otPlatRadioTxDone,
+    otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess,
+    otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode,
+    OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
+};
+
 pub use rand_core::CryptoRng as OtRng;
 
 pub use dataset::*;
@@ -69,23 +87,17 @@ mod signal;
 mod srp;
 mod udp;
 
-use sys::{
-    otBufferInfo, otChangedFlags, otDeviceRole, otDeviceRole_OT_DEVICE_ROLE_CHILD,
-    otDeviceRole_OT_DEVICE_ROLE_DETACHED, otDeviceRole_OT_DEVICE_ROLE_DISABLED,
-    otDeviceRole_OT_DEVICE_ROLE_LEADER, otDeviceRole_OT_DEVICE_ROLE_ROUTER, otError,
-    otError_OT_ERROR_ABORT, otError_OT_ERROR_CHANNEL_ACCESS_FAILURE, otError_OT_ERROR_DROP,
-    otError_OT_ERROR_INVALID_STATE, otError_OT_ERROR_NONE, otError_OT_ERROR_NOT_FOUND,
-    otError_OT_ERROR_NO_ACK, otError_OT_ERROR_NO_ADDRESS, otError_OT_ERROR_NO_BUFS, otInstance,
-    otInstanceFinalize, otInstanceInitSingle, otIp6Address, otIp6GetUnicastAddresses,
-    otIp6IsEnabled, otIp6NewMessageFromBuffer, otIp6Send, otIp6SetEnabled, otIp6SetReceiveCallback,
-    otIpCounters, otLinkModeConfig, otMacCounters, otMessage, otMessageFree,
-    otMessageGetBufferInfo, otMessagePriority_OT_MESSAGE_PRIORITY_NORMAL, otMessageRead,
-    otMessageSettings, otMleCounters, otOperationalDataset, otOperationalDatasetTlvs,
-    otPlatAlarmMilliFired, otPlatRadioEnergyScanDone, otPlatRadioReceiveDone, otPlatRadioTxDone,
-    otPlatRadioTxStarted, otRadioCaps, otRadioFrame, otSetStateChangedCallback, otTaskletsProcess,
-    otThreadGetDeviceRole, otThreadGetExtendedPanId, otThreadSetEnabled, otThreadSetLinkMode,
-    OT_RADIO_FRAME_MAX_SIZE, OT_RADIO_RSSI_INVALID,
-};
+/// A macro for converting an `otError` value to a `Result<(), OtError>` value.
+macro_rules! ot {
+    ($code: expr) => {{
+        match $code {
+            $crate::sys::otError_OT_ERROR_NONE => Ok(()),
+            err => Err($crate::OtError::new(err)),
+        }
+    }};
+}
+
+pub(crate) use ot;
 
 /// A newtype wrapper over the native OpenThread error type (`otError`).
 ///
@@ -122,18 +134,6 @@ impl Display for OtError {
 
 impl core::error::Error for OtError {}
 
-/// A macro for converting an `otError` value to a `Result<(), OtError>` value.
-macro_rules! ot {
-    ($code: expr) => {{
-        match $code {
-            $crate::sys::otError_OT_ERROR_NONE => Ok(()),
-            err => Err($crate::OtError::new(err)),
-        }
-    }};
-}
-
-pub(crate) use ot;
-
 /// An extension trait for converting a `Result<(), OtError>` to a raw `otError` OpenThread error code.
 pub trait IntoOtCode {
     /// Convert the `Result<(), OtError>` to a raw `otError` OpenThread error code.
@@ -158,6 +158,56 @@ pub struct OpenThread<'a> {
 }
 
 impl<'a> OpenThread<'a> {
+    /// The longest CSL period OpenThread accepts, in microseconds
+    /// (`u16::MAX` units of 10 symbols).
+    pub const CSL_MAX_PERIOD_US: u32 = u16::MAX as u32 * 160;
+
+    /// The PHY capabilities of a radio this build has no use for, and so
+    /// reports neither to OpenThread nor in [`Self::radio_caps`]: timed receive
+    /// without the `csl-receiver` feature, timed transmit on an MTD (it never
+    /// parents CSL children), and transmit security without any CSL role
+    /// (OpenThread then secures every frame itself).
+    const UNUSED_RADIO_CAPS: Capabilities = {
+        let caps = Capabilities::empty();
+
+        #[cfg(not(feature = "ftd"))]
+        let caps = caps.union(Capabilities::TRANSMIT_TIMING);
+
+        #[cfg(not(feature = "csl-receiver"))]
+        let caps = caps.union(Capabilities::RECEIVE_TIMING);
+
+        #[cfg(not(feature = "_csl"))]
+        let caps = caps.union(Capabilities::TRANSMIT_SEC);
+
+        caps
+    };
+
+    /// How long a sleepy node keeps receiving for a frame that its parent
+    /// announced as pending.
+    ///
+    /// This MUST match `OPENTHREAD_CONFIG_MAC_DATA_POLL_TIMEOUT`, OpenThread's
+    /// own wait for that frame (100 ms unless the OpenThread build overrides
+    /// it): the value is not reachable from the bindings, which only cover the
+    /// public headers.
+    const DATA_POLL_TIMEOUT: embassy_time::Duration = embassy_time::Duration::from_millis(100);
+
+    /// How long before the end of a timed frame's SFD is due the glue hands
+    /// the frame to a radio without timed transmit: a CCA (8 symbols, 128 µs),
+    /// the synchronization header (5 octets, 160 µs) and OpenThread's own
+    /// allowance for the platform to start transmitting (40 µs) - the lead its
+    /// software-timed transmit uses too.
+    #[cfg(feature = "ftd")]
+    const GLUE_TIMED_TX_LEAD_US: u64 = 128 + 160 + 40;
+
+    /// What the glue adds to a radio's reported timing uncertainty when it
+    /// times transmissions itself (a radio without timed transmit, on an FTD):
+    /// the jitter of waking up the radio runner at the right time, which an
+    /// FTD reports to its CSL children so that they widen their windows by it.
+    /// An estimate for a runner on an otherwise idle executor, in units of
+    /// 10 µs.
+    #[cfg(feature = "ftd")]
+    const GLUE_TIMED_TX_UNCERTAINTY: u8 = 10;
+
     /// Acquire the single global OpenThread instance on behalf of a new
     /// `OpenThread` handle, enforcing that only one handle tree exists at a
     /// time and seeding the reference count that [`Clone`] and [`Drop`]
@@ -1044,30 +1094,6 @@ impl<'a> OpenThread<'a> {
         Ok(())
     }
 
-    /// The longest CSL period OpenThread accepts, in microseconds
-    /// (`u16::MAX` units of 10 symbols).
-    pub const CSL_MAX_PERIOD_US: u32 = u16::MAX as u32 * 160;
-
-    /// The PHY capabilities of a radio this build has no use for, and so
-    /// reports neither to OpenThread nor in [`Self::radio_caps`]: timed receive
-    /// without the `csl-receiver` feature, timed transmit on an MTD (it never
-    /// parents CSL children), and transmit security without any CSL role
-    /// (OpenThread then secures every frame itself).
-    const UNUSED_RADIO_CAPS: Capabilities = {
-        let caps = Capabilities::empty();
-
-        #[cfg(not(feature = "ftd"))]
-        let caps = caps.union(Capabilities::TRANSMIT_TIMING);
-
-        #[cfg(not(feature = "csl-receiver"))]
-        let caps = caps.union(Capabilities::RECEIVE_TIMING);
-
-        #[cfg(not(feature = "_csl"))]
-        let caps = caps.union(Capabilities::TRANSMIT_SEC);
-
-        caps
-    };
-
     /// The capabilities OpenThread is told about (`otPlatRadioGetCaps`, which
     /// it reads once, when the instance is constructed): those this crate
     /// provides for every radio, plus the radio's own timed receive and
@@ -1703,15 +1729,6 @@ impl<'a> OpenThread<'a> {
         }
     }
 
-    /// How long a sleepy node keeps receiving for a frame that its parent
-    /// announced as pending.
-    ///
-    /// This MUST match `OPENTHREAD_CONFIG_MAC_DATA_POLL_TIMEOUT`, OpenThread's
-    /// own wait for that frame (100 ms unless the OpenThread build overrides
-    /// it): the value is not reachable from the bindings, which only cover the
-    /// public headers.
-    const DATA_POLL_TIMEOUT: embassy_time::Duration = embassy_time::Duration::from_millis(100);
-
     /// Repeatedly receive IEEE 802.15.4 frames from the radio and pass them to the OpenThread C library.
     ///
     /// This loop runs forever, unless cancelled by dropping the future.
@@ -1809,23 +1826,6 @@ impl<'a> OpenThread<'a> {
             }
         }
     }
-
-    /// How long before the end of a timed frame's SFD is due the glue hands
-    /// the frame to a radio without timed transmit: a CCA (8 symbols, 128 µs),
-    /// the synchronization header (5 octets, 160 µs) and OpenThread's own
-    /// allowance for the platform to start transmitting (40 µs) - the lead its
-    /// software-timed transmit uses too.
-    #[cfg(feature = "ftd")]
-    const GLUE_TIMED_TX_LEAD_US: u64 = 128 + 160 + 40;
-
-    /// What the glue adds to a radio's reported timing uncertainty when it
-    /// times transmissions itself (a radio without timed transmit, on an FTD):
-    /// the jitter of waking up the radio runner at the right time, which an
-    /// FTD reports to its CSL children so that they widen their windows by it.
-    /// An estimate for a runner on an otherwise idle executor, in units of
-    /// 10 µs.
-    #[cfg(feature = "ftd")]
-    const GLUE_TIMED_TX_UNCERTAINTY: u8 = 10;
 
     /// Wait until `at_us` of the radio clock (returns right away if it has passed).
     #[cfg(feature = "ftd")]
@@ -2574,6 +2574,35 @@ pub struct NeighborInfo {
     pub is_child: bool,
 }
 
+impl NeighborInfo {
+    /// Load a `NeighborInfo` from the raw `otNeighborInfo` struct, applying the
+    /// same transformations the Matter Thread Network Diagnostics cluster uses.
+    fn load_raw(raw: &sys::otNeighborInfo) -> Self {
+        // OpenThread reports error rates as a fraction of 0xffff; Matter wants 0..=100.
+        let to_percent = |rate: u16| ((rate as u32 * 100) / 0xffff) as u8;
+        // RSSI is `i8` with a sentinel for "invalid".
+        let rssi = |v: i8| (v != sys::OT_RADIO_RSSI_INVALID as i8).then_some(v);
+
+        Self {
+            ext_address: u64::from_be_bytes(raw.mExtAddress.m8),
+            age: raw.mAge,
+            rloc16: raw.mRloc16,
+            link_frame_counter: raw.mLinkFrameCounter,
+            mle_frame_counter: raw.mMleFrameCounter,
+            link_quality_in: raw.mLinkQualityIn,
+            average_rssi: rssi(raw.mAverageRssi),
+            // Per the Matter mapping, the last RSSI is additionally clamped to <= 0.
+            last_rssi: rssi(raw.mLastRssi).map(|v| v.min(0)),
+            frame_error_rate: to_percent(raw.mFrameErrorRate),
+            message_error_rate: to_percent(raw.mMessageErrorRate),
+            rx_on_when_idle: raw.mRxOnWhenIdle(),
+            full_thread_device: raw.mFullThreadDevice(),
+            full_network_data: raw.mFullNetworkData(),
+            is_child: raw.mIsChild(),
+        }
+    }
+}
+
 /// Diagnostic information about a single entry of the Thread route table,
 /// as reported by [`OpenThread::route_table`] (`otRouterInfo`).
 ///
@@ -2618,35 +2647,6 @@ impl RouteInfo {
             age: raw.mAge,
             allocated: raw.mAllocated(),
             link_established: raw.mLinkEstablished(),
-        }
-    }
-}
-
-impl NeighborInfo {
-    /// Load a `NeighborInfo` from the raw `otNeighborInfo` struct, applying the
-    /// same transformations the Matter Thread Network Diagnostics cluster uses.
-    fn load_raw(raw: &sys::otNeighborInfo) -> Self {
-        // OpenThread reports error rates as a fraction of 0xffff; Matter wants 0..=100.
-        let to_percent = |rate: u16| ((rate as u32 * 100) / 0xffff) as u8;
-        // RSSI is `i8` with a sentinel for "invalid".
-        let rssi = |v: i8| (v != sys::OT_RADIO_RSSI_INVALID as i8).then_some(v);
-
-        Self {
-            ext_address: u64::from_be_bytes(raw.mExtAddress.m8),
-            age: raw.mAge,
-            rloc16: raw.mRloc16,
-            link_frame_counter: raw.mLinkFrameCounter,
-            mle_frame_counter: raw.mMleFrameCounter,
-            link_quality_in: raw.mLinkQualityIn,
-            average_rssi: rssi(raw.mAverageRssi),
-            // Per the Matter mapping, the last RSSI is additionally clamped to <= 0.
-            last_rssi: rssi(raw.mLastRssi).map(|v| v.min(0)),
-            frame_error_rate: to_percent(raw.mFrameErrorRate),
-            message_error_rate: to_percent(raw.mMessageErrorRate),
-            rx_on_when_idle: raw.mRxOnWhenIdle(),
-            full_thread_device: raw.mFullThreadDevice(),
-            full_network_data: raw.mFullNetworkData(),
-            is_child: raw.mIsChild(),
         }
     }
 }
@@ -4268,13 +4268,6 @@ struct RxWindow {
     duration_us: u32,
 }
 
-#[cfg(feature = "csl-receiver")]
-extern "C" {
-    // Declared here rather than taken from the prebuilt bindings, which predate
-    // the microsecond alarm.
-    fn otPlatAlarmMicroFired(instance: *mut otInstance);
-}
-
 /// Radio-related OpenThread C data carriers
 ///
 /// Note that this structure is self-referential in that its `*_frame` members all
@@ -4358,6 +4351,13 @@ impl DatasetResources {
             }
         }
     }
+}
+
+#[cfg(feature = "csl-receiver")]
+extern "C" {
+    // Declared here rather than taken from the prebuilt bindings, which predate
+    // the microsecond alarm.
+    fn otPlatAlarmMicroFired(instance: *mut otInstance);
 }
 
 /// Convert an `otIp6Address`, port and network interface ID to a `SocketAddrV6`.
