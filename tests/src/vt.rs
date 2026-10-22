@@ -25,7 +25,9 @@ use openthread::{
     Config, PsduRxInfo, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig,
 };
 
-use crate::sim::{patch_fcs, port_base_from_env, PSDU_MAX, SIM_RSSI};
+use crate::sim::{
+    patch_fcs, port_base_from_env, sim_now_us, sim_radio_caps, RxWindow, PSDU_MAX, SIM_RSSI,
+};
 
 /// Simulator event types (the subset a CLI node exchanges).
 const EVENT_ALARM_FIRED: u8 = 0;
@@ -254,6 +256,8 @@ pub struct VtRadio {
     channel: u8,
     /// Whether the radio is parked (see `SimRadio`).
     sleeping: bool,
+    /// The CSL receive window the radio is asleep around (see `SimRadio`).
+    window: Option<RxWindow>,
 }
 
 impl VtRadio {
@@ -264,6 +268,7 @@ impl VtRadio {
             echoes: VecDeque::new(),
             channel: 11,
             sleeping: true,
+            window: None,
         }
     }
 
@@ -307,13 +312,8 @@ impl Radio for VtRadio {
     type Error = VtRadioError;
 
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
-        // A bare PHY, like `SimRadio`: `MacRadio` emulates the MAC offloads.
-        Ok(RadioCaps {
-            // The upstream simulation radio's `SIM_RECEIVE_SENSITIVITY` (see
-            // `SimRadio::init` for why the exact figure matters).
-            receive_sensitivity: -100,
-            ..RadioCaps::default()
-        })
+        // As `SimRadio`, on the simulator's virtual clock.
+        Ok(sim_radio_caps())
     }
 
     async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
@@ -340,13 +340,27 @@ impl Radio for VtRadio {
 
     async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
         self.channel = channel;
+        self.window = None;
         self.wake();
+
+        Ok(())
+    }
+
+    async fn set_receive_at(
+        &mut self,
+        channel: u8,
+        start_us: u64,
+        duration_us: u32,
+    ) -> Result<(), Self::Error> {
+        self.sleeping = true;
+        self.window = Some(RxWindow::new(channel, start_us, duration_us));
 
         Ok(())
     }
 
     async fn set_sleep(&mut self) -> Result<(), Self::Error> {
         self.sleeping = true;
+        self.window = None;
 
         Ok(())
     }
@@ -354,7 +368,7 @@ impl Radio for VtRadio {
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        _psdu_tx: &mut openthread::PsduTxInfo,
+        psdu_tx: &mut openthread::PsduTxInfo,
         channel: u8,
         _power: i8,                 // The simulated medium is lossless
         _cca_threshold: Option<i8>, // ... and always idle
@@ -364,9 +378,16 @@ impl Radio for VtRadio {
             return Err(VtRadioError::TxInvalid);
         }
 
+        // A frame timed into a CSL child's receive window: this medium has no
+        // latency, so it goes out exactly then.
+        if let Some(tx_at_us) = psdu_tx.tx_at_us {
+            embassy_time::Timer::at(embassy_time::Instant::from_micros(tx_at_us)).await;
+        }
+
         // A transmit tunes the radio and wakes it, as it does on real
         // hardware.
         self.channel = channel;
+        self.window = None;
         self.wake();
 
         let mut data = [0; PSDU_MAX + 1];
@@ -418,7 +439,14 @@ impl Radio for VtRadio {
                 );
             }
 
-            if frame.channel != self.channel {
+            let now = sim_now_us();
+
+            let heard = match self.window {
+                Some(window) => window.hears(frame.channel, now),
+                None => frame.channel == self.channel,
+            };
+
+            if !heard {
                 continue;
             }
 
@@ -434,7 +462,7 @@ impl Radio for VtRadio {
                 rssi: Some(SIM_RSSI),
                 // As in `SimRadio`: the C simulation platform's LQI.
                 lqi: Some(0),
-                timestamp_us: None,
+                timestamp_us: Some(now),
                 ack_security: None,
                 acked_with_frame_pending: None,
             });
