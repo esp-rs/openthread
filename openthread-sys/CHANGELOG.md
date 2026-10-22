@@ -5,6 +5,10 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+* New `csl-receiver` feature: compiles OpenThread with CSL Receiver support (and the microsecond platform alarm it needs). Off by default
+* The FTD library is built with the CSL Transmitter (a Thread 1.2+ FTD has to parent CSL children); the MTD library without it
+
 ## [0.4.0] - 2026-09-14
 * (Breaking) Update to mbedtls-rs-sys v0.3
 * Pass the C++ driver (`<prefix>g++` / `clang++`) as `CMAKE_CXX_COMPILER` instead of the C one; OpenThread is C++, and the C driver compiles it but does not link the C++ runtime

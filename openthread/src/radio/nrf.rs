@@ -8,7 +8,7 @@
 pub use embassy_nrf::radio::ieee802154::{Cca as RadioCca, Packet};
 
 use crate::fmt::Bytes;
-use crate::{Config, PsduMeta, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig};
+use crate::{Config, PsduRxInfo, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig};
 
 pub use embassy_nrf::radio::ieee802154::Radio as Ieee802154;
 pub use embassy_nrf::radio::{Error, Instance as Ieee802154Peripheral};
@@ -149,12 +149,13 @@ impl Radio for NrfRadio<'_> {
 
     async fn transmit(
         &mut self,
-        psdu: &[u8],
+        psdu: &mut [u8],
+        _psdu_tx: &mut crate::PsduTxInfo,
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
         _ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduMeta>, Self::Error> {
+    ) -> Result<Option<PsduRxInfo>, Self::Error> {
         trace!("NRF Radio, about to transmit: {}", Bytes(psdu));
 
         self.set_driver_channel(channel);
@@ -188,7 +189,7 @@ impl Radio for NrfRadio<'_> {
         Ok(None)
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduMeta, Self::Error> {
+    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
         trace!("NRF Radio, about to receive");
 
         // `ED_RSSIOFFS`, offset for converting the radio's LQI energy reading to dBm.
@@ -215,13 +216,16 @@ impl Radio for NrfRadio<'_> {
 
             let rssi = ED_RSSI_OFFSET.saturating_add_unsigned(packet.lqi());
 
-            break Ok(PsduMeta {
+            break Ok(PsduRxInfo {
                 // TODO: `embassy-nrf` driver provides the PSDU without the CRC,
                 // however, OpenThread wants the PSDU len to include the CRC
                 len: len + 2,
                 channel,
                 rssi: Some(rssi),
                 lqi: Some(packet.lqi()),
+                timestamp_us: None,
+                ack_security: None,
+                acked_with_frame_pending: None,
             });
         }
     }

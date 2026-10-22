@@ -23,7 +23,7 @@ use heapless::Vec;
 
 use openthread::enet::{self, EnetDriver, EnetRunner};
 use openthread::esp::EspRadio;
-use openthread::{BytesFmt, OpenThread, OtResources, SimpleRamSettings};
+use openthread::{BytesFmt, OpenThread, OtResources, Radio, SimpleRamSettings};
 
 use rand_core::Rng as _;
 
@@ -90,18 +90,15 @@ async fn main(spawner: Spawner) {
 
     let ot_settings = mk_static!(SimpleRamSettings, SimpleRamSettings::new(ot_settings_buf));
 
-    let ot = OpenThread::new(ieee_eui64, rng, ot_settings, ot_resources).unwrap();
+    let mut radio = EspRadio::new(Ieee802154::new(peripherals.IEEE802154));
+    let radio_caps = radio.init().await.unwrap();
+
+    let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, ot_settings, ot_resources).unwrap();
 
     let (_enet_controller, enet_driver_runner, enet_driver) =
         enet::new(ot.clone(), enet_driver_state);
 
-    spawner.spawn(
-        run_enet_driver(
-            enet_driver_runner,
-            EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
-        )
-        .unwrap(),
-    );
+    spawner.spawn(run_enet_driver(enet_driver_runner, radio).unwrap());
 
     let enet_resources = mk_static!(StackResources<ENET_MAX_SOCKETS>, StackResources::new());
 

@@ -57,10 +57,18 @@ pub const LINE_MAX: usize = 512;
 ///
 /// Synchronous by necessity (see the module docs), and lossy under pressure by
 /// choice.
-pub fn out(bytes: &[u8]) {
-    // `try_write` takes what fits and reports the rest; a partial write means
-    // the console is behind, and there is nothing useful to do about it here.
-    let _ = OUT.try_write(bytes);
+pub fn out(mut bytes: &[u8]) {
+    // `try_write` takes only what fits before the pipe's buffer wraps around,
+    // so a write straddling the wrap takes several calls. Only a full pipe
+    // means the console is behind, and there is nothing useful to do about
+    // that here.
+    while !bytes.is_empty() {
+        let Ok(n) = OUT.try_write(bytes) else {
+            break;
+        };
+
+        bytes = &bytes[n..];
+    }
 }
 
 /// Take the next chunk of pending output, waiting if there is none.

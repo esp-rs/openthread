@@ -105,6 +105,9 @@ openthread = { path = "../../openthread", default-features = false, features = [
     "embassy-nrf",
     "defmt",
     "ftd",
+    # Build coverage only: `NrfRadio` has no timed receive; the one radio that
+    # currently can be a CSL receiver lives in `nrf-802154`.
+    "csl-receiver",
     "cli",
     # NOTE: no `isupper` - `tinyrlibc` provides that symbol here, and enabling
     # both makes the link fail on a duplicate definition.

@@ -64,7 +64,8 @@ impl<const MTU: usize> EnetRunner<'_, MTU> {
     /// Run the OpenThread stack and the `embassy-net-driver-channel` runner.
     ///
     /// Arguments:
-    /// - `radio`: The radio to be used by the OpenThread stack.
+    /// - `radio`: The radio to be used by the OpenThread stack: the one whose capabilities
+    ///   ([`Radio::init`]) were passed to the `OpenThread` constructor.
     pub async fn run<R>(&mut self, mut radio: R) -> !
     where
         R: Radio,

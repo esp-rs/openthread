@@ -34,7 +34,7 @@ use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
 
 use openthread::esp::EspRadio;
-use openthread::{DnsResponse, OpenThread, OtResources, OtUdpResources, SimpleRamSettings};
+use openthread::{DnsResponse, OpenThread, OtResources, OtUdpResources, Radio, SimpleRamSettings};
 use rand_core::Rng as _;
 
 use tinyrlibc as _;
@@ -103,19 +103,23 @@ async fn main(spawner: Spawner) {
 
     let ot_settings = mk_static!(SimpleRamSettings, SimpleRamSettings::new(ot_settings_buf));
 
+    let mut radio = EspRadio::new(Ieee802154::new(peripherals.IEEE802154));
+    let radio_caps = radio.init().await.unwrap();
+
     // No SRP resources are needed: this example is a pure DNS *client*. We still
     // call `srp_autostart()` below (it works without SRP resources) so the DNS
     // client can auto-discover its server - see the comment there.
-    let ot = OpenThread::new_with_udp(ieee_eui64, rng, ot_settings, ot_resources, ot_udp_resources)
-        .unwrap();
+    let ot = OpenThread::new_with_udp(
+        ieee_eui64,
+        &radio_caps,
+        rng,
+        ot_settings,
+        ot_resources,
+        ot_udp_resources,
+    )
+    .unwrap();
 
-    spawner.spawn(
-        run_ot(
-            ot.clone(),
-            EspRadio::new(Ieee802154::new(peripherals.IEEE802154)),
-        )
-        .unwrap(),
-    );
+    spawner.spawn(run_ot(ot.clone(), radio).unwrap());
 
     info!("Dataset: {THREAD_DATASET}");
 
