@@ -73,6 +73,11 @@ jobs:
       - name: Clippy
         run: cargo clippy -- -D warnings
 
+      # Compile-only: the one radio that currently can be a CSL receiver lives in
+      # `nrf-802154`, outside this repo.
+      - name: Clippy - CSL receiver
+        run: cargo clippy -p openthread --features csl-receiver -- -D warnings
+
       - name: Build
         run: cargo build
 
