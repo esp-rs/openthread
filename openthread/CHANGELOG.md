@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+* Thread diagnostics: `ActiveDatasetDiag` gains `active_timestamp`; new `OpenThread::pending_dataset_diag` (pending timestamp and delay timer)
 * Breaking: CSL (Thread 1.2 Synchronized Sleepy End Device) support (#122):
   * New CSL and enhanced ACKs APIs
   * `Radio` trait: new defaulted CSL and enhanced ACK methods; a radio advertising `Capabilities::RECEIVE_TIMING` **must** implement them
