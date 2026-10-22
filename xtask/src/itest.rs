@@ -225,9 +225,12 @@ const CERT_TESTS_VT_EXTRA: &[&str] = &[
 ///   (`OT_TIME_SYNC`), `cli-channel` (channel monitor/manager),
 ///   `cli-log-level` (dynamic log levels), `cli-misc` (MAC-counter reset,
 ///   posix FEM), `cli-reset` (the `reset bootloader` subcommand),
-///   `cli-big-table` (bigger child/router tables than the DUT builds with),
-///   `cli-discover` (`OT_CSL_RECEIVER`: the `csl` commands - the discover
-///   table itself matches, thanks to the sim radios' C-platform LQI).
+///   `cli-big-table` (bigger child/router tables than the DUT builds with).
+/// - `cli-discover`: its CSL part has a CSL SSED's Child Update Response land
+///   mid-discover and turn rx-on-when-idle back off. The C simulation radio
+///   (no timed receive) stays in receive after each Discovery Request anyway;
+///   the DUT's timed-receive radio sleeps, as OpenThread then expects, and
+///   misses the later channels' responses.
 /// - `cli-diags`: the factory-diag *radio* path (`diag send` and its RX
 ///   stats) is not wired in the platform (the mode toggle alone is, which
 ///   is all `test_diag` needs).
@@ -334,6 +337,31 @@ const FUNC_TESTS_VT: &[&str] = &[
     "test_srp_sub_type",
     "test_srp_ttl",
     "test_zero_len_external_route",
+];
+
+/// The `v1_2_*` scripts (same directory and runner as the `Cert_*`
+/// scenarios) run in virtual time: verified green against the test device. These are
+/// the CSL and enhanced-ACK scenarios (CSL receiver and transmitter, enhanced
+/// keep-alive and frame pending), on the sim radios' timed RX/TX and
+/// `MacRadio`'s enhanced ACKs.
+///
+/// The excluded remainder of those:
+/// - Node flavors the DUT shim does not provide: a Thread 1.1 node
+///   (`v1_2_test_parent_selection`, `v1_2_LowPower_6_1_07_*`) or a Backbone
+///   Router (`v1_2_test_backbone_router_service`, `*domain_unicast_address*`,
+///   `v1_2_test_dua_handle_address_error`, `*multicast*registration`) - node.py
+///   spawns a literal `./ot-cli-ftd` from the cwd for these.
+/// - OpenThread build configs the DUT does not enable: link metrics
+///   (`v1_2_test_single_probe`, `v1_2_LowPower_7_*`,
+///   `v1_2_LowPower_test_forward_tracking_series`,
+///   `v1_2_LowPower_test_link_metrics_manager`) and the channel manager
+///   (`addon_test_channel_manager_autocsl`).
+const V1_2_TESTS_VT: &[&str] = &[
+    "v1_2_LowPower_5_3_01_SSEDAttachment",
+    "v1_2_router_5_1_1",
+    "v1_2_test_csl_transmission",
+    "v1_2_test_enhanced_frame_pending",
+    "v1_2_test_enhanced_keep_alive",
 ];
 
 /// The tests the hardware tier runs by default, with the node count each
@@ -735,10 +763,15 @@ pub fn run(workspace: &Path, args: &ItestArgs) -> Result<()> {
                 Suite::Cert if args.virtual_time => FUNC_TESTS_VT,
                 _ => &[][..],
             };
+            let v1_2 = match args.suite {
+                Suite::Cert if args.virtual_time => V1_2_TESTS_VT,
+                _ => &[][..],
+            };
             defaults
                 .iter()
                 .chain(extra)
                 .chain(func)
+                .chain(v1_2)
                 .map(|t| t.to_string())
                 .collect()
         }
@@ -910,6 +943,11 @@ struct Runner {
 /// simulation`'s common options). Virtual time is a *compile-time* choice for
 /// the C simulation platform (`OT_SIMULATION_VIRTUAL_TIME`), so the two
 /// pacing modes get separate build trees.
+///
+/// A known upstream flake: the C simulation radio's alternate short address
+/// is never set and stays `0x0000`, so a C peer acks every frame sent to
+/// RLOC16 `0x0000` - its own echoed ones included. A run where the DUT takes
+/// router id 0 can fail.
 fn build_c_peer(workspace: &Path, build_dir: &Path, virtual_time: bool) -> Result<PathBuf> {
     let ot_root = workspace.join("openthread-sys").join("openthread");
     let tree = build_dir.join(if virtual_time { "ot-c-vt" } else { "ot-c-rt" });
@@ -970,6 +1008,7 @@ const C_PEER_FEATURES: &[&str] = &[
     "-DOT_COAP_BLOCK=ON",
     "-DOT_COAP_OBSERVE=ON",
     "-DOT_COMMISSIONER=ON",
+    "-DOT_CSL_RECEIVER=ON",
     "-DOT_DATASET_UPDATER=ON",
     "-DOT_DHCP6_CLIENT=ON",
     "-DOT_DHCP6_SERVER=ON",
@@ -1238,8 +1277,9 @@ impl Runner {
             .env("THREAD_VERSION", "1.4")
             .env("OT_NODE_TYPE", "cli")
             // The DUT nodes run with the repo root as cwd (see above); point
-            // their persisted settings at the run dir instead.
-            .env("CLI_NODE_SETTINGS_DIR", run_dir.join("settings"));
+            // their persisted settings and logs at the run dir instead.
+            .env("CLI_NODE_SETTINGS_DIR", run_dir.join("settings"))
+            .env("CLI_NODE_LOG", run_dir.join("node"));
 
         hw.apply(&mut command);
 

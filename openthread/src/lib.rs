@@ -1773,6 +1773,21 @@ impl<'a> OpenThread<'a> {
                         state.ot.last_rssi = rssi;
                     }
 
+                    // A secured enhanced ACK the radio sent used up a frame counter of the same
+                    // key the frames finished here are secured with: skip past it, or the next
+                    // frame would reuse its nonce. (OpenThread itself leaves the counter to
+                    // the radio, as it is told the radio finishes the frames.)
+                    #[cfg(feature = "_csl")]
+                    if let Some(ack_sec) = rcv_psdu_meta.ack_security {
+                        let ctx = &mut state.ot.radio_tx_ctx;
+
+                        if ack_sec.key_id == ctx.mKeyId
+                            && ack_sec.frame_counter >= ctx.mMacFrameCounter
+                        {
+                            ctx.mMacFrameCounter = ack_sec.frame_counter.wrapping_add(1);
+                        }
+                    }
+
                     let radio_resources = &mut state.ot.radio_resources;
 
                     Self::fill_frame(
@@ -1950,10 +1965,10 @@ impl<'a> OpenThread<'a> {
 
                 let frame = &mut ot.radio_resources.snd_frame;
 
-                // A frame whose header OpenThread already filled in - a retry of
-                // an indirect frame, with the key id and frame counter of the
-                // earlier attempt - is secured with the key of that key id, which
-                // the helper expects in the frame itself.
+                // A frame whose header is already filled in - a retry, with the
+                // key id and frame counter of the earlier attempt - is secured
+                // with the key of that key id, which the helper expects in the
+                // frame itself.
                 let err = if unsafe {
                     frame.mInfo.mTxInfo.mIsHeaderUpdated()
                         && !frame.mInfo.mTxInfo.mIsSecurityProcessed()
@@ -1985,7 +2000,7 @@ impl<'a> OpenThread<'a> {
                 };
 
                 let err = if err == otError_OT_ERROR_NONE {
-                    unsafe { sys::otMacFrameProcessTxSfd(frame, now, ctx) }
+                    radio::process_tx_sfd(frame, now, ctx)
                 } else {
                     err
                 };
@@ -1998,7 +2013,7 @@ impl<'a> OpenThread<'a> {
                     unsafe {
                         otPlatRadioTxDone(
                             state.ot.instance,
-                            &mut state.ot.radio_resources.snd_frame,
+                            &mut state.ot.radio_resources.tns_frame,
                             core::ptr::null_mut(),
                             otError_OT_ERROR_ABORT,
                         );
@@ -2051,7 +2066,7 @@ impl<'a> OpenThread<'a> {
             psdu_buf[..psdu_len].copy_from_slice(&state.ot.radio_resources.snd_psdu[..psdu_len]);
 
             unsafe {
-                otPlatRadioTxStarted(state.ot.instance, &mut state.ot.radio_resources.snd_frame);
+                otPlatRadioTxStarted(state.ot.instance, &mut state.ot.radio_resources.tns_frame);
             }
 
             (
@@ -2100,24 +2115,32 @@ impl<'a> OpenThread<'a> {
 
             let radio_resources = &mut state.ot.radio_resources;
 
+            // OpenThread gets its own frame back, flagged by it as a
+            // retransmission when it retries. Its PSDU stays in plaintext, so
+            // each attempt is secured anew, with a fresh CSL IE.
             #[cfg(feature = "_csl")]
             if psdu_tx.header_updated {
-                // The radio finished the frame: hand that back to OpenThread,
-                // which reads the frame counter used from it - and resends it
-                // as is, or secures it again, on a retransmission.
+                // The radio set the key id and frame counter: put these in
+                // OpenThread's frame, which reads the counter used from it,
+                // and has a retransmission secured again with the same ones.
                 radio_resources.snd_psdu[..psdu_len].copy_from_slice(&psdu_buf[..psdu_len]);
 
+                let snd_frame = &mut radio_resources.snd_frame;
+                let tns_frame = &mut radio_resources.tns_frame;
+
                 unsafe {
-                    radio_resources
-                        .snd_frame
-                        .mInfo
-                        .mTxInfo
-                        .set_mIsHeaderUpdated(true);
-                    radio_resources
-                        .snd_frame
-                        .mInfo
-                        .mTxInfo
-                        .set_mIsSecurityProcessed(psdu_tx.security_processed);
+                    if sys::otMacFrameIsSecurityEnabled(snd_frame)
+                        && sys::otMacFrameIsKeyIdMode1(snd_frame)
+                    {
+                        sys::otMacFrameSetKeyId(tns_frame, sys::otMacFrameGetKeyId(snd_frame));
+                        sys::otMacFrameSetFrameCounter(
+                            tns_frame,
+                            sys::otMacFrameGetFrameCounter(snd_frame),
+                        );
+                    }
+
+                    tns_frame.mInfo.mTxInfo.set_mIsHeaderUpdated(true);
+                    tns_frame.mInfo.mTxInfo.mTimestamp = snd_frame.mInfo.mTxInfo.mTimestamp;
                 }
             }
 
@@ -2147,7 +2170,7 @@ impl<'a> OpenThread<'a> {
                     unsafe {
                         otPlatRadioTxDone(
                             state.ot.instance,
-                            &mut state.ot.radio_resources.snd_frame,
+                            &mut state.ot.radio_resources.tns_frame,
                             ack_frame_ptr,
                             otError_OT_ERROR_NONE,
                         );
@@ -2159,7 +2182,7 @@ impl<'a> OpenThread<'a> {
                     unsafe {
                         otPlatRadioTxDone(
                             state.ot.instance,
-                            &mut state.ot.radio_resources.snd_frame,
+                            &mut state.ot.radio_resources.tns_frame,
                             core::ptr::null_mut(),
                             Self::to_ot_err(err),
                         );

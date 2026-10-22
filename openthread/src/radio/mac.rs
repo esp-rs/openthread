@@ -7,10 +7,10 @@ use embassy_futures::select::{select, Either};
 use embassy_time::Instant;
 
 use crate::fmt::Bytes;
-use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
+use crate::sys::{otRadioContext, OT_RADIO_FRAME_MAX_SIZE};
 use crate::{
-    Config, MacCapabilities, PsduRxInfo, Radio, RadioCaps, RadioError, RadioErrorKind,
-    SrcMatchConfig,
+    Config, CslConfig, MacCapabilities, MacKeys, PsduRxInfo, Radio, RadioCaps, RadioClock,
+    RadioError, RadioErrorKind, SrcMatchConfig,
 };
 
 pub(crate) use mac_utils::MacHeader;
@@ -189,6 +189,11 @@ pub struct MacRadio<'a, R, T> {
     alt_short_addr: u16,
     /// The extended address to filter by, if the filter policy allows it.
     ext_addr: u64,
+    /// What the software enhanced ACKs are built with: the addresses, the MAC
+    /// keys and frame counters, and the CSL schedule (see `send_enh_ack`).
+    ctx: otRadioContext,
+    /// The wrapped radio's clock - the time base of the CSL sample times.
+    clock: Option<RadioClock>,
 }
 
 impl<'a, R, T> MacRadio<'a, R, T>
@@ -242,6 +247,18 @@ where
             short_addr: MacHeader::BROADCAST_SHORT_ADDR,
             alt_short_addr: MacHeader::BROADCAST_SHORT_ADDR,
             ext_addr: MacHeader::BROADCAST_EXT_ADDR,
+            ctx: otRadioContext::default(),
+            clock: None,
+        }
+    }
+
+    /// The current time of the wrapped radio's clock, or of `embassy-time`'s
+    /// when it has none - the same choice the OpenThread glue makes for
+    /// `otPlatRadioGetNow`, so the CSL phase lands in OpenThread's time base.
+    fn radio_now_us(clock: Option<RadioClock>) -> u64 {
+        match clock {
+            Some(clock) => clock.now_us(),
+            None => Instant::now().as_micros(),
         }
     }
 
@@ -255,12 +272,20 @@ where
     ///
     /// `psdu` must not alias `self`'s buffers (callers pass caller-owned or
     /// stack copies).
-    async fn screen_incoming(&mut self, psdu: &[u8]) -> Result<bool, MacRadioError<R::Error>> {
+    async fn screen_incoming(
+        &mut self,
+        psdu: &[u8],
+        meta: &mut PsduRxInfo,
+    ) -> Result<bool, MacRadioError<R::Error>> {
         if self.mac_caps == MacCapabilities::all() {
             return Ok(true);
         }
 
         if self.mac_header.load(psdu).is_none() {
+            if ot_frame::is_version_2015(psdu) {
+                return self.screen_incoming_2015(psdu, meta).await;
+            }
+
             trace!(
                 "MacRadio, received frame with invalid MAC header, dropping: {}",
                 Bytes(psdu)
@@ -306,14 +331,14 @@ where
             if !self.mac_caps.contains(MacCapabilities::RX_ACK) && self.mac_header.needs_ack() {
                 let ack_at = self.timer.now() + Self::RX_ACK_SEND_US;
 
-                // Ack MAC command frames with Frame Pending set: a
-                // sleepy child's data poll is a command frame, and the
+                // Ack MAC command and data frames with Frame Pending set:
+                // a sleepy child's data poll is a command frame, and the
                 // FP bit is what keeps the child awake for the queued
-                // indirect frame. Conservative - like the C simulation
-                // radio with source matching disabled: a spurious FP
-                // only keeps a child listening briefly when nothing
-                // is queued.
-                let frame_pending = self.mac_header.is_command()
+                // indirect frame (on a data frame: "enhanced frame
+                // pending"). Conservative - like the C simulation radio
+                // with source matching disabled: a spurious FP only keeps
+                // a child listening briefly when nothing is queued.
+                let frame_pending = (self.mac_header.is_command() || ot_frame::is_data(psdu))
                     && self.src_match.ack_frame_pending(
                         self.mac_header.src_short_addr,
                         self.mac_header.src_ext_addr,
@@ -351,10 +376,157 @@ where
                     )
                     .await
                     .map_err(MacRadioError::TxAckFailed)?;
+
+                meta.acked_with_frame_pending = Some(frame_pending);
             }
         }
 
         Ok(true)
+    }
+
+    /// `screen_incoming` for an IEEE 802.15.4-2015 frame, which `MacHeader`
+    /// does not parse - CSL traffic: a CSL child's frames to its parent, and
+    /// the parent's to the child. Parsed with OpenThread's own frame helpers,
+    /// and acknowledged with an enhanced ACK, as the C simulation radio does.
+    async fn screen_incoming_2015(
+        &mut self,
+        psdu: &[u8],
+        meta: &mut PsduRxInfo,
+    ) -> Result<bool, MacRadioError<R::Error>> {
+        if self.mac_caps.contains(MacCapabilities::PROMISCUOUS) || self.promiscuous {
+            return Ok(true);
+        }
+
+        // The PAN ID and the addresses are matched together.
+        let filters = MacCapabilities::FILTER_PAN_ID
+            .union(MacCapabilities::FILTER_SHORT_ADDR)
+            .union(MacCapabilities::FILTER_EXT_ADDR);
+
+        if !self.mac_caps.contains(filters)
+            && !ot_frame::addr_match_any(
+                psdu,
+                self.pan_id,
+                self.short_addr,
+                self.alt_short_addr,
+                self.ext_addr,
+            )
+        {
+            trace!(
+                "MacRadio, filtering out 2015 frame: {}, address does not match",
+                Bytes(psdu)
+            );
+            return Ok(false);
+        }
+
+        if !self.mac_caps.contains(MacCapabilities::RX_ACK) && ot_frame::is_ack_requested(psdu) {
+            self.send_enh_ack(psdu, meta).await?;
+        }
+
+        Ok(true)
+    }
+
+    /// Send the enhanced ACK for an ACK-requesting 802.15.4-2015 frame:
+    /// addressed back to its sender, secured like it with the matching MAC key
+    /// and frame counter and - for a CSL child - carrying the CSL IE with the
+    /// phase of the next sample window as of the ACK going out.
+    async fn send_enh_ack(
+        &mut self,
+        psdu: &[u8],
+        meta: &mut PsduRxInfo,
+    ) -> Result<(), MacRadioError<R::Error>> {
+        let ack_at = self.timer.now() + Self::RX_ACK_SEND_US;
+
+        // Frame Pending as the C simulation radio decides it for Thread 1.2+:
+        // also on data frames, which is how a parent keeps a CSL child
+        // listening for a frame it has queued ("enhanced frame pending").
+        let frame_pending = (ot_frame::is_command(psdu) || ot_frame::is_data(psdu))
+            && ot_frame::src_addr(psdu).is_some_and(|(short_addr, ext_addr)| {
+                self.src_match.ack_frame_pending(short_addr, ext_addr)
+            });
+
+        #[allow(unused_mut)]
+        let mut ie = [0; crate::sys::OT_ACK_IE_MAX_SIZE as _];
+        #[allow(unused_mut)]
+        let mut ie_len = 0;
+
+        #[cfg(feature = "csl-receiver")]
+        if self.ctx.mCslPeriod > 0 {
+            ie_len += ot_frame::csl_ie_template(&mut ie);
+        }
+
+        if self.timer.now() < ack_at {
+            self.timer.wait(ack_at).await;
+        }
+
+        // Built right before it goes out, so that its CSL phase, frame
+        // counter and AES-CCM* are as of then.
+        let now = Self::radio_now_us(self.clock);
+
+        let Some((ack_len, ack_security)) = ot_frame::enh_ack(
+            psdu,
+            frame_pending,
+            &ie[..ie_len],
+            now,
+            &mut self.ctx,
+            self.ack_psdu_buf,
+        ) else {
+            trace!(
+                "MacRadio, cannot build the enhanced ACK for: {}",
+                Bytes(psdu)
+            );
+            return Ok(());
+        };
+
+        trace!(
+            "MacRadio, about to transmit enhanced ACK: {}",
+            Bytes(&self.ack_psdu_buf[..ack_len])
+        );
+
+        let mut ack_psdu_tx = crate::PsduTxInfo {
+            security_processed: true,
+            header_updated: true,
+            ..Default::default()
+        };
+
+        self.radio
+            .transmit(
+                &mut self.ack_psdu_buf[..ack_len],
+                &mut ack_psdu_tx,
+                self.channel,
+                self.power,
+                None,
+                None,
+            )
+            .await
+            .map_err(MacRadioError::TxAckFailed)?;
+
+        meta.acked_with_frame_pending = Some(frame_pending);
+        meta.ack_security = ack_security;
+
+        Ok(())
+    }
+
+    /// The ACK request and the sequence number of a frame to transmit, of any
+    /// frame version.
+    fn tx_ack_request(&mut self, psdu: &[u8]) -> Option<(bool, u8)> {
+        if self.mac_header.load(psdu).is_some() {
+            Some((self.mac_header.needs_ack(), self.mac_header.seq))
+        } else if ot_frame::is_version_2015(psdu) {
+            Some((ot_frame::is_ack_requested(psdu), ot_frame::seq(psdu)?))
+        } else {
+            None
+        }
+    }
+
+    /// Whether `psdu` is the ACK - immediate or enhanced - for sequence number `seq`.
+    fn is_ack_for(mac_header: &mut MacHeader, psdu: &[u8], seq: u8) -> bool {
+        if mac_header.load(psdu).is_some() {
+            mac_header.ack_for(seq)
+        } else {
+            ot_frame::is_version_2015(psdu)
+                && ot_frame::is_ack(psdu)
+                && ot_frame::seq(psdu) == Some(seq)
+        }
     }
 }
 
@@ -373,6 +545,7 @@ where
         // the full MAC-offload set — whatever the hardware doesn't do, this
         // wrapper does in software — while the PHY caps pass through unchanged.
         self.mac_caps = caps.mac;
+        self.clock = caps.clock;
 
         // Outwards: the full MAC-offload set - whatever the hardware doesn't
         // do, this wrapper does in software - with ONE exception: for an
@@ -424,7 +597,81 @@ where
             .unwrap_or(MacHeader::BROADCAST_SHORT_ADDR);
         self.ext_addr = config.ext_addr.unwrap_or(MacHeader::BROADCAST_EXT_ADDR);
 
+        // As the OpenThread glue fills its own transmit-security context.
+        self.ctx.mExtAddress.m8 = config.ext_addr.unwrap_or(0).to_be_bytes();
+        self.ctx.mShortAddress = config.short_addr.unwrap_or(0xfffe);
+        self.ctx.mAlternateShortAddress = config.alt_short_addr.unwrap_or(0xfffe);
+
         Ok(())
+    }
+
+    async fn set_receive_at(
+        &mut self,
+        channel: u8,
+        start_us: u64,
+        duration_us: u32,
+    ) -> Result<(), Self::Error> {
+        self.channel = channel;
+
+        self.radio
+            .set_receive_at(channel, start_us, duration_us)
+            .await
+            .map_err(Self::Error::Io)
+    }
+
+    async fn set_csl(&mut self, csl: &CslConfig) -> Result<(), Self::Error> {
+        self.ctx.mCslPeriod = csl.period.min(u16::MAX as u32) as u16;
+        self.ctx.mCslSampleTime = csl.sample_time_us;
+
+        self.radio.set_csl(csl).await.map_err(Self::Error::Io)
+    }
+
+    async fn set_mac_keys(&mut self, keys: Option<&MacKeys>) -> Result<(), Self::Error> {
+        // The frame counter is OpenThread's to set (`set_mac_frame_counter`,
+        // which comes first on a key rotation), so it is left alone here.
+        let ctx = &mut self.ctx;
+        ctx.mKeyType = crate::sys::otRadioKeyType_OT_KEY_TYPE_LITERAL_KEY;
+
+        match keys {
+            Some(keys) => {
+                ctx.mKeyId = keys.key_id;
+                ctx.mPrevKey.mKeyMaterial.mKey.m8 = keys.prev;
+                ctx.mCurrKey.mKeyMaterial.mKey.m8 = keys.curr;
+                ctx.mNextKey.mKeyMaterial.mKey.m8 = keys.next;
+            }
+            None => {
+                ctx.mKeyId = 0;
+                ctx.mPrevKey.mKeyMaterial.mKey.m8 = [0; 16];
+                ctx.mCurrKey.mKeyMaterial.mKey.m8 = [0; 16];
+                ctx.mNextKey.mKeyMaterial.mKey.m8 = [0; 16];
+            }
+        }
+
+        self.radio.set_mac_keys(keys).await.map_err(Self::Error::Io)
+    }
+
+    async fn set_mac_frame_counter(
+        &mut self,
+        frame_counter: u32,
+        if_larger: bool,
+    ) -> Result<(), Self::Error> {
+        let ctx = &mut self.ctx;
+
+        if !if_larger || frame_counter > ctx.mMacFrameCounter {
+            // A counter set back is a key rotation: the ACKs to frames still
+            // secured with the previous key go on with the counter that key
+            // was at, as in the C simulation radio.
+            if frame_counter < ctx.mMacFrameCounter {
+                ctx.mPrevMacFrameCounter = ctx.mMacFrameCounter;
+            }
+
+            ctx.mMacFrameCounter = frame_counter;
+        }
+
+        self.radio
+            .set_mac_frame_counter(frame_counter, if_larger)
+            .await
+            .map_err(Self::Error::Io)
     }
 
     async fn set_src_match_config(&mut self, entries: &SrcMatchConfig) -> Result<(), Self::Error> {
@@ -466,6 +713,17 @@ where
         self.channel = channel;
         self.power = power;
 
+        // The enhanced ACKs this wrapper secures share the frame counter of
+        // the key with the frames going out: skip past theirs, or an ACK
+        // would reuse a frame's nonce.
+        if !self.mac_caps.contains(MacCapabilities::RX_ACK) {
+            if let Some((key_id, frame_counter)) = ot_frame::security(psdu) {
+                if key_id == self.ctx.mKeyId && frame_counter >= self.ctx.mMacFrameCounter {
+                    self.ctx.mMacFrameCounter = frame_counter.wrapping_add(1);
+                }
+            }
+        }
+
         if self.mac_caps.contains(MacCapabilities::TX_ACK) {
             let result = self
                 .radio
@@ -484,11 +742,10 @@ where
 
             let sent_at = self.timer.now();
 
-            self.mac_header.load(psdu).ok_or(MacRadioError::TxInvalid)?;
+            let (needs_ack, psdu_seq) =
+                self.tx_ack_request(psdu).ok_or(MacRadioError::TxInvalid)?;
 
-            if self.mac_header.needs_ack() {
-                let psdu_seq = self.mac_header.seq;
-
+            if needs_ack {
                 trace!("MacRadio, about to receive transmit ACK");
 
                 // Wait for the matching ACK until the deadline, SERVING the
@@ -509,7 +766,7 @@ where
                         select(&mut ack, &mut timeout).await
                     };
 
-                    let meta = match result {
+                    let mut meta = match result {
                         Either::First(result) => result.map_err(Self::Error::RxAckFailed)?,
                         Either::Second(_) => {
                             trace!("MacRadio, transmit ACK timeout");
@@ -518,12 +775,11 @@ where
                         }
                     };
 
-                    let psdu = &self.ack_psdu_buf[..meta.len];
-                    if self
-                        .mac_header
-                        .load(psdu)
-                        .is_some_and(|()| self.mac_header.ack_for(psdu_seq))
-                    {
+                    if Self::is_ack_for(
+                        &mut self.mac_header,
+                        &self.ack_psdu_buf[..meta.len],
+                        psdu_seq,
+                    ) {
                         break meta;
                     }
 
@@ -533,7 +789,9 @@ where
                     let mut crossing = [0; OT_RADIO_FRAME_MAX_SIZE as _];
                     crossing[..meta.len].copy_from_slice(&self.ack_psdu_buf[..meta.len]);
 
-                    if self.screen_incoming(&crossing[..meta.len]).await?
+                    if self
+                        .screen_incoming(&crossing[..meta.len], &mut meta)
+                        .await?
                         && !self.pending_rx.push_back(meta, &crossing[..meta.len])
                     {
                         trace!(
@@ -579,7 +837,7 @@ where
         loop {
             trace!("MacRadio, about to receive");
 
-            let psdu_meta = self
+            let mut psdu_meta = self
                 .radio
                 .receive(psdu_buf)
                 .await
@@ -591,7 +849,10 @@ where
                 psdu_meta
             );
 
-            if self.screen_incoming(&psdu_buf[..psdu_meta.len]).await? {
+            if self
+                .screen_incoming(&psdu_buf[..psdu_meta.len], &mut psdu_meta)
+                .await?
+            {
                 trace!(
                     "MacRadio, received frame: {}",
                     Bytes(&psdu_buf[..psdu_meta.len])
@@ -1034,5 +1295,165 @@ mod mac_utils {
                 _ => None,
             }
         }
+    }
+}
+
+/// Thin wrappers over OpenThread's own frame helpers (`otMacFrame*`), for the
+/// IEEE 802.15.4-2015 frames `MacHeader` does not parse.
+mod ot_frame {
+    use crate::sys::{
+        self, otError_OT_ERROR_NONE, otExtAddress, otMacAddress, otMacFrameDoesAddrMatchAny,
+        otMacFrameGenerateEnhAck, otMacFrameGetFrameCounter, otMacFrameGetKeyId,
+        otMacFrameGetSequence, otMacFrameGetSrcAddr, otMacFrameIsAck, otMacFrameIsAckRequested,
+        otMacFrameIsCommand, otMacFrameIsData, otMacFrameIsKeyIdMode1, otMacFrameIsSecurityEnabled,
+        otMacFrameIsVersion2015, otRadioContext, otRadioFrame,
+    };
+    use crate::AckSecurity;
+
+    use super::MacHeader;
+
+    /// The shortest frame the helpers are handed: FCF, sequence number, FCS.
+    const MIN_LEN: usize = 5;
+
+    /// A read-only `otRadioFrame` view of `psdu`, which the helpers below only
+    /// ever read from.
+    fn frame(psdu: &[u8]) -> otRadioFrame {
+        otRadioFrame {
+            mPsdu: psdu.as_ptr().cast_mut(),
+            mLength: psdu.len() as _,
+            ..Default::default()
+        }
+    }
+
+    pub fn is_version_2015(psdu: &[u8]) -> bool {
+        psdu.len() >= MIN_LEN && unsafe { otMacFrameIsVersion2015(&frame(psdu)) }
+    }
+
+    pub fn is_ack(psdu: &[u8]) -> bool {
+        unsafe { otMacFrameIsAck(&frame(psdu)) }
+    }
+
+    pub fn is_ack_requested(psdu: &[u8]) -> bool {
+        unsafe { otMacFrameIsAckRequested(&frame(psdu)) }
+    }
+
+    pub fn is_command(psdu: &[u8]) -> bool {
+        unsafe { otMacFrameIsCommand(&frame(psdu)) }
+    }
+
+    pub fn is_data(psdu: &[u8]) -> bool {
+        unsafe { otMacFrameIsData(&frame(psdu)) }
+    }
+
+    /// The key index and the frame counter of a frame secured with key ID mode 1.
+    pub fn security(psdu: &[u8]) -> Option<(u8, u32)> {
+        let mut frame = frame(psdu);
+
+        if psdu.len() < MIN_LEN
+            || !unsafe {
+                otMacFrameIsSecurityEnabled(&mut frame) && otMacFrameIsKeyIdMode1(&mut frame)
+            }
+        {
+            return None;
+        }
+
+        Some(unsafe {
+            (
+                otMacFrameGetKeyId(&mut frame),
+                otMacFrameGetFrameCounter(&mut frame),
+            )
+        })
+    }
+
+    pub fn seq(psdu: &[u8]) -> Option<u8> {
+        let mut seq = 0;
+
+        (unsafe { otMacFrameGetSequence(&frame(psdu), &mut seq) } == otError_OT_ERROR_NONE)
+            .then_some(seq)
+    }
+
+    /// The source address, as `(short, extended)` with the absent one at its
+    /// broadcast value - the shape `SrcMatchConfig::ack_frame_pending` takes.
+    pub fn src_addr(psdu: &[u8]) -> Option<(u16, u64)> {
+        let mut src = otMacAddress::default();
+
+        if unsafe { otMacFrameGetSrcAddr(&frame(psdu), &mut src) } != otError_OT_ERROR_NONE {
+            return None;
+        }
+
+        // The helper hands extended addresses over big-endian, while the
+        // table keeps them in the little-endian frame order.
+        match src.mType {
+            sys::otMacAddressType_OT_MAC_ADDRESS_TYPE_SHORT => Some((
+                unsafe { src.mAddress.mShortAddress },
+                MacHeader::BROADCAST_EXT_ADDR,
+            )),
+            sys::otMacAddressType_OT_MAC_ADDRESS_TYPE_EXTENDED => Some((
+                MacHeader::BROADCAST_SHORT_ADDR,
+                u64::from_be_bytes(unsafe { src.mAddress.mExtAddress.m8 }),
+            )),
+            _ => None,
+        }
+    }
+
+    pub fn addr_match_any(
+        psdu: &[u8],
+        pan_id: u16,
+        short_addr: u16,
+        alt_short_addr: u16,
+        ext_addr: u64,
+    ) -> bool {
+        let ext_addr = otExtAddress {
+            m8: ext_addr.to_be_bytes(),
+        };
+
+        unsafe {
+            otMacFrameDoesAddrMatchAny(&frame(psdu), pan_id, short_addr, alt_short_addr, &ext_addr)
+        }
+    }
+
+    #[cfg(feature = "csl-receiver")]
+    pub fn csl_ie_template(ie: &mut [u8]) -> usize {
+        unsafe { crate::sys::otMacFrameGenerateCslIeTemplate(ie.as_mut_ptr()) as usize }
+    }
+
+    /// Build into `ack_buf` the enhanced ACK for `psdu`, with `ie` as its
+    /// header IEs, and finish it as of `now` with the keys, frame counter and
+    /// CSL schedule in `ctx`. Returns its length and the security it got.
+    pub fn enh_ack(
+        psdu: &[u8],
+        frame_pending: bool,
+        ie: &[u8],
+        now: u64,
+        ctx: &mut otRadioContext,
+        ack_buf: &mut [u8],
+    ) -> Option<(usize, Option<AckSecurity>)> {
+        let mut ack = otRadioFrame {
+            mPsdu: ack_buf.as_mut_ptr(),
+            ..Default::default()
+        };
+
+        let generated = unsafe {
+            otMacFrameGenerateEnhAck(
+                &frame(psdu),
+                frame_pending,
+                ie.as_ptr(),
+                ie.len() as _,
+                &mut ack,
+            )
+        };
+
+        if generated != otError_OT_ERROR_NONE
+            || crate::radio::process_tx_sfd(&mut ack, now, ctx) != otError_OT_ERROR_NONE
+        {
+            return None;
+        }
+
+        let security = unsafe { otMacFrameIsSecurityEnabled(&mut ack) }.then(|| AckSecurity {
+            frame_counter: unsafe { otMacFrameGetFrameCounter(&mut ack) },
+            key_id: unsafe { otMacFrameGetKeyId(&mut ack) },
+        });
+
+        Some((ack.mLength as usize, security))
     }
 }
