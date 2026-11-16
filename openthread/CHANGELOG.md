@@ -6,6 +6,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+* `MacRadio`: secured enhanced ACKs (with a CSL IE) for 802.15.4-2015 frames, and Frame Pending on data frames too; the CSL scenarios run in the simulated itests (#126)
+* Fix: a CSL child did not resync its parent with a data poll after a retransmitted frame, as OpenThread never saw its retransmissions flagged as such (#126)
+* Thread diagnostics: `ActiveDatasetDiag` gains `active_timestamp`; new `OpenThread::pending_dataset_diag` (pending timestamp and delay timer) (#126)
 * Breaking: CSL (Thread 1.2 Synchronized Sleepy End Device) support (#122):
   * New CSL and enhanced ACKs APIs
   * `Radio` trait: new defaulted CSL and enhanced ACK methods; a radio advertising `Capabilities::RECEIVE_TIMING` **must** implement them

@@ -81,6 +81,9 @@ openthread = { path = "../openthread", default-features = false, features = [
     # size of exactly 65536 passes the alignment assert but wraps to 0 in
     # `ot::Utils::Heap::Heap()` and SIGSEGVs at instance init.)
     "heap-int-65528",
+    # The CSL receiver, for the `v1_2_*` CSL scenarios' SSEDs (the `ftd` build
+    # already has the CSL transmitter their parents need).
+    "csl-receiver",
 ] }
 embassy-sync = "0.8"
 

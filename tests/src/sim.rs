@@ -38,7 +38,8 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use async_io::Async;
 
 use openthread::{
-    Config, PsduRxInfo, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig,
+    Capabilities, Config, PsduRxInfo, Radio, RadioCaps, RadioClock, RadioError, RadioErrorKind,
+    SrcMatchConfig,
 };
 
 use socket2::{Domain, Protocol, Socket, Type};
@@ -68,6 +69,67 @@ pub(crate) const SIM_LOW_RSSI: i8 = -98;
 
 /// Maximum PSDU size of an 802.15.4 frame (FCS included).
 pub(crate) const PSDU_MAX: usize = openthread::sys::OT_RADIO_FRAME_MAX_SIZE as usize;
+
+/// The capabilities of the simulated radios: bare PHYs (`MacRadio` and
+/// OpenThread handle ACKs, filtering, retries and frame security in software)
+/// with timed receive and transmit, so that they can run CSL - as a child,
+/// and as the parent timing its frames into a child's receive windows.
+pub(crate) fn sim_radio_caps() -> RadioCaps {
+    RadioCaps {
+        phy: Capabilities::RECEIVE_TIMING.union(Capabilities::TRANSMIT_TIMING),
+        // The upstream simulation radio's `SIM_RECEIVE_SENSITIVITY`: the
+        // cert suites' link-quality scenarios shape RSS values against
+        // exactly this noise floor (e.g. a `macfilter rss` of -85 dBm is
+        // meant to land in the 10-20 dB margin bucket, link quality 2).
+        receive_sensitivity: -100,
+        // The node's own (real or virtual) time.
+        clock: Some(RadioClock(sim_now_us)),
+        // The upstream simulation radio's CSL accuracy, and no jitter: this
+        // medium is exact.
+        csl_accuracy_ppm: 0,
+        csl_uncertainty: 0,
+        ..RadioCaps::default()
+    }
+}
+
+/// The clock of the simulated radios.
+pub(crate) fn sim_now_us() -> u64 {
+    embassy_time::Instant::now().as_micros()
+}
+
+/// A CSL receive window of a simulated radio (`Radio::set_receive_at`).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RxWindow {
+    channel: u8,
+    start_us: u64,
+    end_us: u64,
+}
+
+impl RxWindow {
+    pub(crate) fn new(channel: u8, start_us: u64, duration_us: u32) -> Self {
+        Self {
+            channel,
+            start_us,
+            end_us: start_us + duration_us as u64,
+        }
+    }
+
+    /// The duration of a frame's synchronization header - preamble and SFD,
+    /// 5 octets at 32 us each - which precedes the end of its SFD.
+    const SHR_US: u64 = 5 * 32;
+
+    /// Whether a frame on `channel` whose SFD ended at `sfd_us` is heard.
+    ///
+    /// As by the radios doing timed receive on hardware, which detect a
+    /// frame's synchronization header in the window and then receive it to
+    /// its end - so the header has to overlap the window, not the whole
+    /// frame (the windows OpenThread asks for are sized for exactly that).
+    pub(crate) fn hears(&self, channel: u8, sfd_us: u64) -> bool {
+        channel == self.channel
+            && sfd_us >= self.start_us
+            && sfd_us.saturating_sub(Self::SHR_US) <= self.end_us
+    }
+}
 
 /// The error type of [`SimRadio`].
 #[derive(Debug)]
@@ -118,6 +180,9 @@ pub struct SimRadio {
     /// be switched off, so whatever accumulated while parked is discarded on
     /// waking (see `set_receive`).
     sleeping: bool,
+    /// The CSL receive window the radio is asleep around, if any: only the
+    /// frames arriving in it are heard.
+    window: Option<RxWindow>,
 }
 
 impl SimRadio {
@@ -148,6 +213,7 @@ impl SimRadio {
             config: Config::new(),
             channel: 11,
             sleeping: true,
+            window: None,
         })
     }
 
@@ -209,16 +275,7 @@ impl Radio for SimRadio {
     type Error = SimRadioError;
 
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
-        // A bare PHY, like the nRF driver: `MacRadio` / OpenThread handle
-        // ACKs, filtering, retries and frame security in software.
-        Ok(RadioCaps {
-            // The upstream simulation radio's `SIM_RECEIVE_SENSITIVITY`: the
-            // cert suites' link-quality scenarios shape RSS values against
-            // exactly this noise floor (e.g. a `macfilter rss` of -85 dBm is
-            // meant to land in the 10-20 dB margin bucket, link quality 2).
-            receive_sensitivity: -100,
-            ..RadioCaps::default()
-        })
+        Ok(sim_radio_caps())
     }
 
     async fn energy_scan(&mut self, channel: u8, duration_millis: u16) -> Result<i8, Self::Error> {
@@ -248,13 +305,27 @@ impl Radio for SimRadio {
 
     async fn set_receive(&mut self, channel: u8) -> Result<(), Self::Error> {
         self.channel = channel;
+        self.window = None;
         self.wake();
+
+        Ok(())
+    }
+
+    async fn set_receive_at(
+        &mut self,
+        channel: u8,
+        start_us: u64,
+        duration_us: u32,
+    ) -> Result<(), Self::Error> {
+        self.sleeping = true;
+        self.window = Some(RxWindow::new(channel, start_us, duration_us));
 
         Ok(())
     }
 
     async fn set_sleep(&mut self) -> Result<(), Self::Error> {
         self.sleeping = true;
+        self.window = None;
 
         Ok(())
     }
@@ -262,7 +333,7 @@ impl Radio for SimRadio {
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        _psdu_tx: &mut openthread::PsduTxInfo,
+        psdu_tx: &mut openthread::PsduTxInfo,
         channel: u8,
         _power: i8,                 // The simulated medium is lossless
         _cca_threshold: Option<i8>, // ... and always idle
@@ -272,9 +343,16 @@ impl Radio for SimRadio {
             return Err(SimRadioError::TxInvalid);
         }
 
+        // A frame timed into a CSL child's receive window: this medium has no
+        // latency, so it goes out exactly then.
+        if let Some(tx_at_us) = psdu_tx.tx_at_us {
+            embassy_time::Timer::at(embassy_time::Instant::from_micros(tx_at_us)).await;
+        }
+
         // A transmit tunes the radio and wakes it, as it does on real
         // hardware.
         self.channel = channel;
+        self.window = None;
         self.wake();
 
         let mut msg = [0; PSDU_MAX + 1];
@@ -315,7 +393,14 @@ impl Radio for SimRadio {
             }
 
             let channel = msg[0];
-            if channel != self.channel {
+            let now = sim_now_us();
+
+            let heard = match self.window {
+                Some(window) => window.hears(channel, now),
+                None => channel == self.channel,
+            };
+
+            if !heard {
                 continue;
             }
 
@@ -334,7 +419,7 @@ impl Radio for SimRadio {
                 // every frame; the `expect` suites' scan/discover scripts
                 // match on exactly that.
                 lqi: Some(0),
-                timestamp_us: None,
+                timestamp_us: Some(now),
                 ack_security: None,
                 acked_with_frame_pending: None,
             });

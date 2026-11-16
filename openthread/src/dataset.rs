@@ -5,10 +5,10 @@
 #[cfg(feature = "ftd")]
 use crate::sys::otDatasetCreateNewNetwork;
 use crate::sys::{
-    otDatasetGetActive, otDatasetParseTlvs, otDatasetSetActive, otDatasetSetActiveTlvs,
-    otDatasetSetPending, otDatasetSetPendingTlvs, otError_OT_ERROR_INVALID_ARGS,
-    otError_OT_ERROR_NO_BUFS, otExtendedPanId, otMeshLocalPrefix, otNetworkKey,
-    otOperationalDataset, otOperationalDatasetTlvs, otPskc, otTimestamp,
+    otDatasetGetActive, otDatasetGetPending, otDatasetParseTlvs, otDatasetSetActive,
+    otDatasetSetActiveTlvs, otDatasetSetPending, otDatasetSetPendingTlvs,
+    otError_OT_ERROR_INVALID_ARGS, otError_OT_ERROR_NO_BUFS, otExtendedPanId, otMeshLocalPrefix,
+    otNetworkKey, otOperationalDataset, otOperationalDatasetTlvs, otPskc, otTimestamp,
 };
 use crate::{ot, OpenThread, OtActiveState, OtError};
 
@@ -385,12 +385,26 @@ impl OperationalDatasetComponents {
 #[derive(Debug, Clone, Default, Eq, PartialEq, Hash)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ActiveDatasetDiag {
+    /// The Active Timestamp, if present in the active dataset.
+    pub active_timestamp: Option<ThreadTimestamp>,
     /// The Security Policy, if present in the active dataset.
     pub security_policy: Option<SecurityPolicy>,
     /// The Channel Mask (page 0), if present in the active dataset.
     pub channel_mask: Option<u32>,
     /// Which components are present in the active dataset.
     pub components: OperationalDatasetComponents,
+}
+
+/// A snapshot of the diagnostic-relevant parts of the Pending Operational Dataset.
+///
+/// Returned by [`OpenThread::pending_dataset_diag`].
+#[derive(Debug, Clone, Default, Eq, PartialEq, Hash)]
+#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+pub struct PendingDatasetDiag {
+    /// The Pending Timestamp, if present in the pending dataset.
+    pub pending_timestamp: Option<ThreadTimestamp>,
+    /// The Delay Timer in milliseconds, if present in the pending dataset.
+    pub delay: Option<u32>,
 }
 
 /// Thread Dataset timestamp
@@ -401,6 +415,17 @@ pub struct ThreadTimestamp {
     pub seconds: u64,
     pub ticks: u16,
     pub authoritative: bool,
+}
+
+impl ThreadTimestamp {
+    /// Load the timestamp from the raw `otTimestamp` struct.
+    pub(crate) const fn load_raw(raw: &otTimestamp) -> Self {
+        Self {
+            seconds: raw.mSeconds,
+            ticks: raw.mTicks,
+            authoritative: raw.mAuthoritative,
+        }
+    }
 }
 
 impl OpenThread<'_> {
@@ -442,6 +467,9 @@ impl OpenThread<'_> {
         let components = OperationalDatasetComponents::load_raw(&dataset.mComponents);
 
         Some(ActiveDatasetDiag {
+            active_timestamp: components
+                .active_timestamp_present
+                .then(|| ThreadTimestamp::load_raw(&dataset.mActiveTimestamp)),
             security_policy: components
                 .security_policy_present
                 .then(|| SecurityPolicy::load_raw(&dataset.mSecurityPolicy)),
@@ -449,6 +477,30 @@ impl OpenThread<'_> {
                 .channel_mask_present
                 .then_some(dataset.mChannelMask),
             components,
+        })
+    }
+
+    /// Return the diagnostic-relevant parts (pending timestamp and delay timer) of the
+    /// Pending Operational Dataset.
+    ///
+    /// Returns `None` if the stack does not currently have a pending dataset.
+    pub fn pending_dataset_diag(&self) -> Option<PendingDatasetDiag> {
+        let mut ot = self.activate();
+        let state = ot.state();
+
+        let instance = state.ot.instance;
+        let dataset = &mut state.ot.dataset_resources.dataset;
+
+        // SAFETY: `otDatasetGetPending` fully populates `dataset` on success.
+        ot!(unsafe { otDatasetGetPending(instance, dataset) }).ok()?;
+
+        let components = &dataset.mComponents;
+
+        Some(PendingDatasetDiag {
+            pending_timestamp: components
+                .mIsPendingTimestampPresent
+                .then(|| ThreadTimestamp::load_raw(&dataset.mPendingTimestamp)),
+            delay: components.mIsDelayPresent.then_some(dataset.mDelay),
         })
     }
 

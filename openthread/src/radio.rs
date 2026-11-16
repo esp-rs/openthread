@@ -943,3 +943,29 @@ where
         T::set_mac_frame_counter(self, frame_counter, if_larger).await
     }
 }
+
+/// Finish a frame (or an enhanced ACK) going out at `now` with OpenThread's
+/// `otMacFrameProcessTxSfd`, but with its CSL phase rounded to the nearest
+/// 160 us unit rather than down.
+///
+/// Rounded down, the phase has the parent transmit up to a whole unit early -
+/// more than the CSL receive windows open ahead of the sample time in this
+/// crate's builds (see `openthread-sys`). Rounded to the nearest unit, it is at
+/// most half a unit off: early within the window, or late by less than the
+/// synchronization header the radio detects in it.
+pub(crate) fn process_tx_sfd(
+    frame: &mut crate::sys::otRadioFrame,
+    now: u64,
+    ctx: &mut crate::sys::otRadioContext,
+) -> crate::sys::otError {
+    const HALF_PHASE_UNIT_US: u64 = 10 * 16 / 2;
+
+    let err = unsafe {
+        crate::sys::otMacFrameProcessTxSfd(frame, now.wrapping_sub(HALF_PHASE_UNIT_US), ctx)
+    };
+
+    // The helper also stamps the frame with the time it was handed.
+    frame.mInfo.mTxInfo.mTimestamp = now;
+
+    err
+}
