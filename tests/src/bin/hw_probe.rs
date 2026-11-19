@@ -161,7 +161,6 @@ async fn try_init(device: &str, baud: u32) -> Result<RadioCaps, String> {
 /// Print what the co-processor said it can do.
 fn report(caps: &RadioCaps) {
     println!("    phy caps:  {:?}", caps.phy);
-    println!("    mac caps:  {:?}", caps.mac);
     println!("    rx sens:   {} dBm", caps.receive_sensitivity);
     println!("    tx power:  {} dBm", caps.default_tx_power);
     println!("    cca thr:   {} dBm", caps.default_cca_threshold);

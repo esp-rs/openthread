@@ -27,8 +27,8 @@ overflow-checks = false
 
 [features]
 default = ["esp32c6"]
-esp32c6 = ["esp-rtos/esp32c6", "esp-radio/esp32c6", "esp-backtrace/esp32c6", "esp-println/esp32c6", "esp-bootloader-esp-idf/esp32c6"]
-esp32h2 = ["esp-rtos/esp32h2", "esp-radio/esp32h2", "esp-backtrace/esp32h2", "esp-println/esp32h2", "esp-bootloader-esp-idf/esp32h2"]
+esp32c6 = ["esp-rtos/esp32c6", "esp-radio/esp32c6", "openthread-driver-esp/esp32c6", "esp-backtrace/esp32c6", "esp-println/esp32c6", "esp-bootloader-esp-idf/esp32c6"]
+esp32h2 = ["esp-rtos/esp32h2", "esp-radio/esp32h2", "openthread-driver-esp/esp32h2", "esp-backtrace/esp32h2", "esp-println/esp32h2", "esp-bootloader-esp-idf/esp32h2"]
 
 force-generate-bindings = ["openthread/force-generate-bindings"]
 
@@ -51,7 +51,8 @@ critical-section = "1.2"
 rand_core = "0.10"
 static_cell = "2.1"
 
-openthread = { path = "../../openthread", features = ["udp", "srp", "dns-client", "embassy-net-driver-channel", "esp-radio", "isupper", "log"] }
+openthread = { path = "../../openthread", features = ["udp", "srp", "dns-client", "embassy-net-driver-channel", "isupper", "log"] }
+openthread-driver-esp = { path = "../../openthread-driver-esp", features = ["log"] }
 tinyrlibc = { version = "0.5", default-features = false, features = ["utoa", "strtoul"] }
 
 [[bin]]

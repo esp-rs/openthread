@@ -34,9 +34,10 @@ use embassy_sync::channel::Channel;
 
 use log::info;
 
-use openthread::{EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources, Radio};
+use openthread::{OpenThread, OtResources, Radio};
 
 use openthread_tests::executor::{self, Mode};
+use openthread_tests::mac::{EmbassyTimeTimer, MacRadio, MacRadioResources};
 use openthread_tests::settings::FileSettings;
 use openthread_tests::sim::SimRadio;
 use openthread_tests::vt::{VtLink, VtRadio};

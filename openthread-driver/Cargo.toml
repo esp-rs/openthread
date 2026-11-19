@@ -1,0 +1,19 @@
+[package]
+name = "openthread-driver"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.85"
+categories = ["embedded", "hardware-support", "no-std"]
+keywords = ["thread", "openthread", "embedded", "ieee802154", "radio"]
+description = "The traits a platform implements for the openthread crate: the IEEE 802.15.4 radio and the settings storage"
+repository = "https://github.com/esp-rs/openthread"
+readme = "README.md"
+
+[features]
+defmt = ["dep:defmt", "heapless/defmt"]
+
+[dependencies]
+defmt = { workspace = true, default-features = false, optional = true }
+heapless = { workspace = true, default-features = false }
+bitflags = { workspace = true, default-features = false }

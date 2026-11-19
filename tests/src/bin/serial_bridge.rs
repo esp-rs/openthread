@@ -12,7 +12,7 @@
 //! ```text
 //!   harness --spawns--> serial_bridge <node id>
 //!                          |  stdin/stdout
-//!                          +--serial--> [MCU: openthread + CLI + NrfRadio/EspRadio]
+//!                          +--serial--> [MCU: openthread + CLI + EspRadio]
 //!                                                    ~)) real RF
 //! ```
 //!
@@ -21,10 +21,9 @@
 //! The RCP tier (see [`openthread_tests::hw`]) puts real RF under the
 //! stack, but the radio it drives is a co-processor running someone else's
 //! firmware, and the stack still runs on a host. This tier is the only one
-//! where the crate's own radio drivers (`NrfRadio`, `EspRadio`, or any
-//! user-provided `Radio`), the `MacRadio` software MAC with its real ACK
-//! deadlines, and the `ProxyRadio` executor split all run where they are meant
-//! to - on the MCU, against a real clock.
+//! where a radio driver (`EspRadio` from `openthread-driver-esp`, or any
+//! other `Radio`) runs where it is meant to - on the MCU, against a real
+//! clock.
 //!
 //! # Port map
 //!

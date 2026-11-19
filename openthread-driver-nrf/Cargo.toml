@@ -1,0 +1,42 @@
+[package]
+name = "openthread-driver-nrf"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.93"
+categories = ["embedded", "hardware-support", "no-std"]
+keywords = ["thread", "openthread", "embedded", "nrf", "ieee802154"]
+description = "The IEEE 802.15.4 radio of the nRF chips for the openthread crate, over nrf-802154"
+repository = "https://github.com/esp-rs/openthread"
+readme = "README.md"
+
+[package.metadata.docs.rs]
+features = ["nrf52840"]
+default-target = "thumbv7em-none-eabihf"
+targets = ["thumbv7em-none-eabihf"]
+
+[features]
+# The chip, as named by `nrf-802154`
+nrf52805 = ["nrf-802154/nrf52805", "dep:openthread-driver"]
+nrf52810 = ["nrf-802154/nrf52810", "dep:openthread-driver"]
+nrf52811 = ["nrf-802154/nrf52811", "dep:openthread-driver"]
+nrf52820 = ["nrf-802154/nrf52820", "dep:openthread-driver"]
+nrf52832 = ["nrf-802154/nrf52832", "dep:openthread-driver"]
+nrf52833 = ["nrf-802154/nrf52833", "dep:openthread-driver"]
+nrf52840 = ["nrf-802154/nrf52840", "dep:openthread-driver"]
+nrf5340-net = ["nrf-802154/nrf5340-net", "dep:openthread-driver"]
+nrf54l05-app-s = ["nrf-802154/nrf54l05-app-s", "dep:openthread-driver"]
+nrf54l10-app-s = ["nrf-802154/nrf54l10-app-s", "dep:openthread-driver"]
+nrf54l10-app-ns = ["nrf-802154/nrf54l10-app-ns", "dep:openthread-driver"]
+nrf54l15-app-s = ["nrf-802154/nrf54l15-app-s", "dep:openthread-driver"]
+nrf54l15-app-ns = ["nrf-802154/nrf54l15-app-ns", "dep:openthread-driver"]
+nrf54lm20-app-s = ["nrf-802154/nrf54lm20-app-s", "dep:openthread-driver"]
+
+defmt = ["dep:defmt", "nrf-802154?/defmt", "openthread-driver?/defmt"]
+log = ["dep:log", "nrf-802154?/log"]
+
+[dependencies]
+openthread-driver = { workspace = true, default-features = false, optional = true }
+nrf-802154 = { workspace = true, default-features = false, optional = true }
+defmt = { workspace = true, default-features = false, optional = true }
+log = { workspace = true, default-features = false, optional = true }

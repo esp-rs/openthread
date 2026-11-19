@@ -28,6 +28,7 @@ default = ["esp32c6"]
 esp32c6 = [
     "esp-rtos/esp32c6",
     "esp-radio/esp32c6",
+    "openthread-driver-esp/esp32c6",
     "esp-hal/esp32c6",
     "esp-backtrace/esp32c6",
     "esp-println/esp32c6",
@@ -37,6 +38,7 @@ esp32c6 = [
 esp32h2 = [
     "esp-rtos/esp32h2",
     "esp-radio/esp32h2",
+    "openthread-driver-esp/esp32h2",
     "esp-hal/esp32h2",
     "esp-backtrace/esp32h2",
     "esp-println/esp32h2",
@@ -89,8 +91,8 @@ tinyrlibc = { version = "0.5", default-features = false, features = [
     "strtol",
     "strtoul",
 ] }
+openthread-driver-esp = { path = "../../openthread-driver-esp", features = ["log"] }
 openthread = { path = "../../openthread", default-features = false, features = [
-    "esp-radio",
     "log",
     "ftd",
     "cli",
