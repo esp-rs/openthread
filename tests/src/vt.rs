@@ -21,10 +21,9 @@ use std::net::{Ipv4Addr, UdpSocket};
 use std::os::fd::{AsFd, BorrowedFd};
 use std::sync::Arc;
 
-use openthread::{
-    Config, PsduRxInfo, Radio, RadioCaps, RadioError, RadioErrorKind, SrcMatchConfig,
-};
+use openthread::{Config, PsduRxInfo, PsduTxInfo, RadioCaps, RadioError, RadioErrorKind};
 
+use crate::mac::PhyRadio;
 use crate::sim::{
     patch_fcs, port_base_from_env, sim_now_us, sim_radio_caps, RxWindow, PSDU_MAX, SIM_RSSI,
 };
@@ -226,7 +225,7 @@ pub enum VtRadioError {
 impl RadioError for VtRadioError {
     fn kind(&self) -> RadioErrorKind {
         match self {
-            Self::TxInvalid => RadioErrorKind::TxInvalid,
+            Self::TxInvalid => RadioErrorKind::Other,
         }
     }
 }
@@ -308,7 +307,7 @@ impl VtRadio {
     }
 }
 
-impl Radio for VtRadio {
+impl PhyRadio for VtRadio {
     type Error = VtRadioError;
 
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
@@ -331,10 +330,6 @@ impl Radio for VtRadio {
         // Nothing to apply - a bare PHY, like `SimRadio`.
         self.config = config.clone();
 
-        Ok(())
-    }
-
-    async fn set_src_match_config(&mut self, _config: &SrcMatchConfig) -> Result<(), Self::Error> {
         Ok(())
     }
 
@@ -368,12 +363,11 @@ impl Radio for VtRadio {
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        psdu_tx: &mut openthread::PsduTxInfo,
+        psdu_tx: &mut PsduTxInfo,
         channel: u8,
         _power: i8,                 // The simulated medium is lossless
         _cca_threshold: Option<i8>, // ... and always idle
-        _ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduRxInfo>, Self::Error> {
+    ) -> Result<(), Self::Error> {
         if !(2..=PSDU_MAX).contains(&psdu.len()) {
             return Err(VtRadioError::TxInvalid);
         }
@@ -411,7 +405,7 @@ impl Radio for VtRadio {
         self.link
             .send_event(1, EVENT_RADIO_RECEIVED, &data[..1 + psdu.len()]);
 
-        Ok(None)
+        Ok(())
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
@@ -456,16 +450,13 @@ impl Radio for VtRadio {
 
             psdu_buf[..frame.len].copy_from_slice(psdu);
 
-            break Ok(PsduRxInfo {
-                len: frame.len,
-                channel: frame.channel,
-                rssi: Some(SIM_RSSI),
-                // As in `SimRadio`: the C simulation platform's LQI.
-                lqi: Some(0),
-                timestamp_us: Some(now),
-                ack_security: None,
-                acked_with_frame_pending: None,
-            });
+            let mut info = PsduRxInfo::new(frame.len, frame.channel);
+            info.rssi = Some(SIM_RSSI);
+            // As in `SimRadio`: the C simulation platform's LQI.
+            info.lqi = Some(0);
+            info.timestamp_us = Some(now);
+
+            break Ok(info);
         }
     }
 }

@@ -46,9 +46,8 @@
 //! MCU, driven over its serial console. It reuses everything here - the port
 //! map, the node-count gating, the allowlist - and only swaps what
 //! `OT_CLI_PATH` points at, from the host DUT to a bridge binary that pipes
-//! stdin/stdout to a serial port. That one exercises the on-MCU drivers
-//! (`NrfRadio`/`EspRadio`), `MacRadio`'s real ACK deadlines and
-//! `ProxyRadio`'s executor split, none of which this tier reaches.
+//! stdin/stdout to a serial port. That one exercises the on-MCU radio
+//! drivers (`EspRadio`, `NrfRadio`), which this tier does not reach.
 
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -396,9 +395,8 @@ const HW_TESTS: &[(&str, usize)] = &[
 /// The two-node entries are **verified green on real hardware** (2026-08-09,
 /// nRF52840 + ESP32-C6 `ot-rcp`, one full sweep) - the sweep that shook out
 /// the serial `O_CLOEXEC`-on-reset and source-match byte-order bugs - and
-/// re-verified 2026-08-12/13 with the *nRF MCU node* (XIAO nRF52840) as the
-/// DUT, where all pass except the four soft-MAC-timing scenarios in
-/// [`HW_TESTS_NRF_MCU_SOFT_MAC`]. The three-node entries remain candidates
+/// re-verified with the *nRF MCU node* (`tests/nrf`, on a XIAO nRF52840) as
+/// the DUT, where all pass. The three-node entries remain candidates
 /// until a third radio joins the rig; the node-count gate keeps them out
 /// until then. (The sniffer-dependent and sleeps-out-days scenarios live in
 /// [`HW_TESTS_NEED_SNIFFER`] / [`HW_TESTS_TOO_SLOW`].)
@@ -505,35 +503,6 @@ const HW_TESTS_NEED_SNIFFER: &[(&str, usize)] = &[
     ("Cert_9_2_02_MGMTCommissionerSet", 2),
     ("Cert_9_2_19_PendingDatasetGet", 2),
     ("test_ipv6_source_selection", 2),
-];
-
-/// Scenarios red when the DUT is the *nRF MCU node* specifically (they pass
-/// on every other tier: simulation, the RCP hosts, and the ESP32-C6 MCU node
-/// with its hardware ACK engine). All exercise sleepy-child data-poll timing
-/// - or, for the REED one, ride on netdata propagation that the same defect
-/// makes probabilistic - and the current soft-MAC cannot meet the 802.15.4
-/// immediate-ACK deadlines on the air: see `docs/the-case-with-nrf-radio.md`
-/// for the measurements and the plan (an `nrf-802154`-backed radio). Until
-/// that lands, expect exactly these failures in an `--hw-extended` run
-/// against the nRF MCU DUT.
-///
-/// The plan has since been validated: a `cli_node` built from the
-/// `nrf-802154` repo's `tests/` member (full hardware MAC, no software MAC)
-/// sweeps `--hw-extended` 45/45 on the same board - so these failures are
-/// specific to the *soft-MAC* nRF firmware in `tests/nrf`, not to the tier.
-///
-/// The `expect` suite on this DUT mirrors the pattern: `cli-child-supervision`
-/// (a SED child) fails the same way. `cli-pskc` also fails there, for an
-/// unrelated reason: PSKc PBKDF2 derivation (16k software-AES iterations,
-/// the chip's crypto accelerators unused) takes ~2 minutes on the 64 MHz M4
-/// - far past the script's timeout, with the node blocked throughout.
-#[allow(unused)]
-const HW_TESTS_NRF_MCU_SOFT_MAC: &[(&str, usize)] = &[
-    // The SED variants; the MED variants in the same scripts pass.
-    ("Cert_6_1_01_RouterAttach", 2),
-    ("Cert_6_4_01_LinkLocal", 2),
-    ("test_child_supervision", 2),
-    ("test_reed_address_solicit_rejected", 2),
 ];
 
 /// Wall-clock budget for a test; exceeding it kills and fails the test.

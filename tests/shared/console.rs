@@ -127,6 +127,12 @@ pub struct LineReader {
     after_cr: bool,
 }
 
+impl Default for LineReader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl LineReader {
     pub const fn new() -> Self {
         Self {

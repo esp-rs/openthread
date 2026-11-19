@@ -4,7 +4,7 @@ These examples run the full OpenThread stack on a **host** (Linux/macOS) and
 drive a **remote** `ot-rcp` radio co-processor over a serial port using the
 spinel protocol (the crate's `std` feature / `SpinelRadio` + `SerialPort`).
 
-Unlike the `esp`/`nrf` examples — where the 802.15.4 radio is local to the MCU —
+Unlike the `esp` examples — where the 802.15.4 radio is local to the MCU —
 here the radio lives on a separate chip (e.g. an nRF52840 dongle or an ESP32-C6
 flashed with stock `ot-rcp` firmware) connected over USB serial.
 
@@ -39,6 +39,3 @@ bindings match the active feature set).
 - The serial transport (`SerialPort`) is **Unix-only** for now; Windows serial
   needs a different (overlapped-I/O) path — a planned addition behind the same
   `std` feature.
-- There is no `ProxyRadio` / high-priority radio executor split as in the
-  embedded examples: serial I/O is not latency-critical, so `SpinelRadio` runs
-  directly inside `OpenThread::run`.
