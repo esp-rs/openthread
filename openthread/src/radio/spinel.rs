@@ -19,10 +19,10 @@
 //! — this crate exposes the remote radio as an ordinary [`crate::Radio`]
 //! implementation: [`SpinelRadio`]. The user hands it to the *same*
 //! [`OpenThread::run`](crate::OpenThread::run) as a local (SoC) radio; the
-//! generic async radio loop (`run_radio` + `MacRadio`) drives it. There is no
-//! separate run loop, no blocking, and the `otPlatRadio*` platform layer is the
-//! standard SoC one — a `SpinelRadio` is just another `Radio` driver, exactly
-//! like [`crate::ProxyRadio`], only the "other side" is a chip on a wire.
+//! generic async radio loop (`run_radio`) drives it. There is no separate run
+//! loop, no blocking, and the `otPlatRadio*` platform layer is the standard SoC
+//! one — a `SpinelRadio` is just another `Radio` driver, only the "other side"
+//! is a chip on a wire.
 //!
 //! This is possible because the [`crate::Radio`] trait already operates at the
 //! raw-PHY level: MAC-layer security is normally performed by OpenThread's core
@@ -77,8 +77,8 @@ use embassy_sync::blocking_mutex::Mutex;
 use embassy_time::{Duration, Instant, Timer};
 
 use crate::radio::{
-    AckSecurity, Capabilities, Config, MacCapabilities, MacKeys, PsduRxInfo, Radio, RadioCaps,
-    RadioClock, RadioErrorKind, SrcMatchConfig,
+    AckSecurity, Capabilities, Config, MacKeys, PsduRxInfo, Radio, RadioCaps, RadioClock,
+    RadioErrorKind, RadioEvent, SrcMatchConfig,
 };
 use crate::sys::OT_RADIO_FRAME_MAX_SIZE;
 use crate::sys::{spinel_packed_uint_decode, spinel_packed_uint_encode};
@@ -270,24 +270,6 @@ const SPINEL_RADIO_CAPS: Capabilities = Capabilities::ACK_TIMEOUT
     .union(Capabilities::CSMA_BACKOFF)
     .union(Capabilities::TRANSMIT_RETRIES)
     .union(Capabilities::ENERGY_SCAN);
-
-/// The MAC-offload capabilities we advertise to OpenThread.
-///
-/// Unlike the PHY caps, these are **not** guessed: they are guaranteed by the
-/// `CAP_MAC_RAW` capability that [`SpinelRadio::ensure_init`] already requires
-/// from the RCP. A raw-MAC RCP always hardware-filters received frames by PAN
-/// ID / short / extended address (we push those filters via the `MAC_15_4_*ADDR`
-/// properties) and handles 802.15.4 acknowledgements autonomously — sending the
-/// ACK for a received frame (`RX_ACK`) and reporting the received ACK of a
-/// transmitted frame (`TX_ACK`, surfaced by [`SpinelRadio::transmit`]). So
-/// OpenThread's `MacRadio` software fallback is not needed for any of these.
-const SPINEL_RADIO_MAC_CAPS: MacCapabilities = MacCapabilities::FILTER_PAN_ID
-    .union(MacCapabilities::FILTER_SHORT_ADDR)
-    .union(MacCapabilities::FILTER_EXT_ADDR)
-    .union(MacCapabilities::TX_ACK)
-    .union(MacCapabilities::RX_ACK)
-    .union(MacCapabilities::PROMISCUOUS)
-    .union(MacCapabilities::SRC_MATCH);
 
 /// The RCP clock minus the host clock (`embassy-time`), in microseconds, as
 /// last measured (`PROP_RCP_TIMESTAMP`); `None` until measured, or if the RCP
@@ -493,7 +475,7 @@ pub struct SpinelRadio<'a, T> {
     rx_len: usize,
     /// Received-frame bodies that arrived (as unsolicited `STREAM_RAW`
     /// notifications) while the driver was waiting for a command response, so
-    /// they cannot be dropped. `receive` drains this before reading the wire.
+    /// they cannot be dropped. `next_event` drains this before reading the wire.
     ///
     /// This matters because the RCP has already MAC-ACKed a unicast before
     /// forwarding it, so a frame dropped here would never be retransmitted at
@@ -612,7 +594,7 @@ where
     ///
     /// If the queue is full the oldest frame is evicted (newest-wins) — a
     /// deliberate bound; sustained inability to drain means the consumer is not
-    /// calling `receive` fast enough, in which case dropping the stalest frame is
+    /// calling `next_event` fast enough, in which case dropping the stalest frame is
     /// the least-bad option.
     fn try_stash_rx(&mut self, frame_len: usize) -> bool {
         let frame = &self.rx_frame[..frame_len];
@@ -655,7 +637,7 @@ where
         self.transport
             .send(frame)
             .await
-            .map_err(|_| RadioErrorKind::TxFailed)
+            .map_err(|_| RadioErrorKind::Other)
     }
 
     /// Receive one complete raw spinel frame into `self.rx_frame`, or fail on
@@ -669,11 +651,9 @@ where
 
             match embassy_futures::select::select(&mut recv_fut, &mut timeout_fut).await {
                 embassy_futures::select::Either::First(r) => {
-                    r.map_err(|_| RadioErrorKind::RxFailed)?
+                    r.map_err(|_| RadioErrorKind::Other)?
                 }
-                embassy_futures::select::Either::Second(()) => {
-                    return Err(RadioErrorKind::RxFailed)
-                }
+                embassy_futures::select::Either::Second(()) => return Err(RadioErrorKind::Other),
             }
         };
         self.rx_len = len;
@@ -796,9 +776,9 @@ where
 
         let frame_len = {
             let mut n = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
-                .ok_or(RadioErrorKind::TxFailed)?;
+                .ok_or(RadioErrorKind::Other)?;
             if n + payload.len() > self.tx_frame.len() {
-                return Err(RadioErrorKind::TxFailed);
+                return Err(RadioErrorKind::Other);
             }
             self.tx_frame[n..n + payload.len()].copy_from_slice(payload);
             n += payload.len();
@@ -809,7 +789,7 @@ where
         self.transport
             .send(&self.tx_frame[..frame_len])
             .await
-            .map_err(|_| RadioErrorKind::TxFailed)?;
+            .map_err(|_| RadioErrorKind::Other)?;
 
         let (rprop, off) = self.await_response(tid, RESPONSE_TIMEOUT).await?;
 
@@ -858,9 +838,9 @@ where
 
         let frame_len = {
             let mut n = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
-                .ok_or(RadioErrorKind::TxFailed)?;
+                .ok_or(RadioErrorKind::Other)?;
             if n + payload.len() > self.tx_frame.len() {
-                return Err(RadioErrorKind::TxFailed);
+                return Err(RadioErrorKind::Other);
             }
             self.tx_frame[n..n + payload.len()].copy_from_slice(payload);
             n += payload.len();
@@ -873,7 +853,7 @@ where
         self.transport
             .send(&self.tx_frame[..frame_len])
             .await
-            .map_err(|_| RadioErrorKind::TxFailed)?;
+            .map_err(|_| RadioErrorKind::Other)?;
 
         self.await_response(tid, timeout).await
     }
@@ -908,9 +888,9 @@ where
             // small local scratch — these config SET frames are tiny.
             let mut raw = [0u8; 32];
             let mut n =
-                spinel_frame_prefix(&mut raw, tid, cmd, prop).ok_or(RadioErrorKind::TxFailed)?;
+                spinel_frame_prefix(&mut raw, tid, cmd, prop).ok_or(RadioErrorKind::Other)?;
             if n + payload.len() > raw.len() {
-                return Err(RadioErrorKind::TxFailed);
+                return Err(RadioErrorKind::Other);
             }
             raw[n..n + payload.len()].copy_from_slice(payload);
             n += payload.len();
@@ -948,9 +928,9 @@ where
         let cmd = CMD_PROP_VALUE_GET;
 
         let mut frame_len = spinel_frame_prefix(&mut self.tx_frame[..], tid, cmd, prop)
-            .ok_or(RadioErrorKind::TxFailed)?;
+            .ok_or(RadioErrorKind::Other)?;
         if frame_len + param.len() > self.tx_frame.len() {
-            return Err(RadioErrorKind::TxFailed);
+            return Err(RadioErrorKind::Other);
         }
         self.tx_frame[frame_len..frame_len + param.len()].copy_from_slice(param);
         frame_len += param.len();
@@ -958,7 +938,7 @@ where
         self.transport
             .send(&self.tx_frame[..frame_len])
             .await
-            .map_err(|_| RadioErrorKind::TxFailed)?;
+            .map_err(|_| RadioErrorKind::Other)?;
 
         let off = self.await_prop(tid, prop).await?;
         let len = self.rx_len;
@@ -1092,7 +1072,7 @@ where
             self.transport
                 .send(&self.tx_frame[..n])
                 .await
-                .map_err(|_| RadioErrorKind::TxFailed)?;
+                .map_err(|_| RadioErrorKind::Other)?;
 
             // Wait for a LAST_STATUS in the reset range (best-effort).
             let begin = STATUS_RESET_BEGIN;
@@ -1417,7 +1397,7 @@ where
         let mut payload = [0u8; MAX_SPINEL_FRAME];
         let n = command.len();
         if n + 1 > payload.len() {
-            return Err(RadioErrorKind::TxFailed);
+            return Err(RadioErrorKind::Other);
         }
         payload[..n].copy_from_slice(command.as_bytes());
         payload[n] = 0;
@@ -1467,20 +1447,23 @@ where
         // hardware crypto — a `TRANSMIT_SEC`-style capability) would union it in
         // here from the relevant spinel property; the const is only the baseline.
         self.ensure_init().await?;
-        Ok(RadioCaps {
-            phy: self.caps,
-            mac: SPINEL_RADIO_MAC_CAPS,
-            receive_sensitivity: self.sensitivity,
-            default_tx_power: self.default_tx_power,
-            default_cca_threshold: self.default_cca_threshold,
-            // The RCP's clock, once its offset to the host clock is known (see
-            // the module docs).
-            clock: rcp_time_offset().map(|_| RadioClock(rcp_now_us)),
-            csl_accuracy_ppm: self.csl_accuracy_ppm,
-            csl_uncertainty: self.csl_uncertainty,
-            bus_speed: self.bus_speed,
-            bus_latency_us: self.bus_latency_us,
-        })
+        // A raw-MAC RCP (`CAP_MAC_RAW`, required by `ensure_init`) filters
+        // the received frames by PAN ID and address and handles the
+        // acknowledgements itself, as `Radio` requires.
+        let mut caps = RadioCaps::new();
+        caps.phy = self.caps;
+        caps.receive_sensitivity = self.sensitivity;
+        caps.default_tx_power = self.default_tx_power;
+        caps.default_cca_threshold = self.default_cca_threshold;
+        // The RCP's clock, once its offset to the host clock is known (see the
+        // module docs).
+        caps.clock = rcp_time_offset().map(|_| RadioClock(rcp_now_us));
+        caps.csl_accuracy_ppm = self.csl_accuracy_ppm;
+        caps.csl_uncertainty = self.csl_uncertainty;
+        caps.bus_speed = self.bus_speed;
+        caps.bus_latency_us = self.bus_latency_us;
+
+        Ok(caps)
     }
 
     async fn set_config(&mut self, config: &Config) -> Result<(), Self::Error> {
@@ -1635,7 +1618,7 @@ where
         channel: u8,
         power: i8,
         cca_threshold: Option<i8>,
-        ack_psdu_buf: Option<&mut [u8]>,
+        ack_psdu_buf: &mut [u8],
     ) -> Result<Option<PsduRxInfo>, Self::Error> {
         self.ensure_init().await?;
         self.flush_src_match().await?;
@@ -1756,8 +1739,7 @@ where
         //   + [if status OK] the ACK radio frame (same layout as an RX frame)
         //   + [if the RCP finished the frame's header] its key index (u8) and
         //     frame counter (u32).
-        // We advertise `TX_ACK`, so OpenThread expects us to return the received
-        // ACK here rather than have `MacRadio` synthesize it in software.
+        // OpenThread expects us to return the received ACK here.
         let body_end = self.rx_len;
         let body = &self.rx_frame[off..body_end];
 
@@ -1819,34 +1801,21 @@ where
             return Ok(None);
         };
 
-        match ack_psdu_buf {
-            Some(buf) => {
-                let copy = ack_psdu.len().min(buf.len());
-                buf[..copy].copy_from_slice(&ack_psdu[..copy]);
-                Ok(Some(PsduRxInfo {
-                    len: copy,
-                    channel: ack_meta.channel.unwrap_or(channel),
-                    rssi: ack_meta.rssi,
-                    lqi: ack_meta.lqi,
-                    timestamp_us: ack_meta.timestamp,
-                    ack_security: None,
-                    acked_with_frame_pending: None,
-                }))
-            }
-            // The caller didn't ask for the ACK PSDU (didn't expect an ACK), so
-            // there is nothing to report even though the transmit succeeded.
-            None => Ok(None),
-        }
+        let copy = ack_psdu.len().min(ack_psdu_buf.len());
+        ack_psdu_buf[..copy].copy_from_slice(&ack_psdu[..copy]);
+
+        let mut ack_info = PsduRxInfo::new(copy, ack_meta.channel.unwrap_or(channel));
+        ack_info.rssi = ack_meta.rssi;
+        ack_info.lqi = ack_meta.lqi;
+        ack_info.timestamp_us = ack_meta.timestamp;
+
+        Ok(Some(ack_info))
     }
 
-    async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
+    async fn next_event(&mut self, psdu_buf: &mut [u8]) -> Result<RadioEvent, Self::Error> {
         self.ensure_init().await?;
         self.flush_src_match().await?;
         self.ensure_time_sync().await;
-        // Normally already done by `set_receive`; re-asserted here because a
-        // `receive` may also follow a transmit, and because it is cheap (the
-        // property is only written when it actually changes).
-        self.ensure_rx_enabled(true).await?;
 
         // Fallback for frames whose metadata lacks the PHY-data struct; the
         // parsed per-frame channel is preferred (a stashed frame may have been
@@ -1861,15 +1830,7 @@ where
             if let Some((psdu, meta)) = parse_radio_frame(&stashed) {
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
-                return Ok(PsduRxInfo {
-                    len: copy,
-                    channel: meta.channel.unwrap_or(cfg_channel),
-                    rssi: meta.rssi,
-                    lqi: meta.lqi,
-                    timestamp_us: meta.timestamp,
-                    ack_security: meta.ack_security,
-                    acked_with_frame_pending: Some(meta.acked_with_frame_pending),
-                });
+                return Ok(RadioEvent::Rx(rx_info(copy, cfg_channel, &meta)));
             }
             // Unparseable stashed frame — skip and try the next.
         }
@@ -1891,15 +1852,7 @@ where
                 let copy = psdu.len().min(psdu_buf.len());
                 psdu_buf[..copy].copy_from_slice(&psdu[..copy]);
 
-                return Ok(PsduRxInfo {
-                    len: copy,
-                    channel: meta.channel.unwrap_or(cfg_channel),
-                    rssi: meta.rssi,
-                    lqi: meta.lqi,
-                    timestamp_us: meta.timestamp,
-                    ack_security: meta.ack_security,
-                    acked_with_frame_pending: Some(meta.acked_with_frame_pending),
-                });
+                return Ok(RadioEvent::Rx(rx_info(copy, cfg_channel, &meta)));
             }
             // Other frames (matched responses to a concurrent op, status) — ignore.
         }
@@ -1981,8 +1934,8 @@ fn tx_status_error(status: u32) -> RadioErrorKind {
         STATUS_STACK_NATIVE_BEGIN + crate::sys::otError_OT_ERROR_CHANNEL_ACCESS_FAILURE as u32;
 
     match status {
-        STATUS_NO_ACK | NATIVE_NO_ACK => RadioErrorKind::RxAckTimeout,
-        STATUS_CCA_FAILURE | NATIVE_CHANNEL_ACCESS_FAILURE => RadioErrorKind::TxFailed,
+        STATUS_NO_ACK | NATIVE_NO_ACK => RadioErrorKind::NoAck,
+        STATUS_CCA_FAILURE | NATIVE_CHANNEL_ACCESS_FAILURE => RadioErrorKind::ChannelAccessFailure,
         _ => RadioErrorKind::Other,
     }
 }
@@ -2062,6 +2015,19 @@ fn spinel_parse_header(frame: &[u8]) -> Option<(u8, u32, u32, usize)> {
     off += n;
 
     Some((tid, cmd, prop, off))
+}
+
+/// The `PsduRxInfo` of a received frame of `len` bytes with metadata `meta`,
+/// falling back to `cfg_channel` when the RCP did not report the channel.
+fn rx_info(len: usize, cfg_channel: u8, meta: &RxMeta) -> PsduRxInfo {
+    let mut info = PsduRxInfo::new(len, meta.channel.unwrap_or(cfg_channel));
+    info.rssi = meta.rssi;
+    info.lqi = meta.lqi;
+    info.timestamp_us = meta.timestamp;
+    info.ack_security = meta.ack_security;
+    info.acked_with_frame_pending = Some(meta.acked_with_frame_pending);
+
+    info
 }
 
 /// Parse a spinel radio frame body (the payload of a `STREAM_RAW`

@@ -1,0 +1,29 @@
+[package]
+name = "openthread-driver-esp"
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+categories = ["embedded", "hardware-support", "no-std"]
+keywords = ["thread", "openthread", "embedded", "esp32", "ieee802154"]
+description = "The IEEE 802.15.4 radio of the ESP32 chips for the openthread crate, over esp-radio"
+repository = "https://github.com/esp-rs/openthread"
+readme = "README.md"
+
+[features]
+# The chip
+esp32c5 = ["esp-radio/esp32c5", "esp-hal/esp32c5", "dep:embassy-sync", "dep:openthread-driver"]
+esp32c6 = ["esp-radio/esp32c6", "esp-hal/esp32c6", "dep:embassy-sync", "dep:openthread-driver"]
+esp32h2 = ["esp-radio/esp32h2", "esp-hal/esp32h2", "dep:embassy-sync", "dep:openthread-driver"]
+esp32s31 = ["esp-radio/esp32s31", "esp-hal/esp32s31", "dep:embassy-sync", "dep:openthread-driver"]
+
+defmt = ["dep:defmt", "openthread-driver?/defmt"]
+
+[dependencies]
+openthread-driver = { workspace = true, default-features = false, optional = true }
+esp-radio = { workspace = true, default-features = false, features = ["unstable", "ieee802154"], optional = true }
+# The 802.15.4 driver of `esp-radio` needs the `unstable` APIs of `esp-hal`
+esp-hal = { workspace = true, default-features = false, features = ["unstable"], optional = true }
+embassy-sync = { workspace = true, default-features = false, optional = true }
+log = { workspace = true, default-features = false, optional = true }
+defmt = { workspace = true, default-features = false, optional = true }

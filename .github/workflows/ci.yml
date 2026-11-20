@@ -73,8 +73,8 @@ jobs:
       - name: Clippy
         run: cargo clippy -- -D warnings
 
-      # Compile-only: the one radio that currently can be a CSL receiver lives in
-      # `nrf-802154`, outside this repo.
+      # Compile-only: the one radio that currently can be a CSL receiver
+      # (`openthread-driver-nrf`) is built in the MCU job.
       - name: Clippy - CSL receiver
         run: cargo clippy -p openthread --features csl-receiver -- -D warnings
 
@@ -227,14 +227,14 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # [family, examples feature, target, test-driver feature]
-        # The last element selects the `tests/<family>` build variant; for nrf
-        # that is `console-usb` - the hardware-validated XIAO build (the UARTE
-        # console arm is the smaller cfg of the two).
+        # [family, chip feature, target, test-driver feature]
+        # The chip feature selects the chip of the radio crate
+        # (`openthread-driver-<family>`), the examples and the
+        # `tests/<family>` build variant.
         mcu:
           - [esp, esp32c6, riscv32imac-unknown-none-elf, esp32c6]
           - [esp, esp32h2, riscv32imac-unknown-none-elf, esp32h2]
-          - [nrf, default, thumbv7em-none-eabi, console-usb]
+          - [nrf, nrf52840, thumbv7em-none-eabi, nrf52840]
     steps:
       - uses: actions/checkout@v4
 
@@ -273,10 +273,34 @@ jobs:
       # `-p` rather than the whole workspace: `examples/std` is a member too,
       # and its dependency tree needs `std`, which no MCU target has.
       - name: Clippy
-        run: cargo clippy -p openthread -p openthread-sys --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
+        run: cargo clippy -p openthread -p openthread-driver -p openthread-sys --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
 
       - name: Build
-        run: cargo build -p openthread -p openthread-sys --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+        run: cargo build -p openthread -p openthread-driver -p openthread-sys --features=force-generate-bindings --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+
+      - name: Clippy - ESP radio
+        if: matrix.mcu[0] == 'esp'
+        run: cargo clippy -p openthread-driver-esp --features ${{ matrix.mcu[1] }} --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
+
+      - name: Build - ESP radio
+        if: matrix.mcu[0] == 'esp'
+        run: cargo build -p openthread-driver-esp --features ${{ matrix.mcu[1] }} --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
+
+      # `nrf-802154-sys` runs bindgen, which loads the newest libclang on the
+      # runner, but takes the builtin headers from the default `clang`. When
+      # the two versions differ, `<stdint.h>` comes out empty. Use the libclang
+      # of the default `clang`.
+      - name: Match libclang to the default clang
+        if: matrix.mcu[0] == 'nrf'
+        run: echo "LIBCLANG_PATH=$(dirname "$(readlink -f "$(command -v clang)")")/../lib" >> "$GITHUB_ENV"
+
+      - name: Clippy - nRF radio
+        if: matrix.mcu[0] == 'nrf'
+        run: cargo clippy -p openthread-driver-nrf --features ${{ matrix.mcu[1] }} --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort -- -D warnings
+
+      - name: Build - nRF radio
+        if: matrix.mcu[0] == 'nrf'
+        run: cargo build -p openthread-driver-nrf --features ${{ matrix.mcu[1] }} --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort
 
       - name: Fmt Check - Examples
         run: cd examples/${{ matrix.mcu[0] }}; cargo fmt -- --check
@@ -315,7 +339,7 @@ jobs:
       # Uses the cross-toolchain installed above: `riscv32-esp-elf-gcc` for the Espressif chips,
       # `arm-none-eabi-gcc` for the nRF one. The RISC-V one is what `force-esp-riscv-gcc`
       # selects, in place of the "official" `riscv32-unknown-elf-gcc` that is not installed
-      # here; on the ARM entry the flag only implies `use-gcc`, as there `cc-rs` derives the
+      # here; on the nRF entry the flag only implies `use-gcc`, as there `cc-rs` derives the
       # compiler from the target triple, so a single invocation covers every entry.
       - name: Build - GCC
         run: cargo build -p openthread -p openthread-sys --features=force-generate-bindings,force-esp-riscv-gcc --target ${{ matrix.mcu[2] }} -Zbuild-std=core,alloc,panic_abort

@@ -150,7 +150,7 @@ OpenThread drives it through three platform APIs, all optional on the `Radio` tr
 - **Timed receive** (`Radio::set_receive_at`, `otPlatRadioReceiveAt`)
   "receiver on at `start` for `duration`, then off".
   The window is a fifth commanded state next to Sleep/Receive/Transmit/EnergyScan, entered from Sleep and left by the next command
-  (OpenThread's `Sleep` at the window's end). While it lasts, the runner keeps calling `receive`, which MUST NOT switch the receiver on - a radio whose `receive` enters receive mode has to notice it is inside a window and only drain its queue.
+  (OpenThread's `Sleep` at the window's end). While it lasts, the runner keeps calling `next_event`, which only takes the frames from the radio's queue and MUST NOT switch the receiver on.
 - **A radio clock** (`RadioCaps::clock`, `otPlatRadioGetNow`)
   Used for timing the window start, the frame timestamps (`PsduRxInfo::timestamp_us`) and the CSL sample time (`CslConfig::sample_time_us`).
   OpenThread's own microsecond alarm runs on this clock too, so all of its CSL arithmetic is in one time base.
@@ -191,16 +191,17 @@ While in Receive the platform streams `ReceiveDone`s. The transmit sequence is a
 
 The crate mirrors this split literally in `OpenThread::run_radio`.
 
-## Obligations for `Radio` implementors (to become trait documentation)
+## Obligations for `Radio` implementors (see also the trait documentation)
 
-1. `transmit` is the complete transmit sequence per the declared
-   capabilities (CSMA/CCA, TX, ACK wait for AR frames), resolved without
-   the caller pumping `receive()`. The matching ACK is consumed by
-   `transmit` and reported in its result; it never surfaces via `receive`.
-2. Frames arriving during the transmit sequence's listening phases are
-   neither lost nor consumed: they surface through `receive()` (typically
-   via a driver-internal queue). Fixed bounds with drop-on-overflow are
-   acceptable - that is saturation, not contract violation.
+1. `transmit` is the complete transmit sequence (CSMA/CCA, TX, ACK wait for
+   AR frames), resolved without the caller pumping `next_event()`. The
+   matching ACK is consumed by `transmit` and reported in its result; it
+   never surfaces via `next_event`.
+2. The radio receives in the background: frames arriving while in Receive -
+   including during the transmit sequence's listening phases - are neither
+   lost nor consumed, but queued, and `next_event()` only takes them from
+   the queue. Fixed bounds with drop-on-overflow are acceptable - that is
+   saturation, not contract violation.
 3. Cancellation (dropping the `transmit` future) is a sanctioned abort: the
    frame may already be on the air; the driver must return to Receive and
    the caller must not report a completion for it (C5). The crate only ever
@@ -209,23 +210,27 @@ The crate mirrors this split literally in `OpenThread::run_radio`.
    (C4), on `mRxChannelAfterTxDone` where supported, else the TX channel.
 5. `set_sleep()` stops reception; frames arriving while parked
    are dropped, not buffered (C6).
-6. Software MAC emulation (ACKs, filtering, FP handling) belongs *below*
-   the trait, at an execution layer that can meet the 802.15.4 turnaround
-   timing - in hardware, in RCP firmware, or in the radio IRQ (the
-   `nrf-802154` model). Hosting `MacRadio` on a high-priority executor was
-   the attempted fourth option and is now *measured* to be insufficient on
-   real RF (see `the-case-with-nrf-radio.md`): its remaining home is the
-   simulation media, whose deadlines are not real.
+6. The time-critical part of the MAC (ACKs, filtering, FP handling, the
+   queue of received frames) belongs *below* the trait, at an execution
+   layer that can meet the 802.15.4 turnaround timing - in hardware, in RCP
+   firmware, or in the radio IRQ (the `nrf-802154` model). A soft MAC above
+   the trait (`MacRadio` on a high-priority executor) was tried, and
+   *measured* to be insufficient on real RF (see
+   `the-case-with-nrf-radio.md`); its remaining home is the simulation media
+   of the tests, whose deadlines are not real.
 
 ## Per-driver conformance
 
 | Driver | MAC | Ob.1 (tx=full seq) | Ob.2 (rx continuity) | Ob.4 (auto-RX) | Ob.5 (`set_sleep` drops) |
 | --- | --- | --- | --- | --- | --- |
-| `nrf-802154` | driver IRQ layer | yes | yes (IRQ queue) | yes (`rx_when_idle`) | yes; C9 (CSL): yes |
-| `EspRadio` | esp-radio HW/blob | yes | yes (driver queue) | yes | needs check |
-| `SpinelRadio` | RCP firmware | yes | yes (`rx_queue`) | yes (RCP) | needs check |
-| `embassy-nrf` + `MacRadio` | software - **fails hard ACK timing on air; to be replaced by `nrf-802154`** (`the-case-with-nrf-radio.md`) | via wrapper | via parking queue | runner (done) | runner parks |
-| `SimRadio`/`VtRadio` + `MacRadio` | software (fine: no real deadlines) | via wrapper | via parking queue | runner (done) | yes (flush-on-wake) |
+| `NrfRadio` (`openthread-driver-nrf`, over `nrf-802154`) | driver IRQ layer | yes | yes (IRQ queue) | yes (`rx_when_idle`) | yes; C9 (CSL): yes |
+| `EspRadio` | esp-radio HW/blob | yes | yes (driver queue) | yes | no: `set_sleep` is a no-op until `esp-radio` can stop the receiver |
+| `SpinelRadio` | RCP firmware | yes | yes (`rx_queue`) | yes (RCP) | yes (`MAC_RAW_STREAM_ENABLED` off) |
+| `SimRadio`/`VtRadio` + `MacRadio` (tests) | software (fine: no real deadlines) | via wrapper | via parking queue | runner (done) | yes (flush-on-wake) |
+
+`EspRadio` reports every failed transmission as a channel access failure: `esp-radio` does not say why a
+transmission failed, so OpenThread never sees `NO_ACK` on ESP, and does not count lost ACKs towards a
+neighbor's link failures.
 
 ## Open questions
 

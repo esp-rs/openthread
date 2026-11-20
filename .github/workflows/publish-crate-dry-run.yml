@@ -9,7 +9,10 @@ on:
         description: Crate to publish
         options:
         - openthread-sys
+        - openthread-driver
         - openthread
+        - openthread-driver-esp
+        - openthread-driver-nrf
 
 env:
   rust_toolchain: stable

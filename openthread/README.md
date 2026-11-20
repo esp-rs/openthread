@@ -4,19 +4,20 @@ Platform-agnostic, async Rust bindings for the [`OpenThread`](https://openthread
 
 Tailored for Rust embedded baremetal.
 
-The crate does not depend on any platform features and only needs an implementation of a single trait - [`Radio`](openthread/src/radio.rs) - that represents the IEEE 802.15.4 PHY radio. 
+The crate does not depend on any platform features and only needs an implementation of the `Radio` trait, which represents the IEEE 802.15.4 radio. The trait is in the [`openthread-driver`](../openthread-driver) crate, so that radio drivers do not need to depend on this crate.
 The radio might be located on the same die, or the user might provide an implementation that communicates with the actual radio over UART, SPI, USB, etc.
 
-Two IEEE 802.15.4 radios are supported in-crate (others could just implement the `Radio` trait):
-- The ESP32XX radio (enable the `esp-radio` feature)
-- The NRF radio in the `embassy-nrf` HAL - with caveats (enable the `embassy-nrf` feature); Using the [nrf-802154 rado driver](https://github.com/sysgrok/nrf-802154) instead of `embassy-nrf` is strongly recommended though, as the latter is able to keep up with the 802.15.4 ACK timings, is more feature complete, and supports BLE coex
+These IEEE 802.15.4 radios are supported (others could just implement the `Radio` trait):
+- The ESP32-C5, ESP32-C6, ESP32-H2 and ESP32-S31 radio: [`openthread-driver-esp`](../openthread-driver-esp)
+- The nRF52, nRF53 and nRF54 radio: [`openthread-driver-nrf`](../openthread-driver-nrf), over the [`nrf-802154`](https://github.com/sysgrok/nrf-802154) driver
+- A radio co-processor running OpenThread's RCP firmware, over the spinel protocol: `SpinelRadio`, in this crate (enable the `rcp` feature)
 
 ## Build
 
 For certain MCUs / Rust targets, the OpenThread libraries are pre-compiled for convenience.
 Current list (might be extended upon request):
 - `riscv32imac-unknown-none-elf` (ESP32C6 and ESP32H2)
-- `thumbv7em-none-eabi` (NRF52)
+- `thumbv7em-none-eabi` (NRF52, with `nrf-802154`)
 - `thumbv6m-none-eabi` No chip with IEEE802.15.4 radio on this target (to our knowledge), but can be used with `openthread` RCP (radio offloading)
 
 **For these targets you only need `rustc`/`cargo` as usual!**
@@ -39,7 +40,7 @@ For the on-the-fly OpenThread CMake build to work, you'll need to install and se
 - Support for the Spinel protocol and 802.15.4 radio offload via Thread RCP
 - CLI API
 - Optional integration with `embassy-net`
-- Out of the box support for the IEEE 802.15.4 radio in Espressif's `esp-hal` and the NRF52 radio in `embassy-nrf`
+- Radio drivers for the ESP32 chips (`openthread-driver-esp`) and the nRF chips (`openthread-driver-nrf`)
 
 ## Next
 
@@ -51,6 +52,6 @@ For the on-the-fly OpenThread CMake build to work, you'll need to install and se
 
 ## Status
 
-- Upstream E2E and expect-framework tests running as part of CI (with virtual time); HIL tests pass with EspRadio and [nrf-802154](https://github.com/sysgrok/nrf-802154)
+- Upstream E2E and expect-framework tests running as part of CI (with virtual time); HIL tests pass with `EspRadio` and `NrfRadio`
 - The examples (native OpenThread UDP sockets; `embassy-net` integration; SRP) build and run on Espressif MCUs, and on the NRF52840 / NRF54L10/15
 - `rs-matter` - the pure-Rust Matter stack - does run with Thread as the operational network, powered by this library

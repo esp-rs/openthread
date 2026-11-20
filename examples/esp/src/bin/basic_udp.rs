@@ -19,10 +19,10 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
 
-use openthread::esp::EspRadio;
 use openthread::{
     BytesFmt, OpenThread, OtResources, OtUdpResources, Radio, SimpleRamSettings, UdpSocket,
 };
+use openthread_driver_esp::EspRadio;
 
 use rand_core::Rng as _;
 

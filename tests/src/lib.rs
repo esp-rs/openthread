@@ -16,6 +16,7 @@
 
 pub mod executor;
 pub mod hw;
+pub mod mac;
 pub mod settings;
 pub mod sim;
 pub mod vt;

@@ -9,9 +9,8 @@
 //!   transport.
 //! - **MCU** ([`NodeKind::Mcu`]): the stack runs as *firmware* on the board,
 //!   and the node process is only `serial_bridge`, piping the harness's
-//!   stdin/stdout to the device's console. The only tier that exercises the
-//!   crate's own radio drivers, `MacRadio`'s real ACK deadlines and
-//!   `ProxyRadio`'s executor split.
+//!   stdin/stdout to the device's console. The only tier that exercises a
+//!   radio driver on its MCU, such as `EspRadio` (`openthread-driver-esp`).
 //! - **C posix host** ([`NodeKind::CPosix`]): the *upstream* OpenThread posix
 //!   host (`ot-cli`) drives the co-processor instead of this crate - a golden
 //!   reference node on real RF. Pairing the DUT against one isolates any
