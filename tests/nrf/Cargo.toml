@@ -151,4 +151,4 @@ portable-atomic = { version = "1", default-features = false, features = ["critic
 
 # Until `nrf-802154` 0.2 is released
 [patch.crates-io]
-nrf-802154 = { git = "https://github.com/sysgrok/nrf-802154", branch = "openthread-driver" }
+nrf-802154 = { git = "https://github.com/sysgrok/nrf-802154" }
