@@ -584,6 +584,22 @@ impl CMakeConfigurer {
                 .define("CMAKE_C_COMPILER", &compiler)
                 .define("CMAKE_CXX_COMPILER", &cxx_compiler)
                 .define("CMAKE_TOOLCHAIN_FILE", &self.empty_toolchain_file);
+
+            if self.force_clang {
+                // CMake picks the host `ar` for Apple's clang, and Apple's silently
+                // produces empty archives from ELF objects. `llvm-ar s` also replaces
+                // the host `ranlib`.
+                if let Some(llvm_ar) = self.llvm_ar() {
+                    config
+                        .define("CMAKE_AR", &llvm_ar)
+                        .define("CMAKE_C_ARCHIVE_FINISH", "<CMAKE_AR> s <TARGET>")
+                        .define("CMAKE_CXX_ARCHIVE_FINISH", "<CMAKE_AR> s <TARGET>");
+                } else if cfg!(target_os = "macos") {
+                    println!(
+                        "cargo::warning=llvm-ar not found, run `rustup component add llvm-tools`"
+                    );
+                }
+            }
         } else if let Some(target) = &self.cmake_rust_target {
             let mut split = target.split('-');
             let target_arch = split.next().unwrap();
@@ -790,6 +806,28 @@ impl CMakeConfigurer {
                 _ => None,
             }
         }
+    }
+
+    /// Path of `llvm-ar` from the `llvm-tools` rustup component, if installed.
+    fn llvm_ar(&self) -> Option<PathBuf> {
+        let host = self
+            .cmake_host_rust_target
+            .clone()
+            .or_else(|| std::env::var("HOST").ok())?;
+        let rustc = std::env::var_os("RUSTC").unwrap_or_else(|| "rustc".into());
+
+        let output = Command::new(rustc)
+            .args(["--print", "sysroot"])
+            .output()
+            .ok()?;
+        let sysroot = String::from_utf8(output.stdout).ok()?;
+
+        let llvm_ar = PathBuf::from(sysroot.trim()).join(format!(
+            "lib/rustlib/{host}/bin/llvm-ar{}",
+            std::env::consts::EXE_SUFFIX
+        ));
+
+        llvm_ar.is_file().then_some(llvm_ar)
     }
 
     /// Maps a C compiler binary onto its C++ counterpart, keeping any directory
