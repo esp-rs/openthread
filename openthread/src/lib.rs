@@ -1100,8 +1100,8 @@ impl<'a> OpenThread<'a> {
     /// auto-sleep.
     ///
     /// Provided for every radio:
-    /// - `ACK_TIMEOUT`: the radio owns the ACKs of its transmissions, or is
-    ///   wrapped in a `MacRadio` that does ([`MacCapabilities::REQUIRED`]).
+    /// - `ACK_TIMEOUT`: the radio owns the ACKs of its transmissions (see
+    ///   [`Radio`]).
     /// - `ENERGY_SCAN`: scans always go to [`Radio::energy_scan`], whose default
     ///   reports no measurement; OpenThread's own fallback needs a synchronous
     ///   RSSI read, which an async radio cannot offer.
@@ -1339,14 +1339,8 @@ impl<'a> OpenThread<'a> {
     /// the tasks will fight with each other by each re-registering its own waker, thus keeping the CPU constantly busy.
     ///
     /// NOTE:
-    /// The radio must offload the complete MAC (`MacCapabilities::REQUIRED`), or the constructor panics.
-    /// A radio that does not - a bare PHY, typically - has to be wrapped by the caller in a `MacRadio`,
-    /// which emulates the missing capabilities in software.
-    ///
-    /// NOTE:
-    /// When the software emulation is in play, it is advisable to use `ProxyRadio` and `PhyRadioRunner`
-    /// to run the (wrapped) radio in a higher priority executor, where the emulated MAC capabilities can
-    /// meet their timing deadlines.
+    /// The radio does the time-critical part of the MAC itself - the ACKs, the address filtering
+    /// and the queueing of received frames (see [`Radio`]).
     pub async fn run<R>(&self, radio: R) -> !
     where
         R: Radio,
@@ -1752,13 +1746,13 @@ impl<'a> OpenThread<'a> {
         loop {
             self.activate().process_tasklets();
 
-            let result = radio.receive(psdu_buf).await;
+            let result = radio.next_event(psdu_buf).await;
 
             let mut ot = self.activate();
             let state = ot.state();
 
             match result {
-                Ok(rcv_psdu_meta) => {
+                Ok(RadioEvent::Rx(rcv_psdu_meta)) => {
                     let rcv_psdu = &psdu_buf[..rcv_psdu_meta.len];
 
                     trace!(
@@ -1826,6 +1820,8 @@ impl<'a> OpenThread<'a> {
                         );
                     }
                 }
+                // Events of later versions of `openthread-driver`
+                Ok(_) => (),
                 Err(err) => {
                     trace!("Rx failed: {:?}", dbg2fmt!(err));
 
@@ -2044,20 +2040,20 @@ impl<'a> OpenThread<'a> {
             let timed_by_radio = radio::Capabilities::from_bits_truncate(state.ot.radio_caps as _)
                 .contains(radio::Capabilities::TRANSMIT_TIMING);
 
-            let psdu_tx = radio::PsduTxInfo {
-                security_processed: tx_info.mIsSecurityProcessed(),
-                header_updated: tx_info.mIsHeaderUpdated(),
-                csl_present: tx_info.mCslPresent(),
-                retransmission: tx_info.mIsARetx(),
-                tx_at_us: tx_at_us.filter(|_| timed_by_radio),
-                // A timed frame takes a single CCA and no backoff, whatever
-                // the frame says (`mMaxCsmaBackoffs` is to be ignored then).
-                max_csma_backoffs: Some(if tx_at_us.is_some() {
-                    0
-                } else {
-                    tx_info.mMaxCsmaBackoffs
-                }),
-            };
+            let mut psdu_tx = radio::PsduTxInfo::new();
+            psdu_tx.security_processed = tx_info.mIsSecurityProcessed();
+            psdu_tx.header_updated = tx_info.mIsHeaderUpdated();
+            psdu_tx.csl_present = tx_info.mCslPresent();
+            psdu_tx.retransmission = tx_info.mIsARetx();
+            psdu_tx.tx_at_us = tx_at_us.filter(|_| timed_by_radio);
+            // A timed frame takes a single CCA and no backoff, whatever the
+            // frame says (`mMaxCsmaBackoffs` is to be ignored then).
+            psdu_tx.max_csma_backoffs = Some(if tx_at_us.is_some() {
+                0
+            } else {
+                tx_info.mMaxCsmaBackoffs
+            });
+            let psdu_tx = psdu_tx;
 
             let cca = tx_info.mCsmaCaEnabled();
             let channel = state.ot.radio_resources.snd_frame.mChannel;
@@ -2099,7 +2095,7 @@ impl<'a> OpenThread<'a> {
                 channel,
                 power,
                 cca_threshold,
-                Some(ack_psdu_buf),
+                ack_psdu_buf,
             )
             .await;
 
@@ -2268,10 +2264,8 @@ impl<'a> OpenThread<'a> {
         E: RadioError,
     {
         match err.kind() {
-            RadioErrorKind::TxFailed => otError_OT_ERROR_CHANNEL_ACCESS_FAILURE,
-            RadioErrorKind::TxAckFailed
-            | RadioErrorKind::RxAckTimeout
-            | RadioErrorKind::RxAckInvalid => otError_OT_ERROR_NO_ACK,
+            RadioErrorKind::ChannelAccessFailure => otError_OT_ERROR_CHANNEL_ACCESS_FAILURE,
+            RadioErrorKind::NoAck => otError_OT_ERROR_NO_ACK,
             _ => otError_OT_ERROR_ABORT,
         }
     }
@@ -2298,10 +2292,12 @@ impl<'a> OpenThread<'a> {
         match src.mType {
             sys::otMacAddressType_OT_MAC_ADDRESS_TYPE_SHORT => src_match.ack_frame_pending(
                 unsafe { src.mAddress.mShortAddress },
-                radio::MacHeader::BROADCAST_EXT_ADDR,
+                // No extended address
+                u64::MAX,
             ),
             sys::otMacAddressType_OT_MAC_ADDRESS_TYPE_EXTENDED => src_match.ack_frame_pending(
-                radio::MacHeader::BROADCAST_SHORT_ADDR,
+                // No short address
+                u16::MAX,
                 u64::from_be_bytes(unsafe { src.mAddress.mExtAddress.m8 }),
             ),
             _ => false,
@@ -2433,13 +2429,6 @@ impl OtResources {
         rng: &'static mut dyn OtRng,
         settings: &'static mut dyn Settings,
     ) -> &RefCell<OtState<'static>> {
-        // The stack drives the radio expecting a complete MAC underneath it.
-        // A radio that does not offload all of it has to be wrapped by the user
-        // in a `MacRadio`, which emulates the rest in software - this crate
-        // does not do that silently, because the wrapper needs resources and,
-        // more importantly, the timing headroom of its own executor.
-        radio_caps.mac.assert_required();
-
         #[cfg(feature = "csl-receiver")]
         if radio_caps.phy.contains(Capabilities::RECEIVE_TIMING) && radio_caps.clock.is_none() {
             warn!("Radio advertises timed receive but has no clock; CSL timing will be off");

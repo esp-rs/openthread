@@ -48,7 +48,6 @@ jobs:
         mcu:
           - [esp, esp32c6, riscv32imac-unknown-none-elf, esp32c6]
           - [esp, esp32h2, riscv32imac-unknown-none-elf, esp32h2]
-          - [nrf, default, thumbv7em-none-eabi, nrf52840]
 
     steps:
       - uses: actions/checkout@v4

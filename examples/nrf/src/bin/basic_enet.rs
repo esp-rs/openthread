@@ -1,7 +1,10 @@
-//! Basic example for NRF, demonstrating the integration of `openthread` with `embassy-net`.
+//! Basic example demonstrating the integration of `openthread` with `embassy-net`
+//! on top of the nrf-802154 radio driver.
 //!
 //! The example provisions an MTD device with fixed Thread network settings, waits for the device to connect,
 //! and then sends and receives Ipv6 UDP packets over the `IEEE 802.15.4` radio.
+//!
+//! See README.md for instructions on how to configure the other Thread peer (a FTD), using another Esp device.
 
 #![no_std]
 #![no_main]
@@ -10,33 +13,32 @@ use core::net::Ipv6Addr;
 
 use defmt::info;
 
-use embedded_alloc::LlffHeap as Heap;
-
-use embassy_executor::InterruptExecutor;
 use embassy_executor::Spawner;
 
 use embassy_net::udp::{PacketMetadata, UdpMetadata, UdpSocket};
 
 use embassy_net::{Config, ConfigV6, Ipv6Cidr, Runner, StackResources, StaticConfigV6};
 
-use embassy_nrf::interrupt;
-use embassy_nrf::interrupt::{InterruptExt, Priority};
-use embassy_nrf::mode::Blocking;
-use embassy_nrf::rng::Rng;
-use embassy_nrf::{bind_interrupts, peripherals, radio};
+use embedded_alloc::LlffHeap as Heap;
 
 use heapless::Vec;
 
-use openthread::enet::{self, EnetDriver, EnetRunner};
-use openthread::nrf::{Ieee802154, NrfRadio};
-use openthread::{
-    BytesFmt, EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources,
-    PhyRadioRunner, ProxyRadio, ProxyRadioResources, Radio, SimpleRamSettings,
-};
+use nrf_802154::Radio;
+use nrf_mpsl::raw::mpsl_clock_lfclk_cfg_t;
+use nrf_mpsl::MultiprotocolServiceLayer;
 
-use panic_rtt_target as _;
+use openthread::enet::{self, EnetDriver, EnetRunner};
+use openthread::{BytesFmt, OpenThread, OtResources, Radio as _, SimpleRamSettings};
+use openthread_driver_nrf::NrfRadio;
+use openthread_examples_nrf::{Irqs, Rng};
+
+use rand_core::RngCore;
+
+use static_cell::StaticCell;
 
 use tinyrlibc as _;
+
+use {defmt_rtt as _, panic_probe as _};
 
 macro_rules! mk_static {
     ($t:ty) => {{
@@ -53,17 +55,6 @@ macro_rules! mk_static {
     }};
 }
 
-bind_interrupts!(struct Irqs {
-    RADIO => radio::InterruptHandler<peripherals::RADIO>;
-});
-
-#[interrupt]
-unsafe fn EGU0_SWI0() {
-    EXECUTOR_HIGH.on_interrupt()
-}
-
-static EXECUTOR_HIGH: InterruptExecutor = InterruptExecutor::new();
-
 const BOUND_PORT: u16 = 1212;
 
 const IPV6_PACKET_SIZE: usize = 1280;
@@ -75,6 +66,13 @@ const THREAD_DATASET: &str = if let Some(dataset) = option_env!("THREAD_DATASET"
     "000300001901020fd80208b566147d38e384200e080000639c5d67a3bd0510c490f58d4be0d5eaeb0f09b395d1ae17030d4e4553542d50414e2d304644380708fd7d4f8232cb00000410a7e08419ae47c177fb91bcfcec789aa50c0402a0f77835060004001fffe0"
 };
 
+static MPSL: StaticCell<MultiprotocolServiceLayer<'static>> = StaticCell::new();
+
+#[embassy_executor::task]
+async fn mpsl_task(mpsl: &'static MultiprotocolServiceLayer<'static>) -> ! {
+    mpsl.run().await
+}
+
 // Only needed for tinyrlibc's alloc functions which won't be called at runtime.
 //
 // If the firmware would not use or need heap allocation for other purposes, this could be replaced
@@ -85,21 +83,28 @@ static HEAP: Heap = Heap::empty();
 
 #[embassy_executor::main]
 async fn main(spawner: Spawner) {
-    let mut config = embassy_nrf::config::Config::default();
-    config.hfclk_source = embassy_nrf::config::HfclkSource::ExternalXtal;
-
-    let p = embassy_nrf::init(config);
-
-    rtt_target::rtt_init_defmt!();
+    let p = openthread_examples_nrf::init();
 
     info!("Starting...");
 
-    let rng = mk_static!(Rng<'static, Blocking>, Rng::new_blocking(p.RNG));
+    let lfclk_cfg = mpsl_clock_lfclk_cfg_t {
+        source: nrf_mpsl::raw::MPSL_CLOCK_LF_SRC_RC as u8,
+        rc_ctiv: nrf_mpsl::raw::MPSL_RECOMMENDED_RC_CTIV as u8,
+        rc_temp_ctiv: nrf_mpsl::raw::MPSL_RECOMMENDED_RC_TEMP_CTIV as u8,
+        accuracy_ppm: nrf_mpsl::raw::MPSL_DEFAULT_CLOCK_ACCURACY_PPM as u16,
+        skip_wait_lfclk_started: nrf_mpsl::raw::MPSL_DEFAULT_SKIP_WAIT_LFCLK_STARTED != 0,
+    };
 
-    let enet_seed = rand_core::Rng::next_u64(rng);
+    let mpsl_p = openthread_examples_nrf::mpsl_peripherals!(p);
+    let mpsl = MPSL.init(MultiprotocolServiceLayer::new(mpsl_p, Irqs, lfclk_cfg).unwrap());
+    spawner.spawn(mpsl_task(mpsl).unwrap());
+
+    let rng = mk_static!(Rng<'static>, openthread_examples_nrf::rng!(p));
+
+    let enet_seed = rng.next_u64();
 
     let mut ieee_eui64 = [0; 8];
-    rand_core::Rng::fill_bytes(rng, &mut ieee_eui64);
+    RngCore::fill_bytes(rng, &mut ieee_eui64);
 
     let ot_resources = mk_static!(OtResources, OtResources::new());
     let ot_settings_buf = mk_static!([u8; 1024], [0; 1024]);
@@ -108,29 +113,23 @@ async fn main(spawner: Spawner) {
 
     let ot_settings = mk_static!(SimpleRamSettings, SimpleRamSettings::new(ot_settings_buf));
 
-    info!("About to spawn OT runner");
-
-    let radio = NrfRadio::new(Ieee802154::new(p.RADIO, Irqs));
-
-    let proxy_radio_resources = mk_static!(ProxyRadioResources, ProxyRadioResources::new());
-    let (mut proxy_radio, phy_radio_runner) = ProxyRadio::new(proxy_radio_resources);
-
-    // High-priority executor: EGU0_SWI0, priority level 7
-    interrupt::EGU0_SWI0.set_priority(Priority::P7);
-
-    let spawner_high = EXECUTOR_HIGH.start(interrupt::EGU0_SWI0);
-    spawner_high.spawn(run_radio(phy_radio_runner, radio).unwrap());
-
-    let radio_caps = proxy_radio.init().await.unwrap();
-
-    info!("Radio created");
+    let radio = Radio::new(
+        p.RADIO,
+        openthread_examples_nrf::radio_peripherals!(p),
+        Irqs,
+        mpsl,
+    );
+    let mut radio = NrfRadio::new(radio);
+    let radio_caps = radio.init().await.unwrap();
 
     let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, ot_settings, ot_resources).unwrap();
 
     let (_enet_controller, enet_driver_runner, enet_driver) =
         enet::new(ot.clone(), enet_driver_state);
 
-    spawner.spawn(run_enet_driver(enet_driver_runner, proxy_radio).unwrap());
+    info!("About to spawn OT runner");
+
+    spawner.spawn(run_enet_driver(enet_driver_runner, radio).unwrap());
 
     let enet_resources = mk_static!(StackResources<ENET_MAX_SOCKETS>, StackResources::new());
 
@@ -178,6 +177,13 @@ async fn main(spawner: Spawner) {
 
             break;
         }
+
+        // No address yet. Yield until OpenThread signals a state change instead of
+        // busy-looping: on the single embassy executor a tight loop here starves
+        // the `run_enet_driver` task that drives the radio + OpenThread core, so the
+        // device would never attach (and thus never get an address). `basic_udp`
+        // avoids this because its loops always `.await`.
+        ot.wait_changed().await;
     }
 
     let (mut rx_meta, mut tx_meta) = ([PacketMetadata::EMPTY; 2], [PacketMetadata::EMPTY; 2]);
@@ -220,24 +226,9 @@ async fn main(spawner: Spawner) {
 #[embassy_executor::task]
 async fn run_enet_driver(
     mut runner: EnetRunner<'static, IPV6_PACKET_SIZE>,
-    radio: ProxyRadio<'static>,
+    radio: NrfRadio<'static>,
 ) -> ! {
     runner.run(radio).await
-}
-
-#[embassy_executor::task]
-async fn run_radio(mut runner: PhyRadioRunner<'static>, radio: NrfRadio<'static>) -> ! {
-    // The nRF radio is a bare PHY, so the software MAC goes on here - on the
-    // runner's high-priority executor, where its ACK deadlines are meetable.
-    let mac_radio_resources = mk_static!(MacRadioResources, MacRadioResources::new());
-
-    runner
-        .run(MacRadio::new(
-            radio,
-            EmbassyTimeTimer, /*TODO: Likely not precise enough*/
-            mac_radio_resources,
-        ))
-        .await
 }
 
 #[embassy_executor::task]

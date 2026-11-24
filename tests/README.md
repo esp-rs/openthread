@@ -17,7 +17,7 @@ and **the concrete Radio implementation itself**.
 | sim, real time | [`SimRadio`](src/sim.rs): the upstream UDP-multicast medium | the whole platform against real Python-harness pacing |
 | sim, virtual time | [`VtRadio`](src/vt.rs) + [`executor`](src/executor.rs): the simulator's lockstep protocol | the same, deterministically, in seconds - the CI tier |
 | hardware, RCP | `SpinelRadio` over a serial co-processor | the spinel host path, real RF |
-| hardware, MCU | this repo's firmware nodes ([esp](esp/), [nrf](nrf/)) reached via [`serial_bridge`](src/bin/serial_bridge.rs) | the crate's own radio drivers on real silicon, real timing |
+| hardware, MCU | this repo's firmware nodes ([esp](esp/), [nrf](nrf/)) reached via [`serial_bridge`](src/bin/serial_bridge.rs) | a radio driver (`EspRadio`, `NrfRadio`) on real silicon, real timing |
 
 ## Running
 

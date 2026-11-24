@@ -1,12 +1,13 @@
 [target.'cfg(all(target_arch = "arm", target_os = "none"))']
 runner = "probe-rs run --chip nRF52840_xxAA"
+#runner = "probe-rs run --chip nRF54L15"
 
 [build]
-target = "thumbv7em-none-eabi"
+target = "thumbv7em-none-eabi"            # nRF52840
+#target = "thumbv8m.main-none-eabihf"     # nRF54L15
 
 [unstable]
 build-std = ["core", "alloc", "panic_abort"]
-#build-std-features = ["panic_immediate_abort"]
 
 [env]
-DEFMT_LOG="info"
+DEFMT_LOG = "info"

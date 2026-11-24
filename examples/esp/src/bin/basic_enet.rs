@@ -22,8 +22,8 @@ use {esp_backtrace as _, esp_println as _};
 use heapless::Vec;
 
 use openthread::enet::{self, EnetDriver, EnetRunner};
-use openthread::esp::EspRadio;
 use openthread::{BytesFmt, OpenThread, OtResources, Radio, SimpleRamSettings};
+use openthread_driver_esp::EspRadio;
 
 use rand_core::Rng as _;
 

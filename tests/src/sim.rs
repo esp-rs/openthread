@@ -26,7 +26,7 @@
 //!   like the C simulation.
 //!
 //! Like the nRF driver, this is a bare PHY: no ACKs, no address filtering, no
-//! frame security. Wrap it in [`MacRadio`](openthread::MacRadio) so the
+//! frame security. Wrap it in [`MacRadio`](crate::mac::MacRadio) so the
 //! crate's software MAC provides those - which conveniently makes the sim
 //! exercise the very code paths real PHY-only hardware uses.
 
@@ -38,11 +38,12 @@ use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, UdpSocket};
 use async_io::Async;
 
 use openthread::{
-    Capabilities, Config, PsduRxInfo, Radio, RadioCaps, RadioClock, RadioError, RadioErrorKind,
-    SrcMatchConfig,
+    Capabilities, Config, PsduRxInfo, PsduTxInfo, RadioCaps, RadioClock, RadioError, RadioErrorKind,
 };
 
 use socket2::{Domain, Protocol, Socket, Type};
+
+use crate::mac::PhyRadio;
 
 /// The multicast group of the simulated radio medium.
 const GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 116);
@@ -75,21 +76,21 @@ pub(crate) const PSDU_MAX: usize = openthread::sys::OT_RADIO_FRAME_MAX_SIZE as u
 /// with timed receive and transmit, so that they can run CSL - as a child,
 /// and as the parent timing its frames into a child's receive windows.
 pub(crate) fn sim_radio_caps() -> RadioCaps {
-    RadioCaps {
-        phy: Capabilities::RECEIVE_TIMING.union(Capabilities::TRANSMIT_TIMING),
-        // The upstream simulation radio's `SIM_RECEIVE_SENSITIVITY`: the
-        // cert suites' link-quality scenarios shape RSS values against
-        // exactly this noise floor (e.g. a `macfilter rss` of -85 dBm is
-        // meant to land in the 10-20 dB margin bucket, link quality 2).
-        receive_sensitivity: -100,
-        // The node's own (real or virtual) time.
-        clock: Some(RadioClock(sim_now_us)),
-        // The upstream simulation radio's CSL accuracy, and no jitter: this
-        // medium is exact.
-        csl_accuracy_ppm: 0,
-        csl_uncertainty: 0,
-        ..RadioCaps::default()
-    }
+    let mut caps = RadioCaps::new();
+    caps.phy = Capabilities::RECEIVE_TIMING.union(Capabilities::TRANSMIT_TIMING);
+    // The upstream simulation radio's `SIM_RECEIVE_SENSITIVITY`: the cert
+    // suites' link-quality scenarios shape RSS values against exactly this
+    // noise floor (e.g. a `macfilter rss` of -85 dBm is meant to land in the
+    // 10-20 dB margin bucket, link quality 2).
+    caps.receive_sensitivity = -100;
+    // The node's own (real or virtual) time.
+    caps.clock = Some(RadioClock(sim_now_us));
+    // The upstream simulation radio's CSL accuracy, and no jitter: this
+    // medium is exact.
+    caps.csl_accuracy_ppm = 0;
+    caps.csl_uncertainty = 0;
+
+    caps
 }
 
 /// The clock of the simulated radios.
@@ -143,8 +144,7 @@ pub enum SimRadioError {
 impl RadioError for SimRadioError {
     fn kind(&self) -> RadioErrorKind {
         match self {
-            Self::TxInvalid => RadioErrorKind::TxInvalid,
-            Self::Io(_) => RadioErrorKind::Other,
+            Self::TxInvalid | Self::Io(_) => RadioErrorKind::Other,
         }
     }
 }
@@ -271,7 +271,7 @@ impl SimRadio {
     }
 }
 
-impl Radio for SimRadio {
+impl PhyRadio for SimRadio {
     type Error = SimRadioError;
 
     async fn init(&mut self) -> Result<RadioCaps, Self::Error> {
@@ -294,12 +294,6 @@ impl Radio for SimRadio {
         // `Config` (filtering, promiscuous mode) is `MacRadio`'s business.
         self.config = config.clone();
 
-        Ok(())
-    }
-
-    async fn set_src_match_config(&mut self, _config: &SrcMatchConfig) -> Result<(), Self::Error> {
-        // No RX-ACK offload: `MacRadio` keeps the table and decides the Frame
-        // Pending bit of the ACKs it sends in software.
         Ok(())
     }
 
@@ -333,12 +327,11 @@ impl Radio for SimRadio {
     async fn transmit(
         &mut self,
         psdu: &mut [u8],
-        psdu_tx: &mut openthread::PsduTxInfo,
+        psdu_tx: &mut PsduTxInfo,
         channel: u8,
         _power: i8,                 // The simulated medium is lossless
         _cca_threshold: Option<i8>, // ... and always idle
-        _ack_psdu_buf: Option<&mut [u8]>,
-    ) -> Result<Option<PsduRxInfo>, Self::Error> {
+    ) -> Result<(), Self::Error> {
         if !(2..=PSDU_MAX).contains(&psdu.len()) {
             return Err(SimRadioError::TxInvalid);
         }
@@ -367,9 +360,9 @@ impl Radio for SimRadio {
             )
             .await?;
 
-        // No TX ACK offload (see `init` caps): reception of the ACK - when the
-        // frame requests one - is `MacRadio`'s software emulation's job.
-        Ok(None)
+        // A bare PHY: the reception of the ACK - when the frame requests one -
+        // is `MacRadio`'s job.
+        Ok(())
     }
 
     async fn receive(&mut self, psdu_buf: &mut [u8]) -> Result<PsduRxInfo, Self::Error> {
@@ -411,18 +404,15 @@ impl Radio for SimRadio {
 
             psdu_buf[..psdu_len].copy_from_slice(&msg[1..len]);
 
-            break Ok(PsduRxInfo {
-                len: psdu_len,
-                channel,
-                rssi: Some(SIM_RSSI),
-                // The C simulation platform reports `OT_RADIO_LQI_NONE` on
-                // every frame; the `expect` suites' scan/discover scripts
-                // match on exactly that.
-                lqi: Some(0),
-                timestamp_us: Some(now),
-                ack_security: None,
-                acked_with_frame_pending: None,
-            });
+            let mut info = PsduRxInfo::new(psdu_len, channel);
+            info.rssi = Some(SIM_RSSI);
+            // The C simulation platform reports `OT_RADIO_LQI_NONE` on every
+            // frame; the `expect` suites' scan/discover scripts match on
+            // exactly that.
+            info.lqi = Some(0);
+            info.timestamp_us = Some(now);
+
+            break Ok(info);
         }
     }
 }

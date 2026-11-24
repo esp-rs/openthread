@@ -21,11 +21,11 @@ use esp_hal::timer::timg::TimerGroup;
 use esp_radio::ieee802154::Ieee802154;
 use {esp_backtrace as _, esp_println as _};
 
-use openthread::esp::EspRadio;
 use openthread::{
     BytesFmt, OpenThread, OtResources, OtSrpResources, OtUdpResources, Radio, SimpleRamSettings,
     SrpConf, UdpSocket,
 };
+use openthread_driver_esp::EspRadio;
 use rand_core::Rng as _;
 
 use tinyrlibc as _;

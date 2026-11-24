@@ -1,5 +1,7 @@
 # The nRF radio: why wrapping the PHY-only `NrfRadio` in the soft-MAC `MacRadio` and executing in a high priority executor is not enough
 
+**Note:** for the reasons below, `openthread` 0.5 no longer has `NrfRadio` and `ProxyRadio`, and `MacRadio` is only used by the simulated radios of its tests. The nRF radio is `NrfRadio` in `openthread-driver-nrf`, over the [`nrf-802154`](https://github.com/sysgrok/nrf-802154) driver.
+
 The `NrfRadio`, which models the NRF52 radio modem, is currently a very simple PHY-only radio. In other words, it can:
 - Transmit a frame, when `NrfRadio::transmit` is called
 - Receive a frame, when `NrfRadio::receive` is called

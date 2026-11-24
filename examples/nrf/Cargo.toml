@@ -2,74 +2,117 @@
 name = "openthread-examples-nrf"
 version = "0.1.0"
 edition = "2021"
-authors = ["bjoernQ <bjoern.quentin@mobile-j.de>"]
-resolver = "2"
 categories = ["embedded", "hardware-support"]
 keywords = ["thread", "openthread", "embedded", "embassy"]
-description = "openthread examples for NRF chips"
-repository = "https://github.com/ivmarkov/esp-openthread"
+description = "openthread examples for the nRF52840 and nRF54L chips, with the nrf-802154 radio driver"
+repository = "https://github.com/esp-rs/openthread"
 license = "MIT OR Apache-2.0"
 readme = "README.md"
-rust-version = "1.84"
+publish = false
 
 [profile.dev]
-# Rust debug is too slow.
-# For debug builds always builds with some optimization
-opt-level = "z"
+opt-level = 1               # Use slightly better optimizations.
 
 [profile.release]
-codegen-units = 1 # LLVM can perform better optimizations using a single thread
-opt-level = "z"
-lto = "fat"
+codegen-units = 1
 debug = 2
 debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 'z'
 overflow-checks = false
 
 [features]
-default = []
+default = ["nrf52840"]
+
 force-generate-bindings = ["openthread/force-generate-bindings"]
 
-[dependencies]
-cortex-m = { version = "0.7.6", features = ["inline-asm", "critical-section-single-core"] }
-cortex-m-rt = "0.7.0"
-rtt-target = { version = "0.6", features = ["defmt"] }
-panic-rtt-target = "0.2"
-embassy-executor = { version = "0.10", features = ["platform-cortex-m", "executor-thread", "executor-interrupt", "defmt"] }
-embassy-sync = { version = "0.8", features = ["defmt"] }
-embassy-futures = "0.1"
-embassy-time = { version = "0.5", features = ["defmt"] }
-embassy-net = { version = "0.9", features = ["defmt", "proto-ipv6", "medium-ip", "udp"] }
-embassy-nrf = { version = "0.11", features = ["defmt", "nrf52840", "time-driver-rtc1", "gpiote", "unstable-pac", "time"] }
-defmt = "0.3"
-heapless = "0.9"
-critical-section = "1.2"
-rand_core = "0.10"
-static_cell = "2.1"
+nrf52840 = [
+    "nrf-802154/nrf52840",
+    "openthread-driver-nrf/nrf52840",
+    "nrf-mpsl/nrf52840",
+    "nrf-sdc/nrf52840",
+    "embassy-nrf/nrf52840",
+    "embassy-nrf/time-driver-rtc1",
+]
+nrf54l15 = [
+    "_nrf54l",
+    "nrf-802154/nrf54l15-app-s",
+    "openthread-driver-nrf/nrf54l15-app-s",
+    "nrf-mpsl/nrf54l15-app-s",
+    "nrf-sdc/nrf54l15-app-s",
+    "embassy-nrf/nrf54l15-app-s",
+    "embassy-nrf/time-driver-grtc",
+]
+nrf54lm20 = [
+    "_nrf54l",
+    "nrf-802154/nrf54lm20-app-s",
+    "openthread-driver-nrf/nrf54lm20-app-s",
+    "nrf-mpsl/nrf54lm20-app-s",
+    "nrf-sdc/nrf54lm20-app-s",
+    "embassy-nrf/nrf54lm20-app-s",
+    "embassy-nrf/time-driver-grtc",
+]
 
-openthread = { path = "../../openthread", features = ["udp", "srp", "dns-client", "embassy-net-driver-channel", "embassy-nrf", "defmt"] }
-tinyrlibc = { version = "0.5", default-features = false, features = ["alloc", "strstr", "strcmp", "isupper", "utoa", "strtoul"] }
-embedded-alloc = "0.7.0"
+# The nRF54L15 and nRF54LM20 differ in nothing the examples care about: same
+# interrupt names, same peripherals, same clock requirement.
+_nrf54l = []
 
 [[bin]]
-path = "./src/bin/basic_enet.rs"
-name = "basic_enet"
-#required-features = ["embassy-net-driver-channel"]
-harness = false
-
-[[bin]]
-path = "./src/bin/basic_udp.rs"
 name = "basic_udp"
-#required-features = ["udp"]
+path = "src/bin/basic_udp.rs"
 harness = false
 
 [[bin]]
-path = "./src/bin/srp.rs"
+name = "basic_enet"
+path = "src/bin/basic_enet.rs"
+harness = false
+
+[[bin]]
 name = "srp"
-#required-features=["srp"]
+path = "src/bin/srp.rs"
 harness = false
 
+# The BLE coexistence example is nRF52840-only for now: it pins a prebuilt
+# SoftDevice Controller variant and a `trouble-host` configuration that have
+# only been checked out on that part.
 [[bin]]
-path = "./src/bin/dns.rs"
-name = "dns"
-#required-features=["dns-client"]
+name = "srp_ble_coex"
+path = "src/bin/srp_ble_coex.rs"
 harness = false
+required-features = ["nrf52840"]
+
+[dependencies]
+nrf-802154 = { version = "0.1", default-features = false, features = ["defmt"] }
+openthread-driver-nrf = { path = "../../openthread-driver-nrf", features = ["defmt"] }
+nrf-mpsl = { version = "0.4", default-features = false, features = ["critical-section-impl"] }
+nrf-sdc = { version = "0.4", default-features = false, features = ["peripheral", "central", "defmt"] }
+trouble-host = { version = "0.8", default-features = false, features = ["defmt", "gatt", "peripheral", "default-packet-pool"] }
+bt-hci = { version = "0.10", default-features = false, features = ["defmt"] }
+
+# `matter` is the feature bundle the crate's prebuilt OpenThread libraries are
+# built with; without it, the examples would build OpenThread from source.
+openthread = { path = "../../openthread", default-features = false, features = ["matter", "udp", "srp", "embassy-net-driver-channel", "defmt"] }
+tinyrlibc = { version = "0.5", default-features = false, features = ["alloc", "strstr", "strcmp", "isupper", "utoa", "strtoul"] }
+embedded-alloc = { version = "0.7", default-features = false, features = ["llff"] }
+
+embassy-executor = { version = "0.10", default-features = false, features = ["platform-cortex-m", "executor-thread", "defmt"] }
+embassy-nrf = { version = "0.11", default-features = false, features = ["unstable-pac", "time"] }
+embassy-sync = { version = "0.8", default-features = false, features = ["defmt"] }
+embassy-futures = { version = "0.1", default-features = false }
+embassy-time = { version = "0.5", default-features = false, features = ["defmt"] }
+embassy-net = { version = "0.9", default-features = false, features = ["defmt", "proto-ipv6", "medium-ip", "udp"] }
+
+defmt = { version = "1", default-features = false }
+defmt-rtt = { version = "1", default-features = false }
+
+cortex-m = { version = "0.7", default-features = false }
+cortex-m-rt = { version = "0.7", default-features = false }
+panic-probe = { version = "1", default-features = false, features = ["print-defmt"] }
+static_cell = { version = "2", default-features = false }
+heapless = { version = "0.9", default-features = false }
+rand_core = { version = "0.9", default-features = false }
+
+# Until `nrf-802154` 0.2 is released
+[patch.crates-io]
+nrf-802154 = { git = "https://github.com/sysgrok/nrf-802154" }

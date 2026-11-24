@@ -1,79 +1,65 @@
-//! The nRF firmware node of the HIL tier:
-//! Same purpose as the host / STD `cli_node`, but running on the MCU with its own radio.
+//! The nRF firmware node of the HIL test tier, with the `NrfRadio` of
+//! `openthread-driver-nrf` over the `nrf-802154` driver.
 //!
 //! The upstream harness drives this exactly as it drives every other node -
-//! CLI lines in, CLI output back - except the pipe is the chip's serial
-//! console rather than a process's stdin/stdout. `openthread-tests`'
-//! `serial_bridge` is what makes that substitution invisible to the harness.
+//! CLI lines in over the board's console, CLI output back. The
+//! `serial_bridge` of the `tests` crate makes that substitution invisible
+//! to the harness:
 //!
-//! # What only this tier exercises
-//!
-//! - [`NrfRadio`] driving the nRF's IEEE 802.15.4 peripheral;
-//! - [`MacRadio`], whose software ACKs have to make the inter-frame gap on a
-//!   real clock rather than a simulated one;
-//! - [`ProxyRadio`] / [`PhyRadioRunner`], whose whole reason to exist is
-//!   putting that soft-MAC on a higher-priority executor so it can.
+//! ```sh
+//! # in the root of this repo, with this firmware flashed:
+//! cargo xtask itest --hw-port /dev/serial/by-id/<this-board>=mcu \
+//!                   --hw-port /dev/serial/by-id/<ot-rcp-dongle>=rcp
+//! ```
 //!
 //! # Reset
 //!
 //! The CLI `reset`/`factoryreset` commands are intercepted (the C stack
-//! cannot re-create itself in place - see the crate's `otPlatReset`) and
-//! honored with a chip reset. The settings persist in flash (see
-//! `settings`), so a `reset` node comes back with its dataset and network
-//! state intact and rejoins on its own. `factoryreset` is first forwarded to
-//! the stack, whose factory-reset path clears the settings - durably, thanks
-//! to the write-through - before the chip reboots.
+//! cannot re-create itself in place) and honored with a chip reset - after
+//! awaiting the settings flush, since persistence is write-behind here (see
+//! `settings`).
 //!
 //! # Node identity
 //!
-//! Flashed firmware cannot be told which node it is - the harness passes that
-//! on a command line only the bridge sees. So the EUI-64 comes from the chip's
-//! own factory device address (`FICR.DEVICEADDR`), which is unique per board
-//! and stable across resets. The node-id-to-board mapping lives entirely in
-//! the bridge's port map.
+//! The EUI-64 comes from the chip's factory device address
+//! (`FICR.DEVICEADDR`), unique per board and stable across resets; the
+//! node-id-to-board mapping lives entirely in the bridge's port map.
 
 #![no_std]
 #![no_main]
 
-use cortex_m_rt::entry;
-
-use embassy_executor::{Executor, InterruptExecutor, Spawner};
+use embassy_executor::Spawner;
 
 #[cfg(not(feature = "console-usb"))]
-use embassy_nrf::buffered_uarte::{BufferedUarte, BufferedUarteRx, BufferedUarteTx};
-use embassy_nrf::interrupt::{InterruptExt, Priority};
-use embassy_nrf::mode::Blocking;
-use embassy_nrf::nvmc::Nvmc;
-use embassy_nrf::radio::ieee802154::Radio as Ieee802154;
-use embassy_nrf::rng::Rng;
+use embassy_nrf::buffered_uarte::{BufferedUarteRx, BufferedUarteTx};
+#[cfg(all(feature = "nrf54l15", not(feature = "console-usb")))]
+use embassy_nrf::peripherals;
 #[cfg(not(feature = "console-usb"))]
 use embassy_nrf::uarte;
 #[cfg(feature = "console-usb")]
-use embassy_nrf::usb;
-use embassy_nrf::{bind_interrupts, interrupt, peripherals, radio};
+use embassy_nrf::{peripherals, usb};
 
 #[cfg(feature = "console-usb")]
 use embassy_usb::class::cdc_acm::{self, CdcAcmClass};
 #[cfg(feature = "console-usb")]
 use embassy_usb::UsbDevice;
 
-use openthread::nrf::NrfRadio;
-use openthread::{
-    EmbassyTimeTimer, MacRadio, MacRadioResources, OpenThread, OtResources, PhyRadioRunner,
-    ProxyRadio, ProxyRadioResources, Radio,
-};
+use embedded_alloc::LlffHeap as Heap;
+
+use nrf_802154::Radio;
+use nrf_mpsl::raw::mpsl_clock_lfclk_cfg_t;
+use nrf_mpsl::{Flash, MultiprotocolServiceLayer, SessionMem};
+
+use openthread::{OpenThread, OtResources, Radio as _};
+use openthread_driver_nrf::NrfRadio;
+
+use openthread_tests_nrf::{console, ieee_eui64, settings, Irqs, Rng};
+
+use static_cell::StaticCell;
 
 use tinyrlibc as _;
 
-#[path = "../../../shared/console.rs"]
-mod console;
-
-#[path = "../settings.rs"]
-mod settings;
-
-use settings::FlashSettings;
-
-use panic_rtt_target as _;
+use {defmt_rtt as _, panic_probe as _};
 
 macro_rules! mk_static {
     ($t:ty,$val:expr) => {{
@@ -84,58 +70,141 @@ macro_rules! mk_static {
     }};
 }
 
-#[cfg(not(feature = "console-usb"))]
-bind_interrupts!(struct Irqs {
-    RADIO => radio::InterruptHandler<peripherals::RADIO>;
-    UARTE0 => embassy_nrf::buffered_uarte::InterruptHandler<peripherals::UARTE0>;
-});
+/// The flash page `memory.x` carves off the top of the application region -
+/// out of the linker's FLASH, so the firmware can never grow into it.
+#[cfg(feature = "nrf52840")]
+const SETTINGS_OFFSET: u32 = 0x000f_f000;
+/// The RRAM page `memory.x` carves off the top of the application region.
+#[cfg(feature = "nrf54l15")]
+const SETTINGS_OFFSET: u32 = 0x0017_c000;
 
+/// The console's two ends: the board's own USB peripheral (CDC-ACM).
 #[cfg(feature = "console-usb")]
-bind_interrupts!(struct Irqs {
-    RADIO => radio::InterruptHandler<peripherals::RADIO>;
-    USBD => usb::InterruptHandler<peripherals::USBD>;
-    CLOCK_POWER => usb::vbus_detect::InterruptHandler;
-});
-
-/// The console's two ends, whichever peripheral is underneath.
-#[cfg(not(feature = "console-usb"))]
-type ConsoleTx = BufferedUarteTx<'static>;
-#[cfg(not(feature = "console-usb"))]
-type ConsoleRx = BufferedUarteRx<'static>;
-
-#[cfg(feature = "console-usb")]
-type UsbDriver = usb::Driver<'static, usb::vbus_detect::HardwareVbusDetect>;
+type UsbDriver = usb::Driver<'static, &'static usb::vbus_detect::SoftwareVbusDetect>;
 #[cfg(feature = "console-usb")]
 type ConsoleTx = cdc_acm::Sender<'static, UsbDriver>;
 #[cfg(feature = "console-usb")]
 type ConsoleRx = cdc_acm::Receiver<'static, UsbDriver>;
 
-#[interrupt]
-unsafe fn EGU0_SWI0() {
-    EXECUTOR_HIGH.on_interrupt()
-}
+/// The console's two ends: a UART, reached through a debug probe's bridge.
+/// (embassy's pre-nRF54L buffered UART is not generic over the instance.)
+#[cfg(all(feature = "nrf52840", not(feature = "console-usb")))]
+type ConsoleTx = BufferedUarteTx<'static>;
+#[cfg(all(feature = "nrf52840", not(feature = "console-usb")))]
+type ConsoleRx = BufferedUarteRx<'static>;
 
-/// The radio's executor: higher priority than everything else, so the software
-/// MAC's ACK deadlines are met (see [`ProxyRadio`]).
-static EXECUTOR_HIGH: InterruptExecutor = InterruptExecutor::new();
+/// The console's two ends: UART20, which the board's onboard CMSIS-DAP probe
+/// bridges to a USB CDC port on the host.
+#[cfg(feature = "nrf54l15")]
+type ConsoleTx = BufferedUarteTx<'static, peripherals::SERIAL20>;
+#[cfg(feature = "nrf54l15")]
+type ConsoleRx = BufferedUarteRx<'static, peripherals::SERIAL20>;
+
+static MPSL: StaticCell<MultiprotocolServiceLayer<'static>> = StaticCell::new();
+static SETTINGS_STATE: settings::FlashSettingsState = settings::FlashSettingsState::new();
 
 // Only needed for tinyrlibc's alloc functions, which are not called at runtime.
 #[global_allocator]
-static HEAP: embedded_alloc::LlffHeap = embedded_alloc::LlffHeap::empty();
+static HEAP: Heap = Heap::empty();
 
-#[entry]
-fn main() -> ! {
-    rtt_target::rtt_init_defmt!();
+#[embassy_executor::main]
+async fn main(spawner: Spawner) {
+    let p = openthread_tests_nrf::init();
 
-    defmt::info!("boot");
+    // The LP clock. On the nRF52840 it has to be the 32.768 kHz crystal: there
+    // the driver timestamps frames with a 16 MHz timer that it re-aligns with
+    // the LP clock only every ~17 s, and against the RC oscillator - which MPSL
+    // recalibrates every few seconds, changing its rate in steps - the two
+    // drift apart by hundreds of µs in between: enough for a CSL parent to miss
+    // its children's receive windows. The nRF54L timestamps off the LP clock
+    // (GRTC) itself, so the RC oscillator does there.
+    #[cfg(feature = "nrf52840")]
+    let lfclk_cfg = mpsl_clock_lfclk_cfg_t {
+        source: nrf_mpsl::raw::MPSL_CLOCK_LF_SRC_XTAL as u8,
+        rc_ctiv: 0,
+        rc_temp_ctiv: 0,
+        accuracy_ppm: 20,
+        skip_wait_lfclk_started: nrf_mpsl::raw::MPSL_DEFAULT_SKIP_WAIT_LFCLK_STARTED != 0,
+    };
+    #[cfg(not(feature = "nrf52840"))]
+    let lfclk_cfg = mpsl_clock_lfclk_cfg_t {
+        source: nrf_mpsl::raw::MPSL_CLOCK_LF_SRC_RC as u8,
+        rc_ctiv: nrf_mpsl::raw::MPSL_RECOMMENDED_RC_CTIV as u8,
+        rc_temp_ctiv: nrf_mpsl::raw::MPSL_RECOMMENDED_RC_TEMP_CTIV as u8,
+        accuracy_ppm: nrf_mpsl::raw::MPSL_DEFAULT_CLOCK_ACCURACY_PPM as u16,
+        skip_wait_lfclk_started: nrf_mpsl::raw::MPSL_DEFAULT_SKIP_WAIT_LFCLK_STARTED != 0,
+    };
+    let lfclk_accuracy_ppm = lfclk_cfg.accuracy_ppm;
 
-    // The external crystal, not the default internal RC: the USB peripheral
-    // requires it outright, and the radio's timing is better served by it -
-    // and every nRF52840 board has one.
-    let mut config = embassy_nrf::config::Config::default();
-    config.hfclk_source = embassy_nrf::config::HfclkSource::ExternalXtal;
+    let mpsl_p = openthread_tests_nrf::mpsl_peripherals!(p);
+    // `with_timeslots` rather than `new`: the flash driver schedules its
+    // erases/writes as MPSL timeslots, and without session memory allocated
+    // here, every `Flash` operation fails at `mpsl_timeslot_session_open` -
+    // which silently degrades the settings to RAM-only (see `settings`).
+    // One session: the flash driver opens a single session per operation.
+    let mpsl = MPSL.init(
+        MultiprotocolServiceLayer::with_timeslots(
+            mpsl_p,
+            Irqs,
+            lfclk_cfg,
+            mk_static!(SessionMem<1>, SessionMem::new()),
+        )
+        .unwrap(),
+    );
+    spawner.spawn(run_mpsl(mpsl).unwrap());
 
-    let p = embassy_nrf::init(config);
+    // Flash access must be MPSL-coordinated (it runs in radio-free
+    // timeslots), which is what makes settings persistence write-behind -
+    // see `settings`.
+    let mut flash = Flash::take(mpsl, openthread_tests_nrf::flash_peripheral!(p));
+
+    let ot_settings_buf = mk_static!([u8; 1024], [0; 1024]);
+    let ot_settings = mk_static!(
+        settings::FlashSettings,
+        settings::FlashSettings::new(
+            &SETTINGS_STATE,
+            &mut flash,
+            SETTINGS_OFFSET,
+            ot_settings_buf
+        )
+    );
+
+    spawner.spawn(run_settings(flash).unwrap());
+
+    let rng = mk_static!(Rng<'static>, openthread_tests_nrf::rng!(p));
+
+    let ieee_eui64 = ieee_eui64();
+
+    // The full-MAC radio goes straight to the stack: no software MAC, no
+    // executor split.
+    //
+    // The CSL clock accuracy reported to peers is the LP clock's (see
+    // `lfclk_cfg`), not the crystal the radio defaults to: with the RC
+    // oscillator a CSL peer would otherwise size its windows for a fraction of
+    // the drift it gets.
+    let mut radio = NrfRadio::new(Radio::new(
+        p.RADIO,
+        openthread_tests_nrf::radio_peripherals!(p),
+        Irqs,
+        mpsl,
+    ))
+    .with_csl_timing(
+        lfclk_accuracy_ppm.min(u8::MAX as u16) as u8,
+        NrfRadio::DEFAULT_CSL_UNCERTAINTY,
+    );
+    let radio_caps = radio.init().await.unwrap();
+
+    let ot_resources = mk_static!(OtResources, OtResources::new());
+    let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, ot_settings, ot_resources).unwrap();
+
+    spawner.spawn(run_ot(ot.clone(), radio).unwrap());
+
+    #[cfg(feature = "console-usb")]
+    let (console_tx, console_rx) = {
+        let (console_tx, console_rx, usb) = build_usb_console(p.USBD);
+        spawner.spawn(run_usb(usb).unwrap());
+        (console_tx, console_rx)
+    };
 
     #[cfg(not(feature = "console-usb"))]
     let (console_tx, console_rx) = {
@@ -143,108 +212,22 @@ fn main() -> ! {
         uarte_config.baudrate = uarte::Baudrate::Baud115200;
         uarte_config.parity = uarte::Parity::Excluded;
 
-        // The DK's J-Link virtual COM port by default; `console-uart-xiao`
-        // picks a XIAO nRF52840's D6/D7 pads instead, for a XIAO wired to an
-        // external debug probe's UART bridge.
-        #[cfg(not(feature = "console-uart-xiao"))]
-        let (rxd, txd) = (p.P0_08, p.P0_06);
-        #[cfg(feature = "console-uart-xiao")]
-        let (rxd, txd) = (p.P1_12, p.P1_11);
-
-        // Buffered rather than a raw `Uarte`: a raw `UarteRx::read` only arms
-        // EasyDMA for the duration of the call, so a byte arriving while the
-        // node echoes the previous one is lost, and the harness sees commands
-        // mangled into `InvalidCommand`. The buffered driver keeps RX armed
-        // into a ring buffer. Its TIMER, PPI channels and PPI group are free
-        // here: this node drives the radio through `embassy-nrf` alone, with
-        // no MPSL and no Nordic C driver bidding for them.
-        let (console_rx, console_tx) = BufferedUarte::new(
-            p.UARTE0,
-            p.TIMER1,
-            p.PPI_CH0,
-            p.PPI_CH1,
-            p.PPI_GROUP3,
-            rxd,
-            txd,
-            Irqs,
+        // Which UART, on which pins, is board-specific - see `console_uart`.
+        let (console_rx, console_tx) = openthread_tests_nrf::console_uart!(
+            p,
             uarte_config,
             mk_static!([u8; 1024], [0; 1024]),
-            mk_static!([u8; 1024], [0; 1024]),
-        )
-        .split();
+            mk_static!([u8; 1024], [0; 1024])
+        );
         (console_tx, console_rx)
     };
 
-    #[cfg(feature = "console-usb")]
-    let (console_tx, console_rx, usb) = build_usb_console(p.USBD);
-
-    // The radio's executor is started before the main one so the runner is
-    // already serving by the time the stack comes up.
-    interrupt::EGU0_SWI0.set_priority(Priority::P7);
-    let spawner_high = EXECUTOR_HIGH.start(interrupt::EGU0_SWI0);
-
-    let proxy_radio_resources = mk_static!(ProxyRadioResources, ProxyRadioResources::new());
-    let (proxy_radio, phy_radio_runner) = ProxyRadio::new(proxy_radio_resources);
-
-    let radio = NrfRadio::new(Ieee802154::new(p.RADIO, Irqs));
-
-    spawner_high.spawn(run_radio(phy_radio_runner, radio).unwrap());
-
-    let rng = mk_static!(Rng<'static, Blocking>, Rng::new_blocking(p.RNG));
-
-    // The settings image lives in the flash page both `memory*.x` layouts
-    // carve off the top of the application region - out of the linker's
-    // FLASH, so the firmware can never grow into it.
-    let ot_settings_buf = mk_static!([u8; 1024], [0; 1024]);
-    let ot_settings = mk_static!(
-        FlashSettings,
-        FlashSettings::new(Nvmc::new(p.NVMC), 0x000f_f000, ot_settings_buf)
-    );
-
-    defmt::info!("peripherals up, starting executor");
-
-    let executor = mk_static!(Executor, Executor::new());
-
-    executor.run(|spawner| {
-        #[cfg(feature = "console-usb")]
-        spawner.spawn(run_usb(usb).unwrap());
-
-        spawner.spawn(run_console_out(console_tx).unwrap());
-        spawner.spawn(run_node(spawner, proxy_radio, console_rx, rng, ot_settings).unwrap());
-    })
-}
-
-#[embassy_executor::task]
-async fn run_node(
-    spawner: Spawner,
-    mut radio: ProxyRadio<'static>,
-    console_rx: ConsoleRx,
-    rng: &'static mut Rng<'static, Blocking>,
-    ot_settings: &'static mut FlashSettings,
-) -> ! {
-    // The chip's factory device address: unique per board, stable across
-    // resets - the closest thing firmware has to the node id the host DUT
-    // gets on its command line.
-    let ieee_eui64 = ieee_eui64();
-
-    let ot_resources = mk_static!(OtResources, OtResources::new());
-
-    let radio_caps = radio.init().await.unwrap();
-
-    defmt::info!("ot init");
-
-    let ot = OpenThread::new(ieee_eui64, &radio_caps, rng, ot_settings, ot_resources).unwrap();
-
-    defmt::info!("ot up");
-
-    spawner.spawn(run_ot(ot.clone(), radio).unwrap());
+    spawner.spawn(run_console_out(console_tx).unwrap());
 
     ot.cli_init(console::out);
 
     // The prompt the harness waits for on connect.
     console::out(b"\r\n> ");
-
-    defmt::info!("cli ready");
 
     run_cli(ot, console_rx).await
 }
@@ -258,13 +241,15 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
     let mut buf = [0; 64];
 
     loop {
-        #[cfg(not(feature = "console-usb"))]
-        let read = console_rx.read(&mut buf).await;
+        // USB is packetized and only readable while the host has the port
+        // open; the UART is a plain byte stream, one byte at a time.
         #[cfg(feature = "console-usb")]
         let read = {
             console_rx.wait_connection().await;
             console_rx.read_packet(&mut buf).await
         };
+        #[cfg(not(feature = "console-usb"))]
+        let read = console_rx.read(&mut buf).await;
 
         let Ok(len) = read else {
             continue;
@@ -275,21 +260,29 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
                 let line = reader.line().trim();
 
                 match line {
-                    // Drain before rebooting, or the reply races the reset:
-                    // whether it reaches the wire comes down to timing, and
-                    // the harness is left waiting on a response that was
-                    // never sent - which it reports as a device that went
-                    // quiet, a long way from the cause.
+                    // The chip reset both need happens here - see the module
+                    // docs. `factoryreset` goes through the stack first: its
+                    // factory-reset path is what wipes the settings store.
+                    // Persistence is write-behind, so await the flush before
+                    // rebooting - that is what makes either reset durable.
                     "reset" => {
+                        settings::flush(&SETTINGS_STATE).await;
+                        // Drain before rebooting, or the reply races the
+                        // reset: whether it reaches the wire comes down to how
+                        // long the flush happened to take, and the harness is
+                        // left waiting on a response that was never sent.
                         console::drained().await;
                         cortex_m::peripheral::SCB::sys_reset()
                     }
                     "factoryreset" => {
                         let _ = ot.cli_input_line(line);
+                        settings::flush(&SETTINGS_STATE).await;
                         console::drained().await;
-                        cortex_m::peripheral::SCB::sys_reset();
+                        cortex_m::peripheral::SCB::sys_reset()
                     }
-                    "" => (),
+                    // An empty line included: the CLI answers it with a bare
+                    // prompt, which is how the harness (and `serial_bridge`)
+                    // probe whether the node is up.
                     _ => {
                         let _ = ot.cli_input_line(line);
                     }
@@ -297,27 +290,12 @@ async fn run_cli(ot: OpenThread<'static>, mut console_rx: ConsoleRx) -> ! {
 
                 reader.clear();
 
+                // Let the response drain fully before accepting the next
+                // command - see `console::drained`.
                 console::drained().await;
             }
         }
     }
-}
-
-/// The chip's factory device address, as an EUI-64.
-fn ieee_eui64() -> [u8; 8] {
-    let ficr = embassy_nrf::pac::FICR;
-
-    let low = ficr.deviceaddr(0).read();
-    let high = ficr.deviceaddr(1).read();
-
-    let mut eui64 = [0; 8];
-    eui64[..4].copy_from_slice(&low.to_be_bytes());
-    eui64[4..].copy_from_slice(&high.to_be_bytes());
-
-    // Locally administered, unicast - this is a device address, not an OUI one.
-    eui64[0] = (eui64[0] & 0xfe) | 0x02;
-
-    eui64
 }
 
 /// Drain pending CLI output to the console.
@@ -327,7 +305,7 @@ fn ieee_eui64() -> [u8; 8] {
 #[embassy_executor::task]
 async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
     // Big chunks off the pipe: fewer task round-trips keeps the drain ahead
-    // of the CLI. The UART takes whatever length; USB is packetized below.
+    // of the CLI; USB is packetized below.
     let mut buf = [0; 512];
 
     loop {
@@ -360,25 +338,16 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
 
         #[cfg(feature = "console-usb")]
         {
-            // How long a packet write may sit unaccepted before the output
-            // is dropped. Generous next to USB speeds, so it only fires
-            // when nobody is reading at all.
+            // How long a packet write may sit unaccepted before the output is
+            // dropped. Generous next to USB speeds, so it only fires when nobody
+            // is reading at all.
             const TX_STALL: embassy_time::Duration = embassy_time::Duration::from_millis(500);
 
             // One packet per `write_packet` - it does not split - and a
-            // zero-length packet after a final full-size one: a bulk
-            // transfer only ends on a *short* packet, so without the ZLP a
-            // host reading in multi-packet units sits on the data until
-            // more output happens to push it out.
-            //
-            // The writes are bounded because the host may not be reading at
-            // all (no process has the port open - or worse, ModemManager
-            // opened it, probed, and left). Blocking here forever would
-            // back up `drained`, and with it the command loop - which then
-            // stops reading the OUT endpoint, NAKing every host write, all
-            // the way up to a `tcsetattr` that never returns. Dropping
-            // output with nobody listening is the console's documented
-            // contract anyway.
+            // zero-length packet after a final full-size one: a bulk transfer
+            // only ends on a *short* packet. The writes are bounded because the
+            // host may not be reading at all; blocking forever would back up
+            // `drained` and the command loop with it.
             let mps = console_tx.max_packet_size() as usize;
 
             let mut sent = 0;
@@ -400,13 +369,22 @@ async fn run_console_out(mut console_tx: ConsoleTx) -> ! {
     }
 }
 
-/// Build the USB CDC console: the nRF's own USB peripheral presented to the
-/// host as a serial port, for boards that have no UART bridge.
 #[cfg(feature = "console-usb")]
+/// Build the USB CDC console: the board's own USB peripheral presented to
+/// the host as a serial port.
+///
+/// `SoftwareVbusDetect` rather than the hardware one: the `POWER` events
+/// belong to MPSL here (see `Irqs`) - and this board is USB-powered, so
+/// VBUS is present by definition.
 fn build_usb_console(
     usbd: embassy_nrf::Peri<'static, peripherals::USBD>,
 ) -> (ConsoleTx, ConsoleRx, UsbDevice<'static, UsbDriver>) {
-    let driver = usb::Driver::new(usbd, Irqs, usb::vbus_detect::HardwareVbusDetect::new(Irqs));
+    let vbus = mk_static!(
+        usb::vbus_detect::SoftwareVbusDetect,
+        usb::vbus_detect::SoftwareVbusDetect::new(true, true)
+    );
+
+    let driver = usb::Driver::new(usbd, Irqs, &*vbus);
 
     let mut config = embassy_usb::Config::new(0x1209, 0x0001);
     config.manufacturer = Some("openthread");
@@ -436,7 +414,16 @@ fn build_usb_console(
     (console_tx, console_rx, usb)
 }
 
-/// Drive the USB device stack.
+#[embassy_executor::task]
+async fn run_mpsl(mpsl: &'static MultiprotocolServiceLayer<'static>) -> ! {
+    mpsl.run().await
+}
+
+#[embassy_executor::task]
+async fn run_settings(flash: Flash<'static>) -> ! {
+    settings::run(&SETTINGS_STATE, flash, SETTINGS_OFFSET).await
+}
+
 #[cfg(feature = "console-usb")]
 #[embassy_executor::task]
 async fn run_usb(mut usb: UsbDevice<'static, UsbDriver>) -> ! {
@@ -444,17 +431,6 @@ async fn run_usb(mut usb: UsbDevice<'static, UsbDriver>) -> ! {
 }
 
 #[embassy_executor::task]
-async fn run_ot(ot: OpenThread<'static>, radio: ProxyRadio<'static>) -> ! {
+async fn run_ot(ot: OpenThread<'static>, radio: NrfRadio<'static>) -> ! {
     ot.run(radio).await
-}
-
-#[embassy_executor::task]
-async fn run_radio(mut runner: PhyRadioRunner<'static>, radio: NrfRadio<'static>) -> ! {
-    // A bare PHY, so the software MAC goes on here - on this high-priority
-    // executor, where its ACK deadlines are meetable.
-    let mac_radio_resources = mk_static!(MacRadioResources, MacRadioResources::new());
-
-    runner
-        .run(MacRadio::new(radio, EmbassyTimeTimer, mac_radio_resources))
-        .await
 }

@@ -6,6 +6,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+* Breaking: the `Radio` and `Settings` traits and their types are in the new `openthread-driver` crate, which `openthread` re-exports. Radio drivers can depend on it alone
+* Breaking: `Radio` is a radio that does the time-critical part of the MAC itself:
+  * `MacCapabilities` and `RadioCaps::mac` are gone
+  * `receive` is now `next_event`, which returns a `RadioEvent`
+  * The ACK buffer of `transmit` is required
+  * `RadioErrorKind` is `ChannelAccessFailure`, `NoAck` or `Other`
+  * `RadioCaps`, `Config`, `SrcMatchConfig`, `PsduRxInfo`, `PsduTxInfo` and `CslConfig` are `#[non_exhaustive]`; `PsduRxInfo::new` and `PsduTxInfo::new` are new
+* Breaking: remove `NrfRadio`, `ProxyRadio` and `MacRadio`, and the `embassy-nrf` feature; the nRF radio is `NrfRadio` in the new `openthread-driver-nrf` crate
+* Breaking: `EspRadio` is in the new `openthread-driver-esp` crate, and the `esp-radio` feature is gone
+* Fix: `SpinelRadio` turned the receiver on when asked for the next frame, also between the receive windows of a CSL child
 * `MacRadio`: secured enhanced ACKs (with a CSL IE) for 802.15.4-2015 frames, and Frame Pending on data frames too; the CSL scenarios run in the simulated itests (#126)
 * Fix: a CSL child did not resync its parent with a data poll after a retransmitted frame, as OpenThread never saw its retransmissions flagged as such (#126)
 * Thread diagnostics: `ActiveDatasetDiag` gains `active_timestamp`; new `OpenThread::pending_dataset_diag` (pending timestamp and delay timer) (#126)

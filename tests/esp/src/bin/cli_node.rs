@@ -61,8 +61,8 @@ use esp_bootloader_esp_idf::partitions::{
 };
 use esp_storage::FlashStorage;
 
-use openthread::esp::EspRadio;
 use openthread::{OpenThread, OtResources, Radio};
+use openthread_driver_esp::EspRadio;
 
 use tinyrlibc as _;
 
