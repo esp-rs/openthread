@@ -29,6 +29,7 @@ For targets where pre-compiled libs are not available (including for the Host it
 For the on-the-fly OpenThread CMake build to work, you'll need to install and set in your `$PATH`:
 - Recent Clang (for Espressif `xtensa`, [it must be the Espressif fork](https://crates.io/crates/espup), but for all other chips, the stock Clang would work)
 - CMake and Ninja
+- On macOS: the `llvm-tools` rustup component (`rustup component add llvm-tools`), or a non-Apple Clang such as Homebrew's LLVM first on `$PATH` - Apple's `ar` silently drops the ELF objects of the C++ library
 
 ## Features
 
