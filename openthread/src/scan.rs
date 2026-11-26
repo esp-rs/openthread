@@ -4,14 +4,14 @@ use core::future::poll_fn;
 use crate::fmt::bitflags;
 use crate::sys::{
     otActiveScanResult, otEnergyScanResult, otError_OT_ERROR_BUSY, otInstance, otLinkActiveScan,
-    otLinkEnergyScan, otLinkIsActiveScanInProgress, otLinkIsEnergyScanInProgress,
-    OT_CHANNEL_10_MASK, OT_CHANNEL_11_MASK, OT_CHANNEL_12_MASK, OT_CHANNEL_13_MASK,
-    OT_CHANNEL_14_MASK, OT_CHANNEL_15_MASK, OT_CHANNEL_16_MASK, OT_CHANNEL_17_MASK,
-    OT_CHANNEL_18_MASK, OT_CHANNEL_19_MASK, OT_CHANNEL_1_MASK, OT_CHANNEL_20_MASK,
-    OT_CHANNEL_21_MASK, OT_CHANNEL_22_MASK, OT_CHANNEL_23_MASK, OT_CHANNEL_24_MASK,
-    OT_CHANNEL_25_MASK, OT_CHANNEL_26_MASK, OT_CHANNEL_2_MASK, OT_CHANNEL_3_MASK,
-    OT_CHANNEL_4_MASK, OT_CHANNEL_5_MASK, OT_CHANNEL_6_MASK, OT_CHANNEL_7_MASK, OT_CHANNEL_8_MASK,
-    OT_CHANNEL_9_MASK,
+    otLinkEnergyScan, otLinkIsActiveScanInProgress, otLinkIsEnergyScanInProgress, otThreadDiscover,
+    otThreadIsDiscoverInProgress, OT_CHANNEL_10_MASK, OT_CHANNEL_11_MASK, OT_CHANNEL_12_MASK,
+    OT_CHANNEL_13_MASK, OT_CHANNEL_14_MASK, OT_CHANNEL_15_MASK, OT_CHANNEL_16_MASK,
+    OT_CHANNEL_17_MASK, OT_CHANNEL_18_MASK, OT_CHANNEL_19_MASK, OT_CHANNEL_1_MASK,
+    OT_CHANNEL_20_MASK, OT_CHANNEL_21_MASK, OT_CHANNEL_22_MASK, OT_CHANNEL_23_MASK,
+    OT_CHANNEL_24_MASK, OT_CHANNEL_25_MASK, OT_CHANNEL_26_MASK, OT_CHANNEL_2_MASK,
+    OT_CHANNEL_3_MASK, OT_CHANNEL_4_MASK, OT_CHANNEL_5_MASK, OT_CHANNEL_6_MASK, OT_CHANNEL_7_MASK,
+    OT_CHANNEL_8_MASK, OT_CHANNEL_9_MASK, OT_PANID_BROADCAST,
 };
 use crate::{ot, OpenThread, OtContext, OtError};
 
@@ -51,20 +51,27 @@ bitflags! {
 }
 
 /// An active scan result
+///
+/// A beacon from [`OpenThread::scan`], or a Discovery Response from
+/// [`OpenThread::discover`] (see `discover`), which fill different fields.
+/// A beacon carries only the extended address, the PAN ID, the channel, the
+/// RSSI and the LQI, unless it has a payload and OpenThread parses it
+/// (`OPENTHREAD_CONFIG_MAC_BEACON_PAYLOAD_PARSING_ENABLE`, off by default).
+/// Thread 1.2+ beacons have none.
 #[derive(Debug, Clone, Eq, PartialEq)]
 #[cfg_attr(feature = "defmt", derive(defmt::Format))]
 pub struct ScanResult<'a> {
     /// IEEE 802.15.4 Extended Address
     pub ext_address: u64,
-    /// Thread Network Name
+    /// Thread Network Name; empty in a beacon without a parsed payload
     pub network_name: &'a str,
-    /// Thread Extended PAN ID
+    /// Thread Extended PAN ID; zero in a beacon without a parsed payload
     pub extended_pan_id: u64,
-    /// Steering Data
+    /// Steering Data; only in a Discovery Response
     pub steering_data: &'a [u8],
     /// IEEE 802.15.4 PAN ID
     pub pan_id: u16,
-    /// Joiner UDP Port
+    /// Joiner UDP Port; only in a Discovery Response
     pub joiner_udp_port: u16,
     /// IEEE 802.15.4 Channel
     pub channel: u8,
@@ -72,11 +79,11 @@ pub struct ScanResult<'a> {
     pub rssi: i8,
     /// LQI
     pub lqi: u8,
-    /// Version
+    /// Version; zero in a beacon without a parsed payload
     pub version: u8,
-    /// Native Commissioner
+    /// Native Commissioner; false in a beacon without a parsed payload
     pub native_commissioner: bool,
-    /// Discovery Response
+    /// Whether this is a Discovery Response, rather than a beacon
     pub discover: bool,
 }
 
@@ -133,6 +140,9 @@ impl<'a> From<&'a otActiveScanResult> for ScanResult<'a> {
 impl<'a> OpenThread<'a> {
     /// Perform an active scan for Thread networks.
     ///
+    /// This is an IEEE 802.15.4 beacon scan: Thread 1.2+ beacons carry no network
+    /// name or extended PAN ID. See [`Self::discover`] for those.
+    ///
     /// The scan will be performed on the specified channels for the specified duration.
     ///
     /// Arguments:
@@ -146,16 +156,75 @@ impl<'a> OpenThread<'a> {
         &self,
         channels: Channels,
         duration_millis: u16,
-        mut f: F,
+        f: F,
     ) -> Result<(), OtError>
     where
         F: FnMut(Option<&ScanResult>),
+    {
+        self.scan_with(f, |instance| {
+            ot!(unsafe {
+                otLinkActiveScan(
+                    instance,
+                    channels.bits(),
+                    duration_millis,
+                    Some(Self::plat_c_scan_callback),
+                    instance as *mut _,
+                )
+            })
+        })
+        .await
+    }
+
+    /// Discover Thread networks with an MLE Discovery scan (`otThreadDiscover`).
+    ///
+    /// Unlike [`Self::scan`], which collects IEEE 802.15.4 beacons, the results
+    /// carry the network name and the extended PAN ID: Thread 1.2+ beacons carry
+    /// neither. Every router of a network answers, so a network can be reported
+    /// more than once. The IPv6 interface has to be enabled (see
+    /// [`Self::enable_ipv6`]).
+    ///
+    /// Arguments:
+    /// - `channels`: The channel mask to scan; empty for all channels.
+    /// - `f`: A closure that will be called for each answer, and finally - with `None` - when the scan is complete.
+    ///
+    /// NOTE: The future returned by this method is currently NOT `core::mem::forget` safe.
+    /// Its constructor MUST run, so don't call `core::mem::forget` on it.
+    pub async fn discover<F>(&self, channels: Channels, f: F) -> Result<(), OtError>
+    where
+        F: FnMut(Option<&ScanResult>),
+    {
+        self.scan_with(f, |instance| {
+            ot!(unsafe {
+                otThreadDiscover(
+                    instance,
+                    channels.bits(),
+                    OT_PANID_BROADCAST as u16, // Any PAN
+                    false,                     // Not as a joiner
+                    false,                     // No EUI-64 filtering
+                    Some(Self::plat_c_scan_callback),
+                    instance as *mut _,
+                )
+            })
+        })
+        .await
+    }
+
+    /// Run an active scan or a discovery, which `start` starts, reporting
+    /// its results to `f`. The two share the callback and the completion
+    /// signal, so neither starts while the other runs.
+    async fn scan_with<F, S>(&self, mut f: F, start: S) -> Result<(), OtError>
+    where
+        F: FnMut(Option<&ScanResult>),
+        S: FnOnce(*mut otInstance) -> Result<(), OtError>,
     {
         {
             let mut ot = self.activate();
             let state = ot.state();
 
-            let in_progress = unsafe { otLinkIsActiveScanInProgress(state.ot.instance) };
+            let in_progress = unsafe {
+                otLinkIsActiveScanInProgress(state.ot.instance)
+                    || otThreadIsDiscoverInProgress(state.ot.instance)
+            };
 
             if in_progress {
                 warn!("Another scan in progress");
@@ -168,6 +237,7 @@ impl<'a> OpenThread<'a> {
             state.ot.scan_done.reset();
 
             {
+                let instance = state.ot.instance;
                 let f: &mut dyn FnMut(Option<&ScanResult>) = &mut f;
 
                 let scan_callback = &mut state.ot.scan_callback;
@@ -178,15 +248,11 @@ impl<'a> OpenThread<'a> {
                     >(f)
                 });
 
-                ot!(unsafe {
-                    otLinkActiveScan(
-                        state.ot.instance,
-                        channels.bits(),
-                        duration_millis,
-                        Some(Self::plat_c_scan_callback),
-                        state.ot.instance as *mut _ as *mut _,
-                    )
-                })?;
+                if let Err(err) = start(instance) {
+                    *scan_callback = None;
+
+                    return Err(err);
+                }
             }
         }
 
