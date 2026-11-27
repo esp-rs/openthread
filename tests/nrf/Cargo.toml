@@ -59,7 +59,7 @@ nrf54l15 = [
 ]
 
 [dependencies]
-nrf-802154 = { version = "0.1", default-features = false, features = ["defmt"] }
+nrf-802154 = { version = "0.2", default-features = false, features = ["defmt"] }
 openthread-driver-nrf = { path = "../../openthread-driver-nrf", features = ["defmt"] }
 nrf-mpsl = { version = "0.4", default-features = false, features = ["critical-section-impl"] }
 
@@ -148,7 +148,3 @@ heapless = { version = "0.9", default-features = false }
 rand_core = { version = "0.9", default-features = false }
 critical-section = { version = "1.2", default-features = false }
 portable-atomic = { version = "1", default-features = false, features = ["critical-section"] }
-
-# Until `nrf-802154` 0.2 is released
-[patch.crates-io]
-nrf-802154 = { git = "https://github.com/sysgrok/nrf-802154" }

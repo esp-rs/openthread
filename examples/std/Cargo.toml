@@ -8,7 +8,7 @@ keywords = ["thread", "openthread", "embedded", "host"]
 description = "openthread examples for a host (Linux/macOS) driving a remote RCP over serial"
 repository = "https://github.com/esp-rs/openthread"
 license = "MIT OR Apache-2.0"
-rust-version = "1.84"
+rust-version = "1.88"
 
 [features]
 default = []

@@ -7,7 +7,7 @@ publish = false
 description = "Host-side integration-test binaries for `openthread`: simulation nodes wire-compatible with the upstream OpenThread simulation platform and test harness"
 repository = "https://github.com/esp-rs/openthread"
 license = "MIT OR Apache-2.0"
-rust-version = "1.84"
+rust-version = "1.88"
 
 [features]
 default = []
