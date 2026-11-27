@@ -5,9 +5,19 @@
 [![Documentation](https://img.shields.io/badge/docs-esp--rs-brightgreen)](https://esp-rs.github.io/esp-rs/openthread/index.html)
 [![Matrix](https://img.shields.io/matrix/esp-rs:matrix.org?label=join%20matrix&color=BEC5C9&logo=matrix)](https://matrix.to/#/#esp-rs:matrix.org)
 
-This repository hosts the [openthread](openthread), [openthread-sys](openthread-sys) and [examples](examples) crates.
+This repository hosts these crates:
+- [`openthread`](openthread): platform-agnostic, async Rust bindings for OpenThread
+- [`openthread-sys`](openthread-sys): raw bindings for the OpenThread C library
+- [`openthread-driver`](openthread-driver): the traits a platform implements for `openthread` - the IEEE 802.15.4 radio and the settings storage
+- [`openthread-driver-esp`](openthread-driver-esp): the radio of the ESP32-C5, ESP32-C6, ESP32-H2 and ESP32-S31, over `esp-radio`
+- [`openthread-driver-nrf`](openthread-driver-nrf): the radio of the nRF52, nRF53 and nRF54, over [`nrf-802154`](https://github.com/sysgrok/nrf-802154)
 
-For more information, consult the respective README of each crate.
+It also hosts:
+- [examples](examples): for the ESP32 chips ([`esp`](examples/esp)), the nRF chips ([`nrf`](examples/nrf)), and a host that drives a radio co-processor over serial ([`std`](examples/std))
+- [tests](tests): the integration tests, which run the upstream OpenThread test suites
+- [xtask](xtask): the repository automation (`cargo xtask`)
+
+For more information, consult the README of each crate.
 
 ## License
 

@@ -37,15 +37,12 @@ For the on-the-fly OpenThread CMake build to work, you'll need to install and se
 - Thread 1.4 compatibility
 - MTD (Minimal Thread Device) functionality
 - FTD (Full Thread Device) functionality
-- SED functionality (but no CSL yet)
+- SED functionality
+- CSL (Synchronized Sleepy End Device) functionality: an FTD can always parent CSL children; the CSL child side needs the `csl-receiver` feature
 - Support for the Spinel protocol and 802.15.4 radio offload via Thread RCP
 - CLI API
 - Optional integration with `embassy-net`
 - Radio drivers for the ESP32 chips (`openthread-driver-esp`) and the nRF chips (`openthread-driver-nrf`)
-
-## Next
-
-- CSL
 
 ## Non-Goals
 
