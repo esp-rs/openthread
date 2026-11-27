@@ -29,8 +29,6 @@ For the nRF54L15, select its feature and target (and the `probe-rs` chip in `.ca
 cargo run --release --no-default-features --features nrf54l15 --target thumbv8m.main-none-eabihf
 ```
 
-Until `nrf-802154` 0.2 is released, `Cargo.toml` takes it from git.
-
 ## Running the suites against it
 
 The board is `mcu` in the port map; pairing it against a **known-good RCP

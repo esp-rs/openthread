@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-27
+* Breaking: the `mbedtls-rs-sys` feature uses mbedtls-rs-sys v0.4
+* Update MSRV to 1.88, which `heapless` 0.9.4 needs
 * New: `OpenThread::discover`, an MLE Discovery scan whose results carry the network name and the extended PAN ID
 * Breaking: the `Radio` and `Settings` traits and their types are in the new `openthread-driver` crate, which `openthread` re-exports. Radio drivers can depend on it alone
 * Breaking: `Radio` is a radio that does the time-critical part of the MAC itself:

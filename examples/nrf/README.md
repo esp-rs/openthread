@@ -20,5 +20,3 @@ For the nRF54L15, select its feature and target (and the `probe-rs` chip in `.ca
 ```sh
 cargo run --release --bin basic_udp --no-default-features --features nrf54l15 --target thumbv8m.main-none-eabihf
 ```
-
-Until `nrf-802154` 0.2 is released, `Cargo.toml` takes it from git.

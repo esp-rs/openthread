@@ -1,11 +1,11 @@
 [package]
 name = "openthread-sys"
-version = "0.4.0"
+version = "0.5.0"
 edition = "2021"
 links = "openthread"
 license = "MIT OR Apache-2.0"
 resolver = "2"
-rust-version = "1.85"
+rust-version = "1.86"
 categories = ["embedded", "hardware-support"]
 keywords = ["thread", "openthread", "embedded", "embassy"]
 description = "Raw bindings for OpenThread"

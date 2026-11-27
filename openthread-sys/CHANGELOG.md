@@ -5,7 +5,9 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.5.0] - 2026-11-27
+* (Breaking) Update to mbedtls-rs-sys v0.4
+* Update MSRV to 1.86, which mbedtls-rs-sys v0.4 needs
 * New `csl-receiver` feature: compiles OpenThread with CSL Receiver support (and the microsecond platform alarm it needs). Off by default
 * The FTD library is built with the CSL Transmitter (a Thread 1.2+ FTD has to parent CSL children); the MTD library without it
 * Fix: on-the-fly clang build on macOS - archive with `llvm-ar` from the `llvm-tools` rustup component (Apple's `ar` drops ELF objects)
